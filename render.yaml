@@ -2,8 +2,9 @@ services:
   - type: web
     name: myaba
     runtime: node
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    buildCommand: npm install && npx vite build
+    startCommand: node server.js
+    plan: free
     envVars:
-      - key: NODE_ENV
-        value: production
+      - key: NODE_VERSION
+        value: 20.11.0
