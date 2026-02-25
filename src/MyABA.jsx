@@ -161,28 +161,14 @@ function safeParseGreeting(response) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// NOISE + BLOB — ABA's organic energy presence
+// ABA PRESENCE — Premium glass translucent animated orb
 // ═══════════════════════════════════════════════════════════════════════════
-class N{constructor(){this.p=Array.from({length:512},()=>Math.floor(Math.random()*256))}f(t){return t*t*t*(t*(t*6-15)+10)}l(t,a,b){return a+t*(b-a)}g(h,x,y){const u=(h&2)===0?x:y,v=(h&2)===0?y:x;return((h&1)?-u:u)+((h&2)?-v:v)}get(x,y){const X=Math.floor(x)&255,Y=Math.floor(y)&255;x-=Math.floor(x);y-=Math.floor(y);const u=this.f(x),v=this.f(y),A=this.p[X]+Y,B=this.p[X+1]+Y;return this.l(v,this.l(u,this.g(this.p[A],x,y),this.g(this.p[B],x-1,y)),this.l(u,this.g(this.p[A+1],x,y-1),this.g(this.p[B+1],x-1,y-1)))}}
-const PAL={idle:{c:[[139,92,246],[167,139,250],[236,72,153],[99,102,241]],g:[139,92,246]},thinking:{c:[[245,158,11],[251,191,36],[239,68,68],[253,224,71]],g:[245,158,11]},speaking:{c:[[34,197,94],[16,185,129],[132,204,22],[45,212,191]],g:[34,197,94]},listening:{c:[[6,182,212],[59,130,246],[139,92,246],[147,197,253]],g:[6,182,212]}};
+// v1.2.0: Premium animated ABA presence imported
+import { ABAPresence } from './ABAPresence.jsx';
 
+// Alias for backward compatibility
 function Blob({state="idle",size=160}){
-  const cvs=useRef(null),ns=useRef(new N()),st=useRef(state),fr=useRef(null);
-  useEffect(()=>{st.current=state},[state]);
-  useEffect(()=>{
-    const c=cvs.current;if(!c)return;const ctx=c.getContext("2d"),dpr=Math.min(window.devicePixelRatio||1,2);
-    c.width=size*dpr;c.height=size*dpr;ctx.scale(dpr,dpr);const ctr=size/2,n=ns.current;let t=0;
-    const draw=()=>{const p=PAL[st.current]||PAL.idle;const spd=st.current==="thinking"?.025:st.current==="speaking"?.02:st.current==="listening"?.014:.012;
-      t+=spd;ctx.clearRect(0,0,size,size);const g=p.g;const gr=ctx.createRadialGradient(ctr,ctr,size*.1,ctr,ctr,size*.48);
-      gr.addColorStop(0,`rgba(${g[0]},${g[1]},${g[2]},.3)`);gr.addColorStop(.6,`rgba(${g[0]},${g[1]},${g[2]},.08)`);gr.addColorStop(1,`rgba(${g[0]},${g[1]},${g[2]},0)`);
-      ctx.fillStyle=gr;ctx.fillRect(0,0,size,size);
-      for(let l=0;l<4;l++){const cl=p.c[l],o=l*.7,bR=size*(.22-l*.025);ctx.beginPath();
-        for(let i=0;i<=100;i++){const a=(i/100)*Math.PI*2;const n1=n.get(Math.cos(a)*2+t+o,Math.sin(a)*2+t*.7);const n2=n.get(Math.cos(a)*4+t*1.3+o,Math.sin(a)*4+t*.9)*.5;
-          const r=bR+(n1+n2)*size*.09;const x=ctr+Math.cos(a)*r,y=ctr+Math.sin(a)*r;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)}
-        ctx.closePath();ctx.fillStyle=`rgba(${cl[0]},${cl[1]},${cl[2]},${.6-l*.1})`;ctx.filter="blur(3px)";ctx.fill();ctx.filter="none"}
-      fr.current=requestAnimationFrame(draw)};
-    draw();return()=>cancelAnimationFrame(fr.current)},[size]);
-  return <canvas ref={cvs} style={{width:size,height:size,display:"block",margin:"0 auto"}}/>;
+  return <ABAPresence state={state} size={size} />;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
