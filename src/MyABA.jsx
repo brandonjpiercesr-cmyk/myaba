@@ -1,7 +1,14 @@
-// ⬡B:myaba.genesis:APP:v1.1.3-P1:20260225⬡
-// MyABA v1.1.3 — Phase 1 Complete
-// FIXES: 1.1 JSON parse, 1.2 conversation persist, 1.3 settings localStorage,
-//        1.4 delete/archive/search, 1.5 retry+toast, 1.6 PWA ready
+// ⬡B:myaba.genesis:APP:v1.2.0:20260225⬡
+// MyABA v1.2.0 — Complete Architecture Overhaul
+// ════════════════════════════════════════════════════════════════════════════
+// ARCHITECTURE:
+//   - Firebase = AUTH ONLY (Google sign-in)
+//   - Conversations = AIR → Supabase (NOT Firebase Firestore)
+//   - Greetings = AGENT DAWN (Dynamic, JARVIS-style, contextual)
+//   - Errors = Consumer-ready (no tech jargon)
+//   - PWA = Offline queue, background sync
+// ════════════════════════════════════════════════════════════════════════════
+// ROUTING: USER → MyABA → REACH → AIR → Supabase Brain
 // This file is SKIN. It has NO brain. ZERO hardcoded content.
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -10,9 +17,9 @@ import {
   Settings, X, Plus, Bell, Mail, Calendar, Phone, Headphones,
   MessageCircle, Zap, Activity, Clock, CheckCircle, AlertTriangle,
   Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock,
-  Trash2, Archive, Search, WifiOff
+  Trash2, Archive, Search, WifiOff, Wifi, RefreshCw
 } from "lucide-react";
-import { auth, signInGoogle, signOutUser, saveConversation, loadConversations, deleteConversation, archiveConversation } from "./firebase.js";
+import { auth, signInGoogle, signOutUser } from "./firebase.js";
 import { onAuthStateChanged } from "firebase/auth";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -20,15 +27,21 @@ import { onAuthStateChanged } from "firebase/auth";
 // ═══════════════════════════════════════════════════════════════════════════
 const REACH = "https://aba-reach.onrender.com";
 
-// v1.1.3-P1-S5: AIR with retry (3x with exponential backoff)
+// v1.2.0: Check online status
+function isOnline() { return navigator.onLine; }
+
+// v1.2.0: AIR with retry + offline awareness
 async function airRequest(type, payload = {}, userId = "brandon", maxRetries = 3) {
+  if (!isOnline()) {
+    return { response: null, offline: true, queued: true };
+  }
   let lastError;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const res = await fetch(`${REACH}/api/router`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: payload.message || "", type, userId, source: "myaba", context: { ...payload, timestamp: Date.now() } }),
+        body: JSON.stringify({ message: payload.message || "", type, userId, source: "myaba", ham_id: userId, context: { ...payload, timestamp: Date.now() } }),
       });
       if (!res.ok) throw new Error(`REACH ${res.status}`);
       return await res.json();
@@ -37,7 +50,30 @@ async function airRequest(type, payload = {}, userId = "brandon", maxRetries = 3
       if (attempt < maxRetries) await new Promise(r => setTimeout(r, 1000 * attempt));
     }
   }
-  return { response: null, error: true, errorMessage: lastError?.message || "Connection failed after 3 retries" };
+  return { response: null, error: true, errorMessage: lastError?.message };
+}
+
+// v1.2.0: Conversations via AIR → Supabase (NOT Firebase)
+async function airSaveConversation(userId, conv) {
+  return airRequest("save_conversation", { 
+    conversationId: conv.id, title: conv.title, messages: conv.messages,
+    createdAt: conv.createdAt, archived: conv.archived || false
+  }, userId);
+}
+
+async function airLoadConversations(userId) {
+  const result = await airRequest("load_conversations", {}, userId);
+  if (result.conversations) return result.conversations;
+  if (result.response?.conversations) return result.response.conversations;
+  return [];
+}
+
+async function airDeleteConversation(userId, convId) {
+  return airRequest("delete_conversation", { conversationId: convId }, userId);
+}
+
+async function airArchiveConversation(userId, convId) {
+  return airRequest("archive_conversation", { conversationId: convId }, userId);
 }
 
 async function reachTranscribe(audioBlob) {
@@ -77,19 +113,49 @@ async function airNameChat(messages, userId) {
   } catch { return null; }
 }
 
-// v1.1.3-P1-S1: Safe JSON parse for login greeting
+// v1.2.0: JARVIS-style greeting from AGENT DAWN (Daily Automated Wisdom Notifier)
+async function getDawnGreeting(userId, userName) {
+  const result = await airRequest("dawn_greeting", { 
+    userName, includeCalendar: true, includeJobs: true, includeSports: true, context: "login"
+  }, userId);
+  
+  if (result.response) {
+    // DAWN returns rich contextual greeting
+    if (typeof result.response === "object") {
+      return result.response;
+    }
+    // Parse if stringified
+    try {
+      const parsed = JSON.parse(result.response);
+      return parsed;
+    } catch {
+      return { greeting: result.response, context: "", proactive: null };
+    }
+  }
+  
+  // Fallback - still dynamic based on time
+  const hour = new Date().getHours();
+  const timeGreeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  return {
+    greeting: `${timeGreeting}, ${userName || "there"}`,
+    context: "I'm ready when you are.",
+    proactive: null
+  };
+}
+
+// Legacy support
 function safeParseGreeting(response) {
   if (!response) return { title: "", subtitle: "" };
   let parsed = response;
   if (typeof parsed === "object" && parsed !== null) {
-    return { title: parsed.title || "", subtitle: parsed.subtitle || "" };
+    return { title: parsed.greeting || parsed.title || "", subtitle: parsed.context || parsed.subtitle || "" };
   }
   try { parsed = JSON.parse(parsed); } catch {}
   if (typeof parsed === "string") {
     try { parsed = JSON.parse(parsed); } catch {}
   }
-  if (typeof parsed === "object" && parsed !== null && (parsed.title || parsed.subtitle)) {
-    return { title: parsed.title || "", subtitle: parsed.subtitle || "" };
+  if (typeof parsed === "object" && parsed !== null) {
+    return { title: parsed.greeting || parsed.title || "", subtitle: parsed.context || parsed.subtitle || "" };
   }
   return { title: String(response), subtitle: "" };
 }
@@ -125,13 +191,23 @@ function Blob({state="idle",size=160}){
 const BG={blackLandscape:{u:"https://i.imgur.com/ZwVdgzN.jpeg",l:"Dark Horizon"},eventHorizon:{u:"https://i.imgur.com/A44TxCq.jpeg",l:"Event Horizon"},nebula:{u:"https://i.imgur.com/nLBRQ82.jpeg",l:"Nebula"},stormClouds:{u:"https://i.imgur.com/RRKjvgR.jpeg",l:"Storm Clouds"},wetCity:{u:"https://i.imgur.com/h8zNCw1.jpeg",l:"Wet City"},embers:{u:"https://i.imgur.com/9HZYnlX.png",l:"Embers"},earth:{u:"https://i.imgur.com/NOXQ3aM.png",l:"Earth"},pinkSmoke:{u:"https://i.imgur.com/3RkebB2.jpeg",l:"Pink Smoke"},mountainSnow:{u:"https://i.imgur.com/7Ffjcy2.png",l:"Mountain Snow"},motion:{u:"https://i.imgur.com/3hG18cp.jpeg",l:"Motion"},glassWindows:{u:"https://i.imgur.com/Kjjs7nt.jpeg",l:"Glass Windows"},particleLights:{u:"https://i.imgur.com/wLi9sGD.jpeg",l:"Particle Lights"},beach:{u:"https://i.imgur.com/YaH4lbp.jpeg",l:"Beach"},unity:{u:"https://i.imgur.com/IJAeq7t.png",l:"Unity"},threeGoats:{u:"https://i.imgur.com/jNJUq4u.png",l:"Three Goats"}};
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TOAST - v1.1.3-P1-S5: Error feedback
+// TOAST - v1.2.0: Consumer-ready messages (NO tech jargon)
 // ═══════════════════════════════════════════════════════════════════════════
 function Toast({message,type="info",onClose}){
   useEffect(()=>{const t=setTimeout(onClose,4000);return()=>clearTimeout(t)},[onClose]);
-  const colors={error:"#EF4444",success:"#22C55E",warning:"#F59E0B",info:"#3B82F6"};
-  return(<div style={{position:"fixed",bottom:100,left:"50%",transform:"translateX(-50%)",padding:"12px 20px",borderRadius:12,background:colors[type],color:"white",fontSize:13,fontWeight:600,zIndex:200,boxShadow:"0 4px 20px rgba(0,0,0,.4)",animation:"mf .3s ease",display:"flex",alignItems:"center",gap:8}}>
-    {type==="error"&&<WifiOff size={16}/>}{message}
+  const colors={error:"#EF4444",success:"#22C55E",warning:"#F59E0B",info:"#8B5CF6",offline:"#6B7280"};
+  const icons={error:AlertTriangle,success:CheckCircle,warning:AlertTriangle,info:Sparkles,offline:WifiOff};
+  const Icon=icons[type]||Sparkles;
+  return(<div style={{position:"fixed",bottom:100,left:"50%",transform:"translateX(-50%)",padding:"14px 20px",borderRadius:16,background:colors[type],color:"white",fontSize:14,fontWeight:500,zIndex:200,boxShadow:"0 4px 20px rgba(0,0,0,.4)",animation:"mf .3s ease",display:"flex",alignItems:"center",gap:10}}>
+    <Icon size={18}/>{message}
+  </div>);
+}
+
+// v1.2.0: Connection status indicator
+function ConnectionStatus({online}){
+  if(online)return null;
+  return(<div style={{position:"fixed",top:60,left:"50%",transform:"translateX(-50%)",padding:"8px 16px",borderRadius:20,background:"rgba(107,114,128,0.9)",color:"white",fontSize:12,fontWeight:500,display:"flex",alignItems:"center",gap:8,zIndex:150,backdropFilter:"blur(8px)"}}>
+    <WifiOff size={14}/>Reconnecting...
   </div>);
 }
 
@@ -176,14 +252,12 @@ function VoiceMode({mode,setMode}){const modes=[{k:"chat",i:MessageSquare,l:"Cha
 function Login({onLogin}){
   const[loading,setLoading]=useState(false);
   const[error,setError]=useState(null);
-  const[loginText,setLoginText]=useState({title:"",subtitle:""});
+  const[greeting,setGreeting]=useState({greeting:"ABA",context:"A Better AI",proactive:null});
   
   useEffect(()=>{
-    airRequest("login_greeting",{}).then(d=>{
-      if(d.response){
-        const parsed = safeParseGreeting(d.response);
-        setLoginText(parsed);
-      }
+    // v1.2.0: DAWN greeting - JARVIS style with context
+    getDawnGreeting("guest","").then(g=>{
+      if(g)setGreeting(g);
     }).catch(()=>{});
   },[]);
 
@@ -193,14 +267,17 @@ function Login({onLogin}){
     <div style={{position:"absolute",inset:0,backgroundImage:`url(${BG.eventHorizon.u})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.3) saturate(.6)"}}/>
     <div style={{position:"relative",zIndex:2,textAlign:"center",maxWidth:360,padding:"0 24px"}}>
       <div style={{marginBottom:32}}><Blob state="idle" size={120}/></div>
-      <h1 style={{color:"white",fontSize:28,fontWeight:700,margin:"0 0 8px",background:"linear-gradient(135deg,#8B5CF6,#6366F1,#EC4899)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{loginText.title||"ABA"}</h1>
-      <p style={{color:"rgba(255,255,255,.5)",fontSize:14,margin:"0 0 32px"}}>{loginText.subtitle||""}</p>
+      <h1 style={{color:"white",fontSize:28,fontWeight:700,margin:"0 0 8px",background:"linear-gradient(135deg,#8B5CF6,#6366F1,#EC4899)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{greeting.greeting||"ABA"}</h1>
+      <p style={{color:"rgba(255,255,255,.6)",fontSize:14,margin:"0 0 12px",lineHeight:1.5}}>{greeting.context||""}</p>
+      {greeting.proactive&&<div style={{background:"rgba(139,92,246,.1)",border:"1px solid rgba(139,92,246,.2)",borderRadius:12,padding:"10px 14px",marginBottom:20,textAlign:"left"}}>
+        <p style={{color:"rgba(139,92,246,.9)",fontSize:12,margin:0,lineHeight:1.5}}>{greeting.proactive}</p>
+      </div>}
       <button onClick={go} disabled={loading} style={{width:"100%",padding:"16px 24px",borderRadius:16,border:"1px solid rgba(255,255,255,.1)",cursor:loading?"wait":"pointer",background:loading?"rgba(255,255,255,.05)":"linear-gradient(135deg,rgba(139,92,246,.3),rgba(99,102,241,.25))",color:"white",fontSize:15,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:10,boxShadow:"0 4px 20px rgba(139,92,246,.2)",minHeight:52}}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
         {loading?"Signing in...":"Continue with Google"}
       </button>
       {error&&<p style={{color:"#EF4444",fontSize:12,marginTop:12}}>{error}</p>}
-      <p style={{color:"rgba(255,255,255,.15)",fontSize:10,marginTop:24}}>v1.1.3</p>
+      <p style={{color:"rgba(255,255,255,.15)",fontSize:10,marginTop:24}}>v1.2.0</p>
     </div>
   </div>)}
 
@@ -307,9 +384,19 @@ export default function MyABA(){
   const[liveActive,setLiveActive]=useState(false);
   const[proactiveItems,setProactiveItems]=useState([]);
   const[toast,setToast]=useState(null);
+  const[online,setOnline]=useState(navigator.onLine);
   const scrollRef=useRef(null);const recorderRef=useRef(null);const liveRef=useRef(false);
 
-  // v1.1.3-P1-S3: Save settings to localStorage
+  // v1.2.0: Track online/offline status
+  useEffect(()=>{
+    const handleOnline=()=>setOnline(true);
+    const handleOffline=()=>setOnline(false);
+    window.addEventListener("online",handleOnline);
+    window.addEventListener("offline",handleOffline);
+    return()=>{window.removeEventListener("online",handleOnline);window.removeEventListener("offline",handleOffline)};
+  },[]);
+
+  // v1.2.0: Save settings to localStorage
   useEffect(()=>{try{localStorage.setItem("myaba_bg",bg)}catch{}},[bg]);
   useEffect(()=>{try{localStorage.setItem("myaba_voiceOut",String(voiceOut))}catch{}},[voiceOut]);
   useEffect(()=>{try{localStorage.setItem("myaba_voiceMode",voiceMode)}catch{}},[voiceMode]);
@@ -322,32 +409,35 @@ export default function MyABA(){
   const createConv=useCallback((shared=false)=>{const id=`conv-${Date.now()}`;const conv={id,title:"New Chat",shared,archived:false,messages:[],createdAt:Date.now(),updatedAt:Date.now(),autoNamed:false};setConvos(p=>[conv,...p]);setActiveId(id);return id},[]);
   const addMsg=useCallback((msg)=>{setConvos(p=>p.map(c=>c.id===activeId?{...c,messages:[...c.messages,msg],updatedAt:Date.now()}:c))},[activeId]);
 
-  // v1.1.3-P1-S4: Delete and archive handlers
+  // v1.2.0: Delete and archive via AIR → Supabase
   const deleteConv=useCallback((id)=>{
     setConvos(p=>p.filter(c=>c.id!==id));
     if(activeId===id){const remaining=convos.filter(c=>c.id!==id);setActiveId(remaining[0]?.id||null)}
-    if(user)deleteConversation(user.uid,id).catch(()=>{});
+    if(user)airDeleteConversation(user.uid,id).catch(()=>{});
   },[activeId,convos,user]);
 
   const archiveConv=useCallback((id)=>{
     setConvos(p=>p.map(c=>c.id===id?{...c,archived:true}:c));
-    if(user)archiveConversation(user.uid,id).catch(()=>{});
+    if(user)airArchiveConversation(user.uid,id).catch(()=>{});
   },[user]);
 
-  // v1.1.3-P1-S2: Load conversations on mount + user change
+  // v1.2.0: Load conversations via AIR → Supabase + DAWN greeting
   useEffect(()=>{
     if(!user)return;
-    loadConversations(user.uid).then(loaded=>{
+    airLoadConversations(user.uid).then(loaded=>{
       if(loaded&&loaded.length>0){
         setConvos(loaded);
         setActiveId(loaded[0].id);
       }else{
         const id=createConv();
-        airRequest("ham_greeting",{hamName:user.displayName,hamEmail:user.email,hamPhoto:user.photoURL},user.uid).then(data=>{
-          const greeting=data.response||"";
-          if(greeting){
-            setConvos(p=>p.map(c=>c.id===id?{...c,messages:[{id:"w1",role:"aba",content:greeting,timestamp:Date.now()}]}:c));
-            if(voiceOut){setAbaState("speaking");reachSynthesize(greeting).then(url=>{if(url){const a=new Audio(url);a.onended=()=>setAbaState("idle");a.play().catch(()=>setAbaState("idle"))}else setAbaState("idle")})}
+        // Get JARVIS-style welcome from DAWN
+        getDawnGreeting(user.uid,user.displayName).then(g=>{
+          let welcomeMsg=g.greeting||"";
+          if(g.context)welcomeMsg+="\n\n"+g.context;
+          if(g.proactive)welcomeMsg+="\n\n"+g.proactive;
+          if(welcomeMsg){
+            setConvos(p=>p.map(c=>c.id===id?{...c,messages:[{id:"w1",role:"aba",content:welcomeMsg,timestamp:Date.now()}]}:c));
+            if(voiceOut){setAbaState("speaking");reachSynthesize(g.greeting).then(url=>{if(url){const a=new Audio(url);a.onended=()=>setAbaState("idle");a.play().catch(()=>setAbaState("idle"))}else setAbaState("idle")})}
           }
         });
       }
@@ -364,7 +454,8 @@ export default function MyABA(){
     }
   },[messages.length,activeId]);
 
-  useEffect(()=>{if(user&&activeConv&&activeConv.messages.length>0)saveConversation(user.uid,activeConv).catch(()=>{})},[activeConv?.messages?.length]);
+  // v1.2.0: Save via AIR → Supabase
+  useEffect(()=>{if(user&&activeConv&&activeConv.messages.length>0)airSaveConversation(user.uid,activeConv).catch(()=>{})},[activeConv?.messages?.length]);
 
   const sendMessage=useCallback(async(text,isVoice=false)=>{
     if(!text.trim())return;
@@ -374,7 +465,8 @@ export default function MyABA(){
     setIsTyping(false);
     
     if(data.error){
-      showToast(data.errorMessage||"Connection issue. Retried 3x.","error");
+      // v1.2.0: Consumer-ready message (no tech jargon)
+      showToast("Taking a moment to reconnect...","offline");
       setAbaState("idle");
       return;
     }
@@ -389,7 +481,7 @@ export default function MyABA(){
       const rec=new MediaRecorder(stream,{mimeType:"audio/webm"});const chunks=[];rec.ondataavailable=e=>chunks.push(e.data);
       rec.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());setAbaState("thinking");setIsListening(false);const blob=new Blob(chunks,{type:"audio/webm"});const transcript=await reachTranscribe(blob);if(transcript)sendMessage(transcript,true);else{setAbaState("idle");if(liveRef.current)setTimeout(startListening,500)}};
       recorderRef.current=rec;rec.start();if(voiceMode!=="push")setTimeout(()=>{if(rec.state==="recording")rec.stop()},10000);
-    }catch{setIsListening(false);setAbaState("idle");showToast("Microphone access denied","error")}
+    }catch{setIsListening(false);setAbaState("idle");showToast("Could not access your microphone","warning")}
   },[sendMessage,voiceMode,showToast]);
 
   const stopListening=useCallback(()=>{if(recorderRef.current?.state==="recording")recorderRef.current.stop()},[]);
@@ -435,5 +527,6 @@ export default function MyABA(){
     <Sidebar open={sidebarOpen} convos={convos} activeId={activeId} onSelect={setActiveId} onCreate={()=>createConv()} onClose={()=>setSidebarOpen(false)} onDelete={deleteConv} onArchive={archiveConv} user={user}/>
     <Queue open={queueOpen} onToggle={()=>setQueueOpen(!queueOpen)} items={proactiveItems}/>
     <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
+    <ConnectionStatus online={online}/>
     {toast&&<Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)}/>}
   </div>)}

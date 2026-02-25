@@ -1,9 +1,14 @@
-// ⬡B:myaba.firebase:CONFIG:auth:20260225⬡
-// MyABA v1.1.2 — Firebase Configuration
-// Uses ABA Central Brain for auth and conversation persistence
+// ⬡B:myaba.firebase:CONFIG:auth:v1.2.0:20260225⬡
+// MyABA v1.2.0 — Firebase for AUTH ONLY
+// ════════════════════════════════════════════════════════════════════════════
+// ARCHITECTURE:
+//   - Firebase = AUTH (Google sign-in only)
+//   - Conversations = AIR → Supabase (see MyABA.jsx)
+//   - DO NOT add Firestore conversation functions here
+// ════════════════════════════════════════════════════════════════════════════
+
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, addDoc, getDocs, query, where, orderBy, limit, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAD5sW9y0RriF8HsyS7twfd0bjgA2dGsQw",
@@ -17,7 +22,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 
 export async function signInGoogle() {
@@ -28,29 +32,8 @@ export async function signOutUser() {
   return signOut(auth);
 }
 
-// Conversation persistence via Firestore
-export async function saveConversation(userId, conv) {
-  const ref = doc(db, 'aba_conversations', conv.id);
-  await setDoc(ref, { ...conv, userId, updatedAt: serverTimestamp() }, { merge: true });
-}
-
-export async function loadConversations(userId) {
-  const q = query(collection(db, 'aba_conversations'), where('userId', '==', userId), orderBy('updatedAt', 'desc'), limit(30));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-}
-
-// v1.1.3-P1-S4: Delete conversation
-export async function deleteConversation(userId, convId) {
-  const { deleteDoc } = await import('firebase/firestore');
-  const ref = doc(db, 'aba_conversations', convId);
-  await deleteDoc(ref);
-}
-
-// v1.1.3-P1-S4: Archive conversation
-export async function archiveConversation(userId, convId) {
-  const ref = doc(db, 'aba_conversations', convId);
-  await updateDoc(ref, { archived: true, updatedAt: serverTimestamp() });
-}
-
-export { onSnapshot, query, collection, where, orderBy, limit, serverTimestamp, doc, setDoc, updateDoc };
+// ════════════════════════════════════════════════════════════════════════════
+// NOTE: All conversation persistence routes through AIR → Supabase
+// Functions: airSaveConversation, airLoadConversations, airDeleteConversation
+// Location: MyABA.jsx
+// ════════════════════════════════════════════════════════════════════════════
