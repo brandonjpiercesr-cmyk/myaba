@@ -241,29 +241,37 @@ function Login({onLogin}){
   const[greeting,setGreeting]=useState({greeting:"ABA",context:"A Better AI",proactive:null});
   
   useEffect(()=>{
-    // v1.2.0: DAWN greeting - JARVIS style with context
+    // v1.2.2: DAWN greeting - but don't let stale/long data break UI
     getDawnGreeting("guest","").then(g=>{
-      if(g)setGreeting(g);
+      if(g){
+        // Truncate greeting if too long
+        const safeGreeting = {
+          greeting: (g.greeting || "ABA").substring(0, 100),
+          context: (g.context || "").substring(0, 80),
+          proactive: g.proactive ? g.proactive.substring(0, 150) : null
+        };
+        setGreeting(safeGreeting);
+      }
     }).catch(()=>{});
   },[]);
 
   const go=async()=>{setLoading(true);setError(null);try{const result=await signInGoogle();onLogin(result.user)}catch(e){setError(e.message)}finally{setLoading(false)}};
 
-  return(<div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#08080d",fontFamily:"'SF Pro Display',-apple-system,sans-serif"}}>
+  return(<div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#08080d",fontFamily:"'SF Pro Display',-apple-system,sans-serif",overflow:"auto"}}>
     <div style={{position:"absolute",inset:0,backgroundImage:`url(${BG.eventHorizon.u})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.3) saturate(.6)"}}/>
-    <div style={{position:"relative",zIndex:2,textAlign:"center",maxWidth:360,padding:"0 24px"}}>
-      <div style={{marginBottom:32}}><Blob state="idle" size={120}/></div>
-      <h1 style={{color:"white",fontSize:28,fontWeight:700,margin:"0 0 8px",background:"linear-gradient(135deg,#8B5CF6,#6366F1,#EC4899)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{greeting.greeting||"ABA"}</h1>
-      <p style={{color:"rgba(255,255,255,.6)",fontSize:14,margin:"0 0 12px",lineHeight:1.5}}>{greeting.context||""}</p>
-      {greeting.proactive&&<div style={{background:"rgba(139,92,246,.1)",border:"1px solid rgba(139,92,246,.2)",borderRadius:12,padding:"10px 14px",marginBottom:20,textAlign:"left"}}>
-        <p style={{color:"rgba(139,92,246,.9)",fontSize:12,margin:0,lineHeight:1.5}}>{greeting.proactive}</p>
+    <div style={{position:"relative",zIndex:2,textAlign:"center",maxWidth:360,padding:"24px",margin:"auto"}}>
+      <div style={{marginBottom:24}}><Blob state="idle" size={100}/></div>
+      <h1 style={{color:"white",fontSize:24,fontWeight:700,margin:"0 0 8px",background:"linear-gradient(135deg,#8B5CF6,#6366F1,#EC4899)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{greeting.greeting||"ABA"}</h1>
+      <p style={{color:"rgba(255,255,255,.6)",fontSize:13,margin:"0 0 16px",lineHeight:1.4,maxHeight:60,overflow:"hidden"}}>{greeting.context||""}</p>
+      {greeting.proactive&&<div style={{background:"rgba(139,92,246,.1)",border:"1px solid rgba(139,92,246,.2)",borderRadius:10,padding:"8px 12px",marginBottom:16,textAlign:"left",maxHeight:80,overflow:"hidden"}}>
+        <p style={{color:"rgba(139,92,246,.9)",fontSize:11,margin:0,lineHeight:1.4}}>{greeting.proactive}</p>
       </div>}
-      <button onClick={go} disabled={loading} style={{width:"100%",padding:"16px 24px",borderRadius:16,border:"1px solid rgba(255,255,255,.1)",cursor:loading?"wait":"pointer",background:loading?"rgba(255,255,255,.05)":"linear-gradient(135deg,rgba(139,92,246,.3),rgba(99,102,241,.25))",color:"white",fontSize:15,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:10,boxShadow:"0 4px 20px rgba(139,92,246,.2)",minHeight:52}}>
+      <button onClick={go} disabled={loading} style={{width:"100%",padding:"14px 20px",borderRadius:14,border:"1px solid rgba(255,255,255,.1)",cursor:loading?"wait":"pointer",background:loading?"rgba(255,255,255,.05)":"linear-gradient(135deg,rgba(139,92,246,.3),rgba(99,102,241,.25))",color:"white",fontSize:15,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:10,boxShadow:"0 4px 20px rgba(139,92,246,.2)",minHeight:52}}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-        {loading?"Signing in...":"Continue with Google"}
+        {loading?"Signing in...":"Sign in with Google"}
       </button>
       {error&&<p style={{color:"#EF4444",fontSize:12,marginTop:12}}>{error}</p>}
-      <p style={{color:"rgba(255,255,255,.15)",fontSize:10,marginTop:24}}>v1.2.0</p>
+      <p style={{color:"rgba(255,255,255,.15)",fontSize:10,marginTop:20}}>v1.2.2</p>
     </div>
   </div>)}
 
