@@ -40,4 +40,17 @@ export async function loadConversations(userId) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
+// v1.1.3-P1-S4: Delete conversation
+export async function deleteConversation(userId, convId) {
+  const { deleteDoc } = await import('firebase/firestore');
+  const ref = doc(db, 'aba_conversations', convId);
+  await deleteDoc(ref);
+}
+
+// v1.1.3-P1-S4: Archive conversation
+export async function archiveConversation(userId, convId) {
+  const ref = doc(db, 'aba_conversations', convId);
+  await updateDoc(ref, { archived: true, updatedAt: serverTimestamp() });
+}
+
 export { onSnapshot, query, collection, where, orderBy, limit, serverTimestamp, doc, setDoc, updateDoc };
