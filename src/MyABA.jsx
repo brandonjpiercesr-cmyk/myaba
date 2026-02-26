@@ -31,17 +31,35 @@ const REACH = "https://aba-reach.onrender.com";
 function isOnline() { return navigator.onLine; }
 
 // v1.2.0: AIR with retry + offline awareness
-async function airRequest(type, payload = {}, userId = "brandon", maxRetries = 3) {
+// ⬡B:MYABA:FIX:ham_identity:20260226⬡
+// airRequest now accepts full user object to pass displayName for HAM identification
+async function airRequest(type, payload = {}, userOrId = "brandon", maxRetries = 3) {
   if (!isOnline()) {
     return { response: null, offline: true, queued: true };
   }
+  
+  // Support both user object and userId string
+  const userId = typeof userOrId === 'object' ? userOrId?.uid || 'brandon' : userOrId;
+  const userName = typeof userOrId === 'object' ? userOrId?.displayName || 'Brandon' : 'Brandon';
+  const userEmail = typeof userOrId === 'object' ? userOrId?.email || '' : '';
+  
   let lastError;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const res = await fetch(`${REACH}/api/router`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: payload.message || "", type, userId, source: "myaba", ham_id: userId, context: { ...payload, timestamp: Date.now() } }),
+        body: JSON.stringify({ 
+          message: payload.message || "", 
+          type, 
+          userId, 
+          source: "myaba", 
+          ham_id: userId,
+          ham_name: userName,
+          ham_email: userEmail,
+          trust_level: 'T10',  // MyABA = authenticated = T10
+          context: { ...payload, userName, userEmail, timestamp: Date.now() } 
+        }),
       });
       if (!res.ok) throw new Error(`REACH ${res.status}`);
       return await res.json();
@@ -455,7 +473,7 @@ export default function MyABA(){
     if(!text.trim())return;
     const userMsg={id:`u-${Date.now()}`,role:"user",content:text.trim(),timestamp:Date.now(),isVoice};
     addMsg(userMsg);setInput("");setIsTyping(true);setAbaState("thinking");
-    const data=await airRequest("text",{message:text.trim(),conversationId:activeId},user?.uid);
+    const data=await airRequest("text",{message:text.trim(),conversationId:activeId},user);
     setIsTyping(false);
     
     if(data.error){
