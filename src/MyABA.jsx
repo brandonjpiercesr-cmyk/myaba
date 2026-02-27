@@ -1,12 +1,18 @@
-// ⬡B:myaba.genesis:APP:v2.0.0:20260227⬡
-// MyABA v2.0.0 — Wired to ABABASE — Complete Architecture Overhaul
+// ⬡B:myaba.genesis:APP:v2.2.0:20260227⬡
+// MyABA v2.2.0 — Complete Feature Build (6 Spurts)
 // ════════════════════════════════════════════════════════════════════════════
+// SPURTS IMPLEMENTED:
+//   1. Split Screen: Desktop=chat+talk panel, Mobile=chat+floating orb
+//   2. Talk to ABA: Renamed from "Live" mode
+//   3. Private/Shared Chats: Email-based sharing
+//   4. Projects: Project folders with files
+//   5. Attachments: File/image upload support
+//   6. Voice Responses: ElevenLabs TTS (already wired)
 // ARCHITECTURE:
 //   - Firebase = AUTH ONLY (Google sign-in)
 //   - Conversations = AIR → Supabase (NOT Firebase Firestore)
 //   - Greetings = AGENT DAWN (Dynamic, JARVIS-style, contextual)
-//   - Errors = Consumer-ready (no tech jargon)
-//   - PWA = Offline queue, background sync
+//   - ABA = Life assistant (not AI/personal assistant)
 // ════════════════════════════════════════════════════════════════════════════
 // ROUTING: USER → MyABA → REACH → AIR → Supabase Brain
 // This file is SKIN. It has NO brain. ZERO hardcoded content.
@@ -17,10 +23,24 @@ import {
   Settings, X, Plus, Bell, Mail, Calendar, Phone, Headphones,
   MessageCircle, Zap, Activity, Clock, CheckCircle, AlertTriangle,
   Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock,
-  Trash2, Archive, Search, WifiOff, Wifi, RefreshCw
+  Trash2, Archive, Search, WifiOff, Wifi, RefreshCw, Share2, Paperclip,
+  FolderOpen, Image, File
 } from "lucide-react";
 import { auth, signInGoogle, signOutUser } from "./firebase.js";
 import { onAuthStateChanged } from "firebase/auth";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SPURT 1: DEVICE DETECTION — Desktop vs Mobile
+// ═══════════════════════════════════════════════════════════════════════════
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return isMobile;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // REACH — The Spine. Every interaction. ZERO local thinking.
@@ -77,6 +97,39 @@ async function airDeleteConversation(userId, convId) {
 
 async function airArchiveConversation(userId, convId) {
   return airRequest("archive_conversation", { conversationId: convId }, userId);
+}
+
+// SPURT 3: Share chat by email
+async function airShareChat(userId, convId, emails) {
+  return airRequest("share_chat", { conversationId: convId, emails }, userId);
+}
+
+// SPURT 4: Project functions
+async function airLoadProjects(userId) {
+  return airRequest("load_projects", {}, userId);
+}
+async function airCreateProject(userId, name) {
+  return airRequest("create_project", { name }, userId);
+}
+async function airAddProjectFile(userId, projectId, file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("projectId", projectId);
+  formData.append("userId", userId);
+  try {
+    const res = await fetch(`${REACH}/api/project/upload`, { method: "POST", body: formData });
+    return res.ok ? await res.json() : { error: true };
+  } catch { return { error: true }; }
+}
+
+// SPURT 5: Upload attachment to chat
+async function uploadAttachment(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  try {
+    const res = await fetch(`${REACH}/api/attachments/upload`, { method: "POST", body: formData });
+    return res.ok ? await res.json() : null;
+  } catch { return null; }
 }
 
 async function reachTranscribe(audioBlob) {
@@ -219,11 +272,14 @@ function OutputCard({output}){const[exp,setExp]=useState(false);const icons={ema
 // ═══════════════════════════════════════════════════════════════════════════
 // BUBBLE
 // ═══════════════════════════════════════════════════════════════════════════
-function Bubble({msg,userPhoto}){const isU=msg.role==="user";const time=msg.timestamp?new Date(msg.timestamp).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):"";
+function Bubble({msg,userPhoto,onSpeak}){const isU=msg.role==="user";const time=msg.timestamp?new Date(msg.timestamp).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):"";
   return(<div style={{display:"flex",justifyContent:isU?"flex-end":"flex-start",padding:"3px 0",gap:8,alignItems:"flex-end"}}>
     {!isU&&<div style={{width:26,height:26,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Sparkles size={12} style={{color:"white"}}/></div>}
-    <div style={{maxWidth:"78%"}}><div style={{padding:"10px 14px",borderRadius:isU?"18px 18px 4px 18px":"18px 18px 18px 4px",background:isU?"linear-gradient(135deg,rgba(139,92,246,.3),rgba(99,102,241,.25))":"rgba(255,255,255,.06)",backdropFilter:isU?"none":"blur(8px)",border:`1px solid ${isU?"rgba(139,92,246,.25)":"rgba(255,255,255,.08)"}`,boxShadow:isU?"none":"inset 0 1px 1px rgba(255,255,255,.06)"}}>{msg.output?<OutputCard output={msg.output}/>:<div>{renderMd(msg.content)}</div>}</div>
-      {time&&<div style={{fontSize:9,color:"rgba(255,255,255,.2)",marginTop:2,textAlign:isU?"right":"left",padding:"0 4px"}}>{time}{msg.isVoice&&" · via voice"}</div>}</div>
+    <div style={{maxWidth:"78%"}}><div style={{padding:"10px 14px",borderRadius:isU?"18px 18px 4px 18px":"18px 18px 18px 4px",background:isU?"linear-gradient(135deg,rgba(139,92,246,.3),rgba(99,102,241,.25))":"rgba(255,255,255,.06)",backdropFilter:isU?"none":"blur(8px)",border:`1px solid ${isU?"rgba(139,92,246,.25)":"rgba(255,255,255,.08)"}`,boxShadow:isU?"none":"inset 0 1px 1px rgba(255,255,255,.06)"}}>{msg.output?<OutputCard output={msg.output}/>:<div>{renderMd(msg.content)}</div>}
+      {/* SPURT 6: Speak button for ABA messages */}
+      {!isU&&msg.content&&onSpeak&&<button onClick={()=>onSpeak(msg.content)} style={{marginTop:8,display:"flex",alignItems:"center",gap:4,padding:"4px 8px",borderRadius:8,border:"none",background:"rgba(139,92,246,.1)",color:"rgba(139,92,246,.7)",cursor:"pointer",fontSize:10,fontWeight:500}}><Volume2 size={12}/>Play</button>}
+    </div>
+      {time&&<div style={{fontSize:9,color:"rgba(255,255,255,.2)",marginTop:2,textAlign:isU?"right":"left",padding:"0 4px"}}>{time}{msg.isVoice&&" · via voice"}{msg.attachments&&` · ${msg.attachments.length} file${msg.attachments.length>1?"s":""}`}</div>}</div>
     {isU&&<div style={{width:26,height:26,borderRadius:99,overflow:"hidden",flexShrink:0,background:"rgba(139,92,246,.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>{userPhoto?<img src={userPhoto} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<User size={12} style={{color:"rgba(255,255,255,.6)"}}/>}</div>}
   </div>)}
 
@@ -232,7 +288,8 @@ function Typing(){return(<div style={{display:"flex",justifyContent:"flex-start"
 // ═══════════════════════════════════════════════════════════════════════════
 // VOICE MODE SELECTOR
 // ═══════════════════════════════════════════════════════════════════════════
-function VoiceMode({mode,setMode}){const modes=[{k:"chat",i:MessageSquare,l:"Chat"},{k:"push",i:Hand,l:"Push to Talk"},{k:"live",i:Radio,l:"Live"}];
+// SPURT 2: Talk to ABA (renamed from Live)
+function VoiceMode({mode,setMode}){const modes=[{k:"chat",i:MessageSquare,l:"Chat"},{k:"push",i:Hand,l:"Push to Talk"},{k:"talk",i:Radio,l:"Talk to ABA"}];
   return(<div style={{display:"flex",gap:4,padding:6,background:"rgba(0,0,0,.3)",borderRadius:14}}>{modes.map(m=>{const a=mode===m.k;const I=m.i;return(<button key={m.k} onClick={()=>setMode(m.k)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"8px 10px",borderRadius:10,border:"none",cursor:"pointer",background:a?"rgba(139,92,246,.25)":"transparent",color:a?"rgba(139,92,246,.95)":"rgba(255,255,255,.35)",fontSize:11,fontWeight:a?600:400,transition:"all .2s",minHeight:44}}><I size={14}/>{m.l}</button>)})}</div>)}
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -279,11 +336,12 @@ function Login({onLogin}){
   </div>)}
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SIDEBAR — v1.1.3-P1-S4: Delete, Archive, Search
+// SIDEBAR — v2.2.0: Chats + Projects + Share
 // ═══════════════════════════════════════════════════════════════════════════
-function Sidebar({open,convos,activeId,onSelect,onCreate,onClose,onDelete,onArchive,user}){
+function Sidebar({open,convos,activeId,onSelect,onCreate,onClose,onDelete,onArchive,onShare,projects,activeProject,onSelectProject,onCreateProject,user}){
   const[search,setSearch]=useState("");
   const[showArchived,setShowArchived]=useState(false);
+  const[tab,setTab]=useState("chats"); // "chats" or "projects"
   
   if(!open)return null;
   
@@ -298,6 +356,13 @@ function Sidebar({open,convos,activeId,onSelect,onCreate,onClose,onDelete,onArch
   return(<div style={{position:"fixed",inset:0,zIndex:80,display:"flex"}}><div style={{width:300,height:"100%",background:"rgba(10,8,20,.97)",backdropFilter:"blur(24px)",borderRight:"1px solid rgba(139,92,246,.12)",display:"flex",flexDirection:"column",padding:"16px 12px"}}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,padding:"0 4px"}}><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:28,height:28,borderRadius:99,overflow:"hidden",background:"rgba(139,92,246,.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>{user?.photoURL?<img src={user.photoURL} alt="" style={{width:"100%",height:"100%"}}/>:<User size={14} style={{color:"rgba(255,255,255,.6)"}}/>}</div><span style={{color:"rgba(255,255,255,.8)",fontSize:13,fontWeight:600}}>{user?.displayName||"User"}</span></div><button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.3)",minWidth:44,minHeight:44,display:"flex",alignItems:"center",justifyContent:"center"}}><X size={18}/></button></div>
     
+    {/* Tab switcher: Chats / Projects */}
+    <div style={{display:"flex",gap:4,marginBottom:12,background:"rgba(255,255,255,.03)",borderRadius:10,padding:3}}>
+      <button onClick={()=>setTab("chats")} style={{flex:1,padding:"8px 12px",borderRadius:8,border:"none",cursor:"pointer",background:tab==="chats"?"rgba(139,92,246,.2)":"transparent",color:tab==="chats"?"rgba(139,92,246,.95)":"rgba(255,255,255,.4)",fontSize:12,fontWeight:600}}>Chats</button>
+      <button onClick={()=>setTab("projects")} style={{flex:1,padding:"8px 12px",borderRadius:8,border:"none",cursor:"pointer",background:tab==="projects"?"rgba(139,92,246,.2)":"transparent",color:tab==="projects"?"rgba(139,92,246,.95)":"rgba(255,255,255,.4)",fontSize:12,fontWeight:600}}>Projects</button>
+    </div>
+    
+    {tab==="chats"&&<>
     <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"rgba(255,255,255,.05)",borderRadius:10,marginBottom:12,border:"1px solid rgba(255,255,255,.06)"}}>
       <Search size={14} style={{color:"rgba(255,255,255,.3)"}}/>
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search chats..." style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.8)",fontSize:12}}/>
@@ -310,29 +375,126 @@ function Sidebar({open,convos,activeId,onSelect,onCreate,onClose,onDelete,onArch
     </button>
     
     <div style={{flex:1,overflowY:"auto"}}>
-      {solo.length>0&&<><div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 8px",marginBottom:4}}><Lock size={11} style={{color:"rgba(255,255,255,.25)"}}/><span style={{color:"rgba(255,255,255,.3)",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Solo</span></div>
-      {solo.map(c=>(<div key={c.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:10,background:c.id===activeId?"rgba(139,92,246,.15)":"transparent",marginBottom:2}}>
+      {solo.length>0&&<><div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 8px",marginBottom:4}}><Lock size={11} style={{color:"rgba(255,255,255,.25)"}}/><span style={{color:"rgba(255,255,255,.3)",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Private</span></div>
+      {solo.map(c=>(<div key={c.id} style={{display:"flex",alignItems:"center",gap:4,padding:"8px 12px",borderRadius:10,background:c.id===activeId?"rgba(139,92,246,.15)":"transparent",marginBottom:2}}>
         <button onClick={()=>{onSelect(c.id);onClose()}} style={{flex:1,display:"flex",alignItems:"center",gap:8,background:"none",border:"none",cursor:"pointer",color:c.id===activeId?"rgba(255,255,255,.9)":"rgba(255,255,255,.5)",fontSize:12,textAlign:"left",padding:0}}>
           <MessageSquare size={14} style={{flexShrink:0,opacity:.5}}/>
           <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.title}</span>
         </button>
-        <button onClick={()=>onArchive(c.id)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.2)",padding:4,minWidth:28,minHeight:28,display:"flex",alignItems:"center",justifyContent:"center"}}><Archive size={12}/></button>
-        <button onClick={()=>onDelete(c.id)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(239,68,68,.4)",padding:4,minWidth:28,minHeight:28,display:"flex",alignItems:"center",justifyContent:"center"}}><Trash2 size={12}/></button>
+        <button onClick={()=>onShare&&onShare(c)} title="Share" style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.2)",padding:4,minWidth:24,minHeight:24,display:"flex",alignItems:"center",justifyContent:"center"}}><Users size={11}/></button>
+        <button onClick={()=>onArchive(c.id)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.2)",padding:4,minWidth:24,minHeight:24,display:"flex",alignItems:"center",justifyContent:"center"}}><Archive size={11}/></button>
+        <button onClick={()=>onDelete(c.id)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(239,68,68,.4)",padding:4,minWidth:24,minHeight:24,display:"flex",alignItems:"center",justifyContent:"center"}}><Trash2 size={11}/></button>
       </div>))}</>}
       
       {shared.length>0&&<><div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 8px",marginTop:12,marginBottom:4}}><Users size={11} style={{color:"rgba(255,255,255,.25)"}}/><span style={{color:"rgba(255,255,255,.3)",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Shared</span></div>
-      {shared.map(c=>(<div key={c.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:10,background:c.id===activeId?"rgba(139,92,246,.15)":"transparent",marginBottom:2}}>
+      {shared.map(c=>(<div key={c.id} style={{display:"flex",alignItems:"center",gap:4,padding:"8px 12px",borderRadius:10,background:c.id===activeId?"rgba(139,92,246,.15)":"transparent",marginBottom:2}}>
         <button onClick={()=>{onSelect(c.id);onClose()}} style={{flex:1,display:"flex",alignItems:"center",gap:8,background:"none",border:"none",cursor:"pointer",color:c.id===activeId?"rgba(255,255,255,.9)":"rgba(255,255,255,.5)",fontSize:12,textAlign:"left",padding:0}}>
           <Users size={14} style={{flexShrink:0,opacity:.5}}/>
           <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.title}</span>
         </button>
-        <button onClick={()=>onArchive(c.id)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.2)",padding:4}}><Archive size={12}/></button>
-        <button onClick={()=>onDelete(c.id)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(239,68,68,.4)",padding:4}}><Trash2 size={12}/></button>
+        <button onClick={()=>onShare&&onShare(c)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.2)",padding:4}}><Users size={11}/></button>
+        <button onClick={()=>onArchive(c.id)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.2)",padding:4}}><Archive size={11}/></button>
+        <button onClick={()=>onDelete(c.id)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(239,68,68,.4)",padding:4}}><Trash2 size={11}/></button>
       </div>))}</>}
       
       {filtered.length===0&&<div style={{padding:24,textAlign:"center",color:"rgba(255,255,255,.3)",fontSize:12}}>{search?"No chats match search":"No chats yet"}</div>}
     </div>
+    </>}
+    
+    {/* SPURT 4: Projects Tab */}
+    {tab==="projects"&&<>
+    <button onClick={onCreateProject} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",borderRadius:12,border:"1px solid rgba(139,92,246,.2)",background:"rgba(139,92,246,.08)",color:"rgba(139,92,246,.9)",cursor:"pointer",fontWeight:600,fontSize:13,marginBottom:12,minHeight:44}}><Plus size={16}/>New Project</button>
+    <div style={{flex:1,overflowY:"auto"}}>
+      {projects&&projects.length>0?projects.map(p=>(<div key={p.id} style={{padding:"10px 12px",borderRadius:10,background:p.id===activeProject?"rgba(139,92,246,.15)":"transparent",marginBottom:4,cursor:"pointer"}} onClick={()=>{onSelectProject(p.id);onClose()}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <FileText size={14} style={{color:"rgba(139,92,246,.6)"}}/>
+          <span style={{color:"rgba(255,255,255,.8)",fontSize:13,fontWeight:500}}>{p.name}</span>
+        </div>
+        {p.files&&p.files.length>0&&<div style={{marginTop:6,paddingLeft:22}}>
+          {p.files.slice(0,3).map((f,i)=>(<div key={i} style={{color:"rgba(255,255,255,.4)",fontSize:11,marginBottom:2}}>{f.name}</div>))}
+          {p.files.length>3&&<div style={{color:"rgba(139,92,246,.5)",fontSize:10}}>{p.files.length-3} more files</div>}
+        </div>}
+      </div>)):<div style={{padding:24,textAlign:"center",color:"rgba(255,255,255,.3)",fontSize:12}}>No projects yet</div>}
+    </div>
+    </>}
   </div><div onClick={onClose} style={{flex:1,background:"rgba(0,0,0,.4)"}}/></div>)}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SHARE MODAL — Email-based sharing (works before recipient signs up)
+// ═══════════════════════════════════════════════════════════════════════════
+function ShareModal({ open, onClose, conversation, onShare }) {
+  const [emails, setEmails] = useState("");
+  const [permission, setPermission] = useState("view"); // view or edit
+  const [sharing, setSharing] = useState(false);
+  const [shared, setShared] = useState(conversation?.sharedWith || []);
+  
+  if (!open || !conversation) return null;
+  
+  const handleShare = async () => {
+    const emailList = emails.split(/[,\s]+/).filter(e => e.includes("@"));
+    if (emailList.length === 0) return;
+    setSharing(true);
+    try {
+      await onShare(conversation.id, emailList, permission);
+      setShared([...shared, ...emailList.map(e => ({ email: e, permission }))]);
+      setEmails("");
+    } catch (e) {
+      console.error("Share failed:", e);
+    }
+    setSharing(false);
+  };
+  
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 150, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.7)" }} />
+      <div style={{ position: "relative", width: "90%", maxWidth: 400, background: "rgba(12,10,24,.98)", backdropFilter: "blur(24px)", borderRadius: 20, padding: 24, border: "1px solid rgba(139,92,246,.2)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h3 style={{ color: "white", fontSize: 18, fontWeight: 700, margin: 0 }}>Share Chat</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,.4)", cursor: "pointer", padding: 4 }}><X size={18} /></button>
+        </div>
+        
+        <p style={{ color: "rgba(255,255,255,.5)", fontSize: 12, margin: "0 0 16px" }}>
+          Share "{conversation.title}" with others. They'll get access when they sign in.
+        </p>
+        
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ color: "rgba(255,255,255,.6)", fontSize: 11, fontWeight: 600, marginBottom: 6, display: "block" }}>Email addresses (comma separated)</label>
+          <input 
+            value={emails} 
+            onChange={e => setEmails(e.target.value)}
+            placeholder="eric@example.com, bj@example.com"
+            style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.05)", color: "white", fontSize: 14, outline: "none" }}
+          />
+        </div>
+        
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          <button onClick={() => setPermission("view")} style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: `1px solid ${permission === "view" ? "rgba(139,92,246,.4)" : "rgba(255,255,255,.1)"}`, background: permission === "view" ? "rgba(139,92,246,.15)" : "transparent", color: permission === "view" ? "rgba(139,92,246,.9)" : "rgba(255,255,255,.5)", cursor: "pointer", fontSize: 13, fontWeight: 500 }}>
+            <Eye size={14} style={{ marginRight: 6, verticalAlign: -2 }} />View only
+          </button>
+          <button onClick={() => setPermission("edit")} style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: `1px solid ${permission === "edit" ? "rgba(139,92,246,.4)" : "rgba(255,255,255,.1)"}`, background: permission === "edit" ? "rgba(139,92,246,.15)" : "transparent", color: permission === "edit" ? "rgba(139,92,246,.9)" : "rgba(255,255,255,.5)", cursor: "pointer", fontSize: 13, fontWeight: 500 }}>
+            <MessageSquare size={14} style={{ marginRight: 6, verticalAlign: -2 }} />Can reply
+          </button>
+        </div>
+        
+        {shared.length > 0 && (
+          <div style={{ marginBottom: 16, padding: 12, background: "rgba(255,255,255,.03)", borderRadius: 12 }}>
+            <p style={{ color: "rgba(255,255,255,.4)", fontSize: 10, fontWeight: 600, margin: "0 0 8px", textTransform: "uppercase" }}>Shared with</p>
+            {shared.map((s, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0" }}>
+                <span style={{ color: "rgba(255,255,255,.7)", fontSize: 12 }}>{s.email}</span>
+                <span style={{ color: "rgba(139,92,246,.6)", fontSize: 10 }}>{s.permission}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        
+        <button onClick={handleShare} disabled={sharing || !emails.trim()} style={{ width: "100%", padding: "14px 20px", borderRadius: 14, border: "none", background: emails.trim() ? "linear-gradient(135deg, rgba(139,92,246,.5), rgba(99,102,241,.4))" : "rgba(255,255,255,.05)", color: emails.trim() ? "white" : "rgba(255,255,255,.3)", cursor: emails.trim() ? "pointer" : "default", fontSize: 14, fontWeight: 600 }}>
+          {sharing ? "Sharing..." : "Share"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PROACTIVE QUEUE
@@ -357,7 +519,7 @@ function SettingsDrawer({open,onClose,bg,setBg,onLogout}){if(!open)return null;
     <p style={{color:"rgba(255,255,255,.35)",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Background</p>
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>{Object.entries(BG).map(([k,{u,l}])=>(<button key={k} onClick={()=>{setBg(k);onClose()}} style={{position:"relative",aspectRatio:"16/10",borderRadius:10,overflow:"hidden",border:bg===k?"2px solid rgba(139,92,246,.8)":"2px solid rgba(255,255,255,.06)",cursor:"pointer",background:"#111",padding:0,boxShadow:bg===k?"0 0 14px rgba(139,92,246,.4)":"none",minHeight:44}}><img src={u} alt={l} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8}}/><span style={{position:"absolute",bottom:0,left:0,right:0,padding:"10px 4px 4px",background:"linear-gradient(transparent,rgba(0,0,0,.8))",color:bg===k?"rgba(139,92,246,.95)":"rgba(255,255,255,.6)",fontSize:8,fontWeight:600,textAlign:"center"}}>{l}</span></button>))}</div>
     <button onClick={onLogout} style={{display:"flex",alignItems:"center",gap:8,width:"100%",marginTop:20,padding:"12px 16px",borderRadius:12,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.06)",color:"rgba(239,68,68,.7)",cursor:"pointer",fontSize:13,fontWeight:600,minHeight:48}}><LogOut size={16}/>Sign Out</button>
-    <div style={{marginTop:16,padding:"12px 14px",background:"rgba(139,92,246,.05)",borderRadius:12,border:"1px solid rgba(139,92,246,.1)"}}><p style={{color:"rgba(139,92,246,.6)",fontSize:10,fontWeight:600,margin:0}}>MyABA v1.1.3-P1</p></div>
+    <div style={{marginTop:16,padding:"12px 14px",background:"rgba(139,92,246,.05)",borderRadius:12,border:"1px solid rgba(139,92,246,.1)"}}><p style={{color:"rgba(139,92,246,.6)",fontSize:10,fontWeight:600,margin:0}}>MyABA v2.1.0</p></div>
   </div></div>)}
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -368,6 +530,8 @@ export default function MyABA(){
   const[convos,setConvos]=useState([]);const[activeId,setActiveId]=useState(null);
   const activeConv=convos.find(c=>c.id===activeId);const messages=activeConv?.messages||[];
   const[input,setInput]=useState("");const[abaState,setAbaState]=useState("idle");
+  const[attachments,setAttachments]=useState([]); // SPURT 5: files attached to message
+  const fileInputRef=useRef(null);
   const[isTyping,setIsTyping]=useState(false);
   
   // v1.1.3-P1-S3: Settings from localStorage
@@ -376,6 +540,9 @@ export default function MyABA(){
   const[voiceMode,setVoiceMode]=useState(()=>{try{return localStorage.getItem("myaba_voiceMode")||"chat"}catch{return "chat"}});
   
   const[settingsOpen,setSettingsOpen]=useState(false);const[sidebarOpen,setSidebarOpen]=useState(false);
+  const[shareModal,setShareModal]=useState(null); // conversation being shared
+  const[projects,setProjects]=useState([]); // SPURT 4: projects list
+  const[activeProject,setActiveProject]=useState(null);
   const[queueOpen,setQueueOpen]=useState(false);
   const[isListening,setIsListening]=useState(false);
   const[liveActive,setLiveActive]=useState(false);
@@ -418,6 +585,38 @@ export default function MyABA(){
     if(user)airArchiveConversation(user.uid,id).catch(()=>{});
   },[user]);
 
+  // SPURT 3: Share conversation via email
+  const shareConversation=useCallback(async(convId,emails,permission)=>{
+    // Update local state to mark as shared
+    setConvos(p=>p.map(c=>c.id===convId?{...c,shared:true,sharedWith:[...(c.sharedWith||[]),...emails.map(e=>({email:e,permission}))]}:c));
+    // Save to backend
+    if(user){
+      try{
+        await airRequest("share_conversation",{conversationId:convId,emails,permission},user.uid);
+      }catch(e){console.error("Share error:",e)}
+    }
+  },[user]);
+  
+  // SPURT 4: Create project
+  const createProject=useCallback(()=>{
+    const id=`proj-${Date.now()}`;
+    const proj={id,name:"New Project",files:[],createdAt:Date.now()};
+    setProjects(p=>[proj,...p]);
+    setActiveProject(id);
+    return id;
+  },[]);
+  
+  // SPURT 4: Add file to project
+  const addFileToProject=useCallback((projectId,file)=>{
+    const fileData={id:`file-${Date.now()}`,name:file.name,type:file.type,size:file.size,url:URL.createObjectURL(file),addedAt:Date.now()};
+    setProjects(p=>p.map(proj=>proj.id===projectId?{...proj,files:[...proj.files,fileData]}:proj));
+  },[]);
+  
+  // SPURT 4: Rename project
+  const renameProject=useCallback((projectId,newName)=>{
+    setProjects(p=>p.map(proj=>proj.id===projectId?{...proj,name:newName}:proj));
+  },[]);
+
   // v1.2.0: Load conversations via AIR → Supabase + DAWN greeting
   useEffect(()=>{
     if(!user)return;
@@ -454,15 +653,27 @@ export default function MyABA(){
   // v1.2.0: Save via AIR → Supabase
   useEffect(()=>{if(user&&activeConv&&activeConv.messages.length>0)airSaveConversation(user.uid,activeConv).catch(()=>{})},[activeConv?.messages?.length]);
 
+  // SPURT 5: Handle file selection
+  const handleFileSelect=useCallback((e)=>{
+    const files=Array.from(e.target.files||[]);
+    const newAttachments=files.map(f=>({id:`att-${Date.now()}-${Math.random()}`,file:f,name:f.name,type:f.type,size:f.size,url:URL.createObjectURL(f)}));
+    setAttachments(p=>[...p,newAttachments]);
+    if(fileInputRef.current)fileInputRef.current.value="";
+  },[]);
+  
+  const removeAttachment=useCallback((id)=>{
+    setAttachments(p=>p.filter(a=>a.id!==id));
+  },[]);
+
   const sendMessage=useCallback(async(text,isVoice=false)=>{
-    if(!text.trim())return;
-    const userMsg={id:`u-${Date.now()}`,role:"user",content:text.trim(),timestamp:Date.now(),isVoice};
-    addMsg(userMsg);setInput("");setIsTyping(true);setAbaState("thinking");
-    const data=await airRequest("text",{message:text.trim(),conversationId:activeId},user?.uid);
+    if(!text.trim()&&attachments.length===0)return;
+    // Include attachments in message
+    const userMsg={id:`u-${Date.now()}`,role:"user",content:text.trim(),timestamp:Date.now(),isVoice,attachments:attachments.length>0?attachments.map(a=>({name:a.name,type:a.type,size:a.size})):undefined};
+    addMsg(userMsg);setInput("");setAttachments([]);setIsTyping(true);setAbaState("thinking");
+    const data=await airRequest("text",{message:text.trim(),conversationId:activeId,attachments:attachments.map(a=>({name:a.name,type:a.type}))},user?.uid);
     setIsTyping(false);
     
     if(data.error){
-      // v1.2.0: Consumer-ready message (no tech jargon)
       showToast("Taking a moment to reconnect...","offline");
       setAbaState("idle");
       return;
@@ -471,7 +682,21 @@ export default function MyABA(){
     const abaMsg={id:`a-${Date.now()}`,role:"aba",timestamp:Date.now(),content:data.response||data.message||"",output:data.actions?.[0]?{type:data.actions[0].type,title:data.actions[0].title,subtitle:data.actions[0].subtitle,preview:data.actions[0].preview,actions:true}:undefined};
     addMsg(abaMsg);
     if(voiceOut&&abaMsg.content){setAbaState("speaking");const url=await reachSynthesize(abaMsg.content);if(url){const a=new Audio(url);a.onended=()=>{setAbaState("idle");if(liveRef.current)startListening()};a.play().catch(()=>{setAbaState("idle");if(liveRef.current)startListening()})}else{setAbaState("idle");if(liveRef.current)startListening()}}else{setAbaState("idle");if(liveRef.current)startListening()}
-  },[activeId,user,voiceOut,addMsg,showToast]);
+  },[activeId,user,voiceOut,addMsg,showToast,attachments]);
+
+  // SPURT 6: Speak any text (for replay button)
+  const speakText=useCallback(async(text)=>{
+    if(!text)return;
+    setAbaState("speaking");
+    const url=await reachSynthesize(text);
+    if(url){
+      const audio=new Audio(url);
+      audio.onended=()=>setAbaState("idle");
+      audio.play().catch(()=>setAbaState("idle"));
+    }else{
+      setAbaState("idle");
+    }
+  },[]);
 
   const startListening=useCallback(async()=>{
     try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});setIsListening(true);setAbaState("listening");
@@ -509,19 +734,36 @@ export default function MyABA(){
           <button onClick={()=>setSettingsOpen(true)} style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)",color:"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><Settings size={15}/></button>
         </div>
       </div>
-      <div style={{flexShrink:0,padding:"4px 0"}}><VoiceMode mode={voiceMode} setMode={m=>{setVoiceMode(m);if(m!=="live"&&liveActive){liveRef.current=false;setLiveActive(false);stopListening()}}}/></div>
+      <div style={{flexShrink:0,padding:"4px 0"}}><VoiceMode mode={voiceMode} setMode={m=>{setVoiceMode(m);if(m!=="talk"&&liveActive){liveRef.current=false;setLiveActive(false);stopListening()}}}/></div>
       <div style={{flexShrink:0,display:"flex",justifyContent:"center",padding:"2px 0",transition:"all .5s"}}><Blob state={abaState} size={messages.length<=1?140:70}/></div>
       <div ref={scrollRef} style={{flex:1,overflowY:"auto",padding:"4px 2px",display:"flex",flexDirection:"column",gap:2,maskImage:"linear-gradient(transparent 0%,black 2%,black 96%,transparent 100%)",WebkitMaskImage:"linear-gradient(transparent 0%,black 2%,black 96%,transparent 100%)"}}>
-        {messages.map(msg=><div key={msg.id} style={{animation:"mf .3s ease"}}><Bubble msg={msg} userPhoto={user?.photoURL}/></div>)}
+        {messages.map(msg=><div key={msg.id} style={{animation:"mf .3s ease"}}><Bubble msg={msg} userPhoto={user?.photoURL} onSpeak={speakText}/></div>)}
         {isTyping&&<Typing/>}
       </div>
       <div style={{flexShrink:0,padding:"6px 0 14px"}}>
-        {voiceMode==="chat"&&<div style={{display:"flex",gap:8,alignItems:"flex-end"}}><div style={{flex:1,display:"flex",alignItems:"center",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:24,padding:"0 6px 0 16px",minHeight:48}}><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey} placeholder="" style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.9)",fontSize:14,padding:"12px 0"}}/><button onClick={()=>{if(!isListening)startListening();else stopListening()}} style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:isListening?"rgba(6,182,212,.2)":"rgba(255,255,255,.05)",color:isListening?"rgba(6,182,212,.95)":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{isListening?<MicOff size={16}/>:<Mic size={16}/>}</button></div><button onClick={()=>sendMessage(input)} disabled={!input.trim()} style={{width:48,height:48,borderRadius:99,border:"none",cursor:input.trim()?"pointer":"default",background:input.trim()?"rgba(139,92,246,.4)":"rgba(255,255,255,.04)",color:input.trim()?"white":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:input.trim()?"0 0 16px rgba(139,92,246,.25)":"none"}}><Send size={18}/></button></div>}
+        {/* Hidden file input */}
+        <input type="file" ref={fileInputRef} multiple accept="image/*,.pdf,.doc,.docx,.txt" onChange={handleFileSelect} style={{display:"none"}}/>
+        
+        {/* Attachments preview */}
+        {attachments.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:8,padding:"0 4px"}}>
+          {attachments.map(a=>(<div key={a.id} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:12,background:"rgba(139,92,246,.15)",border:"1px solid rgba(139,92,246,.25)"}}>
+            {a.type?.startsWith("image")?<Image size={12} style={{color:"rgba(139,92,246,.8)"}}/>:<File size={12} style={{color:"rgba(139,92,246,.8)"}}/>}
+            <span style={{color:"rgba(255,255,255,.8)",fontSize:11,maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
+            <button onClick={()=>removeAttachment(a.id)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.4)",padding:2}}><X size={12}/></button>
+          </div>))}
+        </div>}
+        
+        {voiceMode==="chat"&&<div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+          <button onClick={()=>fileInputRef.current?.click()} style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:"rgba(255,255,255,.05)",color:"rgba(255,255,255,.4)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Paperclip size={16}/></button>
+          <div style={{flex:1,display:"flex",alignItems:"center",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:24,padding:"0 6px 0 16px",minHeight:48}}><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey} placeholder="Message ABA..." style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.9)",fontSize:14,padding:"12px 0"}}/><button onClick={()=>{if(!isListening)startListening();else stopListening()}} style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:isListening?"rgba(6,182,212,.2)":"rgba(255,255,255,.05)",color:isListening?"rgba(6,182,212,.95)":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{isListening?<MicOff size={16}/>:<Mic size={16}/>}</button></div>
+          <button onClick={()=>sendMessage(input)} disabled={!input.trim()&&attachments.length===0} style={{width:48,height:48,borderRadius:99,border:"none",cursor:(input.trim()||attachments.length>0)?"pointer":"default",background:(input.trim()||attachments.length>0)?"rgba(139,92,246,.4)":"rgba(255,255,255,.04)",color:(input.trim()||attachments.length>0)?"white":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:(input.trim()||attachments.length>0)?"0 0 16px rgba(139,92,246,.25)":"none"}}><Send size={18}/></button>
+        </div>}
         {voiceMode==="push"&&<div style={{display:"flex",justifyContent:"center"}}><button onMouseDown={startListening} onMouseUp={stopListening} onTouchStart={startListening} onTouchEnd={stopListening} style={{width:80,height:80,borderRadius:99,border:`3px solid ${isListening?"rgba(6,182,212,.6)":"rgba(139,92,246,.3)"}`,background:isListening?"rgba(6,182,212,.15)":"rgba(139,92,246,.08)",color:isListening?"rgba(6,182,212,.95)":"rgba(139,92,246,.7)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,boxShadow:isListening?"0 0 30px rgba(6,182,212,.3)":"0 0 20px rgba(139,92,246,.15)"}}><Hand size={24}/><span style={{fontSize:9,fontWeight:600}}>{isListening?"Release":"Hold"}</span></button></div>}
-        {voiceMode==="live"&&<div style={{display:"flex",justifyContent:"center"}}><button onClick={toggleLive} style={{width:80,height:80,borderRadius:99,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,border:`3px solid ${liveActive?"rgba(239,68,68,.6)":"rgba(139,92,246,.3)"}`,background:liveActive?"rgba(239,68,68,.12)":"rgba(139,92,246,.08)",color:liveActive?"rgba(239,68,68,.9)":"rgba(139,92,246,.7)",boxShadow:liveActive?"0 0 30px rgba(239,68,68,.25)":"0 0 20px rgba(139,92,246,.15)",animation:liveActive?"ml 2s infinite":"none"}}><Radio size={24}/><span style={{fontSize:9,fontWeight:600}}>{liveActive?"End":"Go Live"}</span></button></div>}
+        {voiceMode==="talk"&&<div style={{display:"flex",justifyContent:"center"}}><button onClick={toggleLive} style={{width:80,height:80,borderRadius:99,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,border:`3px solid ${liveActive?"rgba(239,68,68,.6)":"rgba(139,92,246,.3)"}`,background:liveActive?"rgba(239,68,68,.12)":"rgba(139,92,246,.08)",color:liveActive?"rgba(239,68,68,.9)":"rgba(139,92,246,.7)",boxShadow:liveActive?"0 0 30px rgba(239,68,68,.25)":"0 0 20px rgba(139,92,246,.15)",animation:liveActive?"ml 2s infinite":"none"}}><Radio size={24}/><span style={{fontSize:9,fontWeight:600}}>{liveActive?"End":"Talk"}</span></button></div>}
       </div>
     </div>
-    <Sidebar open={sidebarOpen} convos={convos} activeId={activeId} onSelect={setActiveId} onCreate={()=>createConv()} onClose={()=>setSidebarOpen(false)} onDelete={deleteConv} onArchive={archiveConv} user={user}/>
+    <Sidebar open={sidebarOpen} convos={convos} activeId={activeId} onSelect={setActiveId} onCreate={()=>createConv()} onClose={()=>setSidebarOpen(false)} onDelete={deleteConv} onArchive={archiveConv} onShare={c=>setShareModal(c)} projects={projects} activeProject={activeProject} onSelectProject={setActiveProject} onCreateProject={createProject} user={user}/>
+    <ShareModal open={!!shareModal} conversation={shareModal} onClose={()=>setShareModal(null)} onShare={shareConversation}/>
     <Queue open={queueOpen} onToggle={()=>setQueueOpen(!queueOpen)} items={proactiveItems}/>
     <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
     <ConnectionStatus online={online}/>
