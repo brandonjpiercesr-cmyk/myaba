@@ -1,16 +1,14 @@
-// ⬡B:myaba.genesis:APP:v2.0.0:20260227⬡
-// MyABA v2.0.0 — ABABASE Integration
+// ⬡B:myaba.genesis:APP:v1.2.0:20260225⬡
+// MyABA v1.2.0 — Complete Architecture Overhaul
 // ════════════════════════════════════════════════════════════════════════════
 // ARCHITECTURE:
 //   - Firebase = AUTH ONLY (Google sign-in)
-//   - Conversations = AIR v2 → Supabase (ababase fat context)
-//   - Contacts = EXACT MATCH (no semantic search confusion)
-//   - Actions = SMS, Email, Phone via ababase tools
+//   - Conversations = AIR → Supabase (NOT Firebase Firestore)
 //   - Greetings = AGENT DAWN (Dynamic, JARVIS-style, contextual)
 //   - Errors = Consumer-ready (no tech jargon)
 //   - PWA = Offline queue, background sync
 // ════════════════════════════════════════════════════════════════════════════
-// ROUTING: USER → MyABA → REACH → AIR v2 → ababase → Supabase Brain
+// ROUTING: USER → MyABA → REACH → AIR → Supabase Brain
 // This file is SKIN. It has NO brain. ZERO hardcoded content.
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -34,7 +32,7 @@ function isOnline() { return navigator.onLine; }
 
 // v1.2.0: AIR with retry + offline awareness
 // ⬡B:MYABA:FIX:ham_identity:20260226⬡
-// ⬡B:MYABA:ABABASE:v2.0:20260227⬡ - Now uses /api/air/v2/process
+// airRequest now accepts full user object to pass displayName for HAM identification
 async function airRequest(type, payload = {}, userOrId = "brandon", maxRetries = 3) {
   if (!isOnline()) {
     return { response: null, offline: true, queued: true };
@@ -48,31 +46,23 @@ async function airRequest(type, payload = {}, userOrId = "brandon", maxRetries =
   let lastError;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // ⬡B:MYABA:ABABASE:v2.0:20260227⬡
-      // Use new /api/air/v2/process endpoint for fat context + exact contact matching
-      const res = await fetch(`${REACH}/api/air/v2/process`, {
+      const res = await fetch(`${REACH}/api/router`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           message: payload.message || "", 
-          userId,
-          channel: "myaba",
-          // Include conversation context for continuity
-          conversationId: payload.conversationId,
-          // Pass agent hints for specialized requests
-          agentHints: type === "dawn_greeting" ? ["DAWN"] : 
-                      type === "save_conversation" ? ["MEMO"] :
-                      type === "load_conversations" ? ["COLE"] : []
+          type, 
+          userId, 
+          source: "myaba", 
+          ham_id: userId,
+          ham_name: userName,
+          ham_email: userEmail,
+          trust_level: 'T10',  // MyABA = authenticated = T10
+          context: { ...payload, userName, userEmail, timestamp: Date.now() } 
         }),
       });
       if (!res.ok) throw new Error(`REACH ${res.status}`);
-      const data = await res.json();
-      // Transform response to match expected format
-      return { 
-        response: data.response || data.message,
-        actions: data.actions,
-        metadata: data.metadata
-      };
+      return await res.json();
     } catch (e) {
       lastError = e;
       if (attempt < maxRetries) await new Promise(r => setTimeout(r, 1000 * attempt));
@@ -299,7 +289,7 @@ function Login({onLogin}){
         {loading?"Signing in...":"Sign in with Google"}
       </button>
       {error&&<p style={{color:"#EF4444",fontSize:12,marginTop:12}}>{error}</p>}
-      <p style={{color:"rgba(255,255,255,.15)",fontSize:10,marginTop:20}}>v2.0.0</p>
+      <p style={{color:"rgba(255,255,255,.15)",fontSize:10,marginTop:20}}>v1.2.2</p>
     </div>
   </div>)}
 
@@ -382,7 +372,7 @@ function SettingsDrawer({open,onClose,bg,setBg,onLogout}){if(!open)return null;
     <p style={{color:"rgba(255,255,255,.35)",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Background</p>
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>{Object.entries(BG).map(([k,{u,l}])=>(<button key={k} onClick={()=>{setBg(k);onClose()}} style={{position:"relative",aspectRatio:"16/10",borderRadius:10,overflow:"hidden",border:bg===k?"2px solid rgba(139,92,246,.8)":"2px solid rgba(255,255,255,.06)",cursor:"pointer",background:"#111",padding:0,boxShadow:bg===k?"0 0 14px rgba(139,92,246,.4)":"none",minHeight:44}}><img src={u} alt={l} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8}}/><span style={{position:"absolute",bottom:0,left:0,right:0,padding:"10px 4px 4px",background:"linear-gradient(transparent,rgba(0,0,0,.8))",color:bg===k?"rgba(139,92,246,.95)":"rgba(255,255,255,.6)",fontSize:8,fontWeight:600,textAlign:"center"}}>{l}</span></button>))}</div>
     <button onClick={onLogout} style={{display:"flex",alignItems:"center",gap:8,width:"100%",marginTop:20,padding:"12px 16px",borderRadius:12,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.06)",color:"rgba(239,68,68,.7)",cursor:"pointer",fontSize:13,fontWeight:600,minHeight:48}}><LogOut size={16}/>Sign Out</button>
-    <div style={{marginTop:16,padding:"12px 14px",background:"rgba(139,92,246,.05)",borderRadius:12,border:"1px solid rgba(139,92,246,.1)"}}><p style={{color:"rgba(139,92,246,.6)",fontSize:10,fontWeight:600,margin:0}}>MyABA v2.0.0 - ABABASE</p></div>
+    <div style={{marginTop:16,padding:"12px 14px",background:"rgba(139,92,246,.05)",borderRadius:12,border:"1px solid rgba(139,92,246,.1)"}}><p style={{color:"rgba(139,92,246,.6)",fontSize:10,fontWeight:600,margin:0}}>MyABA v1.1.3-P1</p></div>
   </div></div>)}
 
 // ═══════════════════════════════════════════════════════════════════════════
