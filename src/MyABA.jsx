@@ -1,5 +1,5 @@
 // ⬡B:myaba.genesis:APP:v2.3.0:20260228⬡
-// MyABA v2.3.0 — Complete Feature Build (6 Spurts)
+// MyABA v2.4.0 — Mobile Keyboard Fix + Ken Burns + Voice Fixes
 // ════════════════════════════════════════════════════════════════════════════
 // SPURTS IMPLEMENTED:
 //   1. Split Screen: Desktop=chat+talk panel, Mobile=chat+floating orb
@@ -548,6 +548,7 @@ export default function MyABA(){
   const[queueOpen,setQueueOpen]=useState(false);
   const[isListening,setIsListening]=useState(false);
   const[liveActive,setLiveActive]=useState(false);
+  const[viewportHeight,setViewportHeight]=useState(window.innerHeight);
   const[proactiveItems,setProactiveItems]=useState([]);
   const[toast,setToast]=useState(null);
   const[online,setOnline]=useState(navigator.onLine);
@@ -566,6 +567,21 @@ export default function MyABA(){
   useEffect(()=>{try{localStorage.setItem("myaba_bg",bg)}catch{}},[bg]);
   useEffect(()=>{try{localStorage.setItem("myaba_voiceOut",String(voiceOut))}catch{}},[voiceOut]);
   useEffect(()=>{try{localStorage.setItem("myaba_voiceMode",voiceMode)}catch{}},[voiceMode]);
+  // Mobile keyboard viewport fix
+  useEffect(()=>{
+    const handleResize=()=>{
+      const vh=window.visualViewport?window.visualViewport.height:window.innerHeight;
+      setViewportHeight(vh);
+      document.documentElement.style.setProperty('--vh',`${vh}px`);
+    };
+    handleResize();
+    window.visualViewport?.addEventListener('resize',handleResize);
+    window.addEventListener('resize',handleResize);
+    return()=>{
+      window.visualViewport?.removeEventListener('resize',handleResize);
+      window.removeEventListener('resize',handleResize);
+    };
+  },[]);
 
   useEffect(()=>{const unsub=onAuthStateChanged(auth,(u)=>{setUser(u);setAuthLoading(false)});return()=>unsub()},[]);
   useEffect(()=>{if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight},[messages,isTyping]);
@@ -718,15 +734,16 @@ export default function MyABA(){
   const sc=abaState==="thinking"?"245,158,11":abaState==="speaking"?"34,197,94":abaState==="listening"?"6,182,212":"139,92,246";
   const bgUrl=BG[bg]?.u||BG.eventHorizon.u;
 
-  return(<div style={{width:"100%",height:"100vh",position:"relative",overflow:"hidden",fontFamily:"'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:"#08080d",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)"}}>
-    <style>{`@keyframes mp{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}@keyframes mf{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes mb{0%,100%{opacity:.6}50%{opacity:1}}@keyframes ml{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 12px rgba(239,68,68,0)}}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(139,92,246,.15);border-radius:99px}`}</style>
-    <div style={{position:"absolute",inset:0,zIndex:0,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.4) saturate(.7)",transition:"all 1s"}}/>
+  return(<div style={{width:"100%",height:`${viewportHeight}px`,position:"relative",overflow:"hidden",fontFamily:"'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:"#08080d",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)"}}>
+    <style>{`@keyframes mp{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}@keyframes mf{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes mb{0%,100%{opacity:.6}50%{opacity:1}}@keyframes ml{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 12px rgba(239,68,68,0)}}@keyframes kenBurns{0%{transform:scale(1) translate(0,0)}25%{transform:scale(1.08) translate(-1%,-1%)}50%{transform:scale(1.12) translate(1%,0)}75%{transform:scale(1.06) translate(-0.5%,1%)}100%{transform:scale(1) translate(0,0)}}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(139,92,246,.15);border-radius:99px}`}</style>
+    <div style={{position:"absolute",inset:0,zIndex:0,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.4) saturate(.7)",transition:"background-image 1s",animation:"kenBurns 30s ease-in-out infinite"}}/>
     <div style={{position:"absolute",inset:0,zIndex:1,background:"radial-gradient(ellipse at center,rgba(0,0,0,0) 0%,rgba(0,0,0,.55) 100%)"}}/>
     <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",height:"100%",maxWidth:480,margin:"0 auto",padding:"0 14px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 2px 4px",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <button onClick={()=>setSidebarOpen(true)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.5)",padding:0,display:"flex",minWidth:44,minHeight:44,alignItems:"center",justifyContent:"center"}}><MessageSquare size={18}/></button>
           <div style={{width:8,height:8,borderRadius:99,background:`rgba(${sc},.9)`,boxShadow:`0 0 10px rgba(${sc},.6)`,animation:"mb 3s ease infinite"}}/>
+          <svg width="22" height="22" viewBox="0 0 100 100" style={{marginRight:4}}><defs><linearGradient id="abaGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#8B5CF6"/><stop offset="100%" stopColor="#6366F1"/></linearGradient></defs><circle cx="50" cy="50" r="45" fill="url(#abaGrad)" opacity=".2"/><circle cx="50" cy="50" r="35" fill="url(#abaGrad)" opacity=".4"/><circle cx="50" cy="50" r="25" fill="url(#abaGrad)"/><text x="50" y="58" textAnchor="middle" fill="white" fontSize="24" fontWeight="700" fontFamily="SF Pro Display,system-ui">A</text></svg>
           <span style={{color:"rgba(255,255,255,.75)",fontSize:14,fontWeight:700,letterSpacing:.5}}>MyABA</span>
           {liveActive&&<span style={{background:"rgba(239,68,68,.2)",color:"#EF4444",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99,animation:"ml 2s infinite",letterSpacing:1}}>LIVE</span>}
           <span style={{color:"rgba(255,255,255,.2)",fontSize:10}}>{abaState!=="idle"?(abaState==="thinking"?"thinking...":abaState==="speaking"?"speaking...":"listening..."):""}</span>
