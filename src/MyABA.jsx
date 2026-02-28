@@ -1,5 +1,5 @@
-// ⬡B:myaba.genesis:APP:v2.2.0:20260227⬡
-// MyABA v2.2.0 — Complete Feature Build (6 Spurts)
+// ⬡B:myaba.genesis:APP:v2.3.0:20260228⬡
+// MyABA v2.3.0 — Complete Feature Build (6 Spurts)
 // ════════════════════════════════════════════════════════════════════════════
 // SPURTS IMPLEMENTED:
 //   1. Split Screen: Desktop=chat+talk panel, Mobile=chat+floating orb
@@ -14,7 +14,7 @@
 //   - Greetings = AGENT DAWN (Dynamic, JARVIS-style, contextual)
 //   - ABA = Life assistant (not AI/personal assistant)
 // ════════════════════════════════════════════════════════════════════════════
-// ROUTING: USER → MyABA → REACH → AIR → Supabase Brain
+// ROUTING: USER → MyABA → ABABASE → FAT PROMPT (87 agents) → Response
 // This file is SKIN. It has NO brain. ZERO hardcoded content.
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -43,9 +43,11 @@ function useIsMobile() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// REACH — The Spine. Every interaction. ZERO local thinking.
+// ABABASE — Fat Prompt Architecture. Every interaction. ZERO local thinking.
 // ═══════════════════════════════════════════════════════════════════════════
-const REACH = "https://aba-reach.onrender.com";
+// ⬡B:MYABA:ABABASE:v2.3.0:20260228⬡
+// ABABASE = Fat Prompt Architecture (87 agents, HAM identity)
+const ABABASE = "https://abacia-services.onrender.com";
 
 // v1.2.0: Check online status
 function isOnline() { return navigator.onLine; }
@@ -61,7 +63,7 @@ async function airRequest(type, payload = {}, userId = "brandon", maxRetries = 3
       // ⬡B:MYABA:ABABASE_WIRED:v2.0:20260227⬡
       // Chat uses ababase backend (fat context, exact contacts)
       // Voice/presence still use original endpoints
-      const res = await fetch(`${REACH}/api/air/v2/process`, {
+      const res = await fetch(`${ABABASE}/api/air/process`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: payload.message || "", type, userId, channel: "myaba", context: { ...payload, timestamp: Date.now() } }),
@@ -117,7 +119,7 @@ async function airAddProjectFile(userId, projectId, file) {
   formData.append("projectId", projectId);
   formData.append("userId", userId);
   try {
-    const res = await fetch(`${REACH}/api/project/upload`, { method: "POST", body: formData });
+    const res = await fetch(`${ABABASE}/api/project/upload`, { method: "POST", body: formData });
     return res.ok ? await res.json() : { error: true };
   } catch { return { error: true }; }
 }
@@ -127,7 +129,7 @@ async function uploadAttachment(file) {
   const formData = new FormData();
   formData.append("file", file);
   try {
-    const res = await fetch(`${REACH}/api/attachments/upload`, { method: "POST", body: formData });
+    const res = await fetch(`${ABABASE}/api/attachments/upload`, { method: "POST", body: formData });
     return res.ok ? await res.json() : null;
   } catch { return null; }
 }
@@ -136,7 +138,7 @@ async function reachTranscribe(audioBlob) {
   const form = new FormData();
   form.append("audio", audioBlob, "voice.webm");
   try {
-    const res = await fetch(`${REACH}/api/voice/transcribe`, { method: "POST", body: form });
+    const res = await fetch(`${ABABASE}/api/voice/transcribe`, { method: "POST", body: form });
     if (!res.ok) return null;
     return (await res.json()).transcript || null;
   } catch { return null; }
@@ -144,7 +146,7 @@ async function reachTranscribe(audioBlob) {
 
 async function reachSynthesize(text) {
   try {
-    const res = await fetch(`${REACH}/api/voice/synthesize`, {
+    const res = await fetch(`${ABABASE}/api/voice/synthesize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, voiceId: "hAQCIV0cazWEuGzMG5bV", model: "eleven_v3" }),
@@ -156,7 +158,7 @@ async function reachSynthesize(text) {
 
 async function reachPresence(userId) {
   try {
-    const res = await fetch(`${REACH}/api/presence?userId=${userId}`);
+    const res = await fetch(`${ABABASE}/api/presence?userId=${userId}`);
     return res.ok ? await res.json() : { items: [] };
   } catch { return { items: [] }; }
 }
@@ -519,7 +521,7 @@ function SettingsDrawer({open,onClose,bg,setBg,onLogout}){if(!open)return null;
     <p style={{color:"rgba(255,255,255,.35)",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Background</p>
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>{Object.entries(BG).map(([k,{u,l}])=>(<button key={k} onClick={()=>{setBg(k);onClose()}} style={{position:"relative",aspectRatio:"16/10",borderRadius:10,overflow:"hidden",border:bg===k?"2px solid rgba(139,92,246,.8)":"2px solid rgba(255,255,255,.06)",cursor:"pointer",background:"#111",padding:0,boxShadow:bg===k?"0 0 14px rgba(139,92,246,.4)":"none",minHeight:44}}><img src={u} alt={l} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8}}/><span style={{position:"absolute",bottom:0,left:0,right:0,padding:"10px 4px 4px",background:"linear-gradient(transparent,rgba(0,0,0,.8))",color:bg===k?"rgba(139,92,246,.95)":"rgba(255,255,255,.6)",fontSize:8,fontWeight:600,textAlign:"center"}}>{l}</span></button>))}</div>
     <button onClick={onLogout} style={{display:"flex",alignItems:"center",gap:8,width:"100%",marginTop:20,padding:"12px 16px",borderRadius:12,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.06)",color:"rgba(239,68,68,.7)",cursor:"pointer",fontSize:13,fontWeight:600,minHeight:48}}><LogOut size={16}/>Sign Out</button>
-    <div style={{marginTop:16,padding:"12px 14px",background:"rgba(139,92,246,.05)",borderRadius:12,border:"1px solid rgba(139,92,246,.1)"}}><p style={{color:"rgba(139,92,246,.6)",fontSize:10,fontWeight:600,margin:0}}>MyABA v2.1.0</p></div>
+    <div style={{marginTop:16,padding:"12px 14px",background:"rgba(139,92,246,.05)",borderRadius:12,border:"1px solid rgba(139,92,246,.1)"}}><p style={{color:"rgba(139,92,246,.6)",fontSize:10,fontWeight:600,margin:0}}>MyABA v2.3.0</p></div>
   </div></div>)}
 
 // ═══════════════════════════════════════════════════════════════════════════
