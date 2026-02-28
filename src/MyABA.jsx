@@ -1,4 +1,4 @@
-// ⬡B:myaba.genesis:APP:v2.3.0:20260228⬡
+// ⬡B:myaba.genesis:APP:v2.5.0:20260228⬡
 // MyABA v2.4.0 — Mobile Keyboard Fix + Ken Burns + Voice Fixes
 // ════════════════════════════════════════════════════════════════════════════
 // SPURTS IMPLEMENTED:
@@ -45,7 +45,7 @@ function useIsMobile() {
 // ═══════════════════════════════════════════════════════════════════════════
 // ABABASE — Fat Prompt Architecture. Every interaction. ZERO local thinking.
 // ═══════════════════════════════════════════════════════════════════════════
-// ⬡B:MYABA:ABABASE:v2.3.0:20260228⬡
+// ⬡B:MYABA:ABABASE:v2.5.0:20260228⬡
 // ABABASE = Fat Prompt Architecture (87 agents, HAM identity)
 const ABABASE = "https://abacia-services.onrender.com";
 
@@ -149,7 +149,7 @@ async function reachSynthesize(text) {
     const res = await fetch(`${ABABASE}/api/voice/synthesize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voiceId: "hAQCIV0cazWEuGzMG5bV", model: "eleven_v3" }),
+      body: JSON.stringify({ text, voiceId: "AIFDUhRnM6s61433WMNu", model: "eleven_v3" }),
     });
     if (!res.ok) return null;
     return URL.createObjectURL(await res.blob());
@@ -276,7 +276,7 @@ function OutputCard({output}){const[exp,setExp]=useState(false);const icons={ema
 // ═══════════════════════════════════════════════════════════════════════════
 function Bubble({msg,userPhoto,onSpeak}){const isU=msg.role==="user";const time=msg.timestamp?new Date(msg.timestamp).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):"";
   return(<div style={{display:"flex",justifyContent:isU?"flex-end":"flex-start",padding:"3px 0",gap:8,alignItems:"flex-end"}}>
-    {!isU&&<div style={{width:26,height:26,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Sparkles size={12} style={{color:"white"}}/></div>}
+    {!isU&&<div style={{width:26,height:26,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><svg width="14" height="14" viewBox="0 0 100 100"><text x="50" y="72" textAnchor="middle" fill="white" fontSize="65" fontWeight="700" fontFamily="SF Pro Display,system-ui">A</text></svg></div>}
     <div style={{maxWidth:"78%"}}><div style={{padding:"10px 14px",borderRadius:isU?"18px 18px 4px 18px":"18px 18px 18px 4px",background:isU?"linear-gradient(135deg,rgba(139,92,246,.3),rgba(99,102,241,.25))":"rgba(255,255,255,.06)",backdropFilter:isU?"none":"blur(8px)",border:`1px solid ${isU?"rgba(139,92,246,.25)":"rgba(255,255,255,.08)"}`,boxShadow:isU?"none":"inset 0 1px 1px rgba(255,255,255,.06)"}}>{msg.output?<OutputCard output={msg.output}/>:<div>{renderMd(msg.content)}</div>}
       {/* SPURT 6: Speak button for ABA messages */}
       {!isU&&msg.content&&onSpeak&&<button onClick={()=>onSpeak(msg.content)} style={{marginTop:8,display:"flex",alignItems:"center",gap:4,padding:"4px 8px",borderRadius:8,border:"none",background:"rgba(139,92,246,.1)",color:"rgba(139,92,246,.7)",cursor:"pointer",fontSize:10,fontWeight:500}}><Volume2 size={12}/>Play</button>}
@@ -285,13 +285,13 @@ function Bubble({msg,userPhoto,onSpeak}){const isU=msg.role==="user";const time=
     {isU&&<div style={{width:26,height:26,borderRadius:99,overflow:"hidden",flexShrink:0,background:"rgba(139,92,246,.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>{userPhoto?<img src={userPhoto} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<User size={12} style={{color:"rgba(255,255,255,.6)"}}/>}</div>}
   </div>)}
 
-function Typing(){return(<div style={{display:"flex",justifyContent:"flex-start",padding:"3px 0",gap:8,alignItems:"flex-end"}}><div style={{width:26,height:26,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Sparkles size={12} style={{color:"white"}}/></div><div style={{padding:"12px 18px",borderRadius:"18px 18px 18px 4px",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.08)",display:"flex",gap:5,alignItems:"center"}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:99,background:"rgba(139,92,246,.6)",animation:`mp 1.4s ease-in-out ${i*.2}s infinite`}}/>)}</div></div>)}
+function Typing(){return(<div style={{display:"flex",justifyContent:"flex-start",padding:"3px 0",gap:8,alignItems:"flex-end"}}><div style={{width:26,height:26,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><svg width="14" height="14" viewBox="0 0 100 100"><text x="50" y="72" textAnchor="middle" fill="white" fontSize="65" fontWeight="700" fontFamily="SF Pro Display,system-ui">A</text></svg></div><div style={{padding:"12px 18px",borderRadius:"18px 18px 18px 4px",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.08)",display:"flex",gap:5,alignItems:"center"}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:99,background:"rgba(139,92,246,.6)",animation:`mp 1.4s ease-in-out ${i*.2}s infinite`}}/>)}</div></div>)}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // VOICE MODE SELECTOR
 // ═══════════════════════════════════════════════════════════════════════════
 // SPURT 2: Talk to ABA (renamed from Live)
-function VoiceMode({mode,setMode}){const modes=[{k:"chat",i:MessageSquare,l:"Chat"},{k:"push",i:Hand,l:"Push to Talk"},{k:"talk",i:Radio,l:"Talk to ABA"}];
+function VoiceMode({mode,setMode}){const modes=[{k:"chat",i:MessageSquare,l:"Chat with ABA"},{k:"talk",i:Radio,l:"Talk to ABA"}];
   return(<div style={{display:"flex",gap:4,padding:6,background:"rgba(0,0,0,.3)",borderRadius:14}}>{modes.map(m=>{const a=mode===m.k;const I=m.i;return(<button key={m.k} onClick={()=>setMode(m.k)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"8px 10px",borderRadius:10,border:"none",cursor:"pointer",background:a?"rgba(139,92,246,.25)":"transparent",color:a?"rgba(139,92,246,.95)":"rgba(255,255,255,.35)",fontSize:11,fontWeight:a?600:400,transition:"all .2s",minHeight:44}}><I size={14}/>{m.l}</button>)})}</div>)}
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -320,7 +320,7 @@ function Login({onLogin}){
   const go=async()=>{setLoading(true);setError(null);try{const result=await signInGoogle();onLogin(result.user)}catch(e){setError(e.message)}finally{setLoading(false)}};
 
   return(<div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#08080d",fontFamily:"'SF Pro Display',-apple-system,sans-serif",overflow:"auto"}}>
-    <div style={{position:"absolute",inset:0,backgroundImage:`url(${BG.eventHorizon.u})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.3) saturate(.6)"}}/>
+    <div style={{position:"absolute",inset:0,backgroundImage:`url(${BG.pinkSmoke.u})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.3) saturate(.6)",animation:"kenBurns 30s ease-in-out infinite"}}/>
     <div style={{position:"relative",zIndex:2,textAlign:"center",maxWidth:360,padding:"24px",margin:"auto"}}>
       <div style={{marginBottom:24}}><Blob state="idle" size={100}/></div>
       <h1 style={{color:"white",fontSize:24,fontWeight:700,margin:"0 0 8px",background:"linear-gradient(135deg,#8B5CF6,#6366F1,#EC4899)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{greeting.greeting||"ABA"}</h1>
@@ -503,8 +503,8 @@ function ShareModal({ open, onClose, conversation, onShare }) {
 // ═══════════════════════════════════════════════════════════════════════════
 function Queue({open,onToggle,items}){
   const iconMap={briefing:Bell,email:Mail,meeting:Calendar,deadline:AlertTriangle,followup:Clock};const pColors={critical:"#EF4444",high:"#F59E0B",medium:"#3B82F6",low:"#6B7280"};
-  if(!open)return(<button onClick={onToggle} style={{position:"fixed",bottom:80,right:14,width:48,height:48,borderRadius:99,background:items.length>0?"linear-gradient(135deg,#8B5CF6,#3B82F6)":"rgba(255,255,255,.08)",border:"none",boxShadow:"0 4px 20px rgba(0,0,0,.3)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",zIndex:50,minWidth:48,minHeight:48}}><Bell size={20}/>{items.length>0&&<div style={{position:"absolute",top:-2,right:-2,width:20,height:20,borderRadius:99,background:"#EF4444",color:"#fff",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center"}}>{items.length}</div>}</button>);
-  return(<div style={{position:"fixed",bottom:80,right:14,width:340,maxHeight:420,background:"rgba(12,10,24,.97)",backdropFilter:"blur(20px)",borderRadius:16,border:"1px solid rgba(139,92,246,.25)",boxShadow:"0 20px 40px rgba(0,0,0,.4)",overflow:"hidden",zIndex:50,display:"flex",flexDirection:"column"}}>
+  if(!open)return(<button onClick={onToggle} style={{position:"fixed",bottom:160,right:14,width:48,height:48,borderRadius:99,background:items.length>0?"linear-gradient(135deg,#8B5CF6,#3B82F6)":"rgba(255,255,255,.08)",border:"none",boxShadow:"0 4px 20px rgba(0,0,0,.3)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",zIndex:50,minWidth:48,minHeight:48}}><Bell size={20}/>{items.length>0&&<div style={{position:"absolute",top:-2,right:-2,width:20,height:20,borderRadius:99,background:"#EF4444",color:"#fff",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center"}}>{items.length}</div>}</button>);
+  return(<div style={{position:"fixed",bottom:160,right:14,width:340,maxHeight:420,background:"rgba(12,10,24,.97)",backdropFilter:"blur(20px)",borderRadius:16,border:"1px solid rgba(139,92,246,.25)",boxShadow:"0 20px 40px rgba(0,0,0,.4)",overflow:"hidden",zIndex:50,display:"flex",flexDirection:"column"}}>
     <div style={{padding:"12px 16px",borderBottom:"1px solid rgba(139,92,246,.15)",display:"flex",alignItems:"center",justifyContent:"space-between",background:"linear-gradient(135deg,rgba(139,92,246,.08),rgba(59,130,246,.04))"}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}><Bell size={16} style={{color:"#8B5CF6"}}/><span style={{color:"white",fontWeight:600,fontSize:14}}>What ABA Cooked</span><span style={{background:"rgba(139,92,246,.25)",padding:"1px 8px",borderRadius:10,fontSize:11,color:"#C4B5FD"}}>{items.length}</span></div>
       <button onClick={onToggle} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.4)",minWidth:44,minHeight:44,display:"flex",alignItems:"center",justifyContent:"center"}}><X size={16}/></button>
@@ -521,7 +521,7 @@ function SettingsDrawer({open,onClose,bg,setBg,onLogout}){if(!open)return null;
     <p style={{color:"rgba(255,255,255,.35)",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Background</p>
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>{Object.entries(BG).map(([k,{u,l}])=>(<button key={k} onClick={()=>{setBg(k);onClose()}} style={{position:"relative",aspectRatio:"16/10",borderRadius:10,overflow:"hidden",border:bg===k?"2px solid rgba(139,92,246,.8)":"2px solid rgba(255,255,255,.06)",cursor:"pointer",background:"#111",padding:0,boxShadow:bg===k?"0 0 14px rgba(139,92,246,.4)":"none",minHeight:44}}><img src={u} alt={l} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8}}/><span style={{position:"absolute",bottom:0,left:0,right:0,padding:"10px 4px 4px",background:"linear-gradient(transparent,rgba(0,0,0,.8))",color:bg===k?"rgba(139,92,246,.95)":"rgba(255,255,255,.6)",fontSize:8,fontWeight:600,textAlign:"center"}}>{l}</span></button>))}</div>
     <button onClick={onLogout} style={{display:"flex",alignItems:"center",gap:8,width:"100%",marginTop:20,padding:"12px 16px",borderRadius:12,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.06)",color:"rgba(239,68,68,.7)",cursor:"pointer",fontSize:13,fontWeight:600,minHeight:48}}><LogOut size={16}/>Sign Out</button>
-    <div style={{marginTop:16,padding:"12px 14px",background:"rgba(139,92,246,.05)",borderRadius:12,border:"1px solid rgba(139,92,246,.1)"}}><p style={{color:"rgba(139,92,246,.6)",fontSize:10,fontWeight:600,margin:0}}>MyABA v2.3.0</p></div>
+    <div style={{marginTop:16,padding:"12px 14px",background:"rgba(139,92,246,.05)",borderRadius:12,border:"1px solid rgba(139,92,246,.1)"}}><p style={{color:"rgba(139,92,246,.6)",fontSize:10,fontWeight:600,margin:0}}>MyABA v2.5.0</p></div>
   </div></div>)}
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -537,7 +537,7 @@ export default function MyABA(){
   const[isTyping,setIsTyping]=useState(false);
   
   // v1.1.3-P1-S3: Settings from localStorage
-  const[bg,setBg]=useState(()=>{try{return localStorage.getItem("myaba_bg")||"eventHorizon"}catch{return "eventHorizon"}});
+  const[bg,setBg]=useState(()=>{try{return localStorage.getItem("myaba_bg")||"pinkSmoke"}catch{return "pinkSmoke"}});
   const[voiceOut,setVoiceOut]=useState(()=>{try{return localStorage.getItem("myaba_voiceOut")!=="false"}catch{return true}});
   const[voiceMode,setVoiceMode]=useState(()=>{try{return localStorage.getItem("myaba_voiceMode")||"chat"}catch{return "chat"}});
   
@@ -732,7 +732,7 @@ export default function MyABA(){
   if(!user)return <Login onLogin={setUser}/>;
 
   const sc=abaState==="thinking"?"245,158,11":abaState==="speaking"?"34,197,94":abaState==="listening"?"6,182,212":"139,92,246";
-  const bgUrl=BG[bg]?.u||BG.eventHorizon.u;
+  const bgUrl=BG[bg]?.u||BG.pinkSmoke.u;
 
   return(<div style={{width:"100%",height:`${viewportHeight}px`,position:"relative",overflow:"hidden",fontFamily:"'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:"#08080d",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)"}}>
     <style>{`@keyframes mp{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}@keyframes mf{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes mb{0%,100%{opacity:.6}50%{opacity:1}}@keyframes ml{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 12px rgba(239,68,68,0)}}@keyframes kenBurns{0%{transform:scale(1) translate(0,0)}25%{transform:scale(1.08) translate(-1%,-1%)}50%{transform:scale(1.12) translate(1%,0)}75%{transform:scale(1.06) translate(-0.5%,1%)}100%{transform:scale(1) translate(0,0)}}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(139,92,246,.15);border-radius:99px}`}</style>
@@ -777,7 +777,6 @@ export default function MyABA(){
           <div style={{flex:1,display:"flex",alignItems:"center",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:24,padding:"0 6px 0 16px",minHeight:48}}><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey} placeholder="Message ABA..." style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.9)",fontSize:14,padding:"12px 0"}}/><button onClick={()=>{if(!isListening)startListening();else stopListening()}} style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:isListening?"rgba(6,182,212,.2)":"rgba(255,255,255,.05)",color:isListening?"rgba(6,182,212,.95)":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{isListening?<MicOff size={16}/>:<Mic size={16}/>}</button></div>
           <button onClick={()=>sendMessage(input)} disabled={!input.trim()&&attachments.length===0} style={{width:48,height:48,borderRadius:99,border:"none",cursor:(input.trim()||attachments.length>0)?"pointer":"default",background:(input.trim()||attachments.length>0)?"rgba(139,92,246,.4)":"rgba(255,255,255,.04)",color:(input.trim()||attachments.length>0)?"white":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:(input.trim()||attachments.length>0)?"0 0 16px rgba(139,92,246,.25)":"none"}}><Send size={18}/></button>
         </div>}
-        {voiceMode==="push"&&<div style={{display:"flex",justifyContent:"center"}}><button onMouseDown={startListening} onMouseUp={stopListening} onTouchStart={startListening} onTouchEnd={stopListening} style={{width:80,height:80,borderRadius:99,border:`3px solid ${isListening?"rgba(6,182,212,.6)":"rgba(139,92,246,.3)"}`,background:isListening?"rgba(6,182,212,.15)":"rgba(139,92,246,.08)",color:isListening?"rgba(6,182,212,.95)":"rgba(139,92,246,.7)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,boxShadow:isListening?"0 0 30px rgba(6,182,212,.3)":"0 0 20px rgba(139,92,246,.15)"}}><Hand size={24}/><span style={{fontSize:9,fontWeight:600}}>{isListening?"Release":"Hold"}</span></button></div>}
         {voiceMode==="talk"&&<div style={{display:"flex",justifyContent:"center"}}><button onClick={toggleLive} style={{width:80,height:80,borderRadius:99,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,border:`3px solid ${liveActive?"rgba(239,68,68,.6)":"rgba(139,92,246,.3)"}`,background:liveActive?"rgba(239,68,68,.12)":"rgba(139,92,246,.08)",color:liveActive?"rgba(239,68,68,.9)":"rgba(139,92,246,.7)",boxShadow:liveActive?"0 0 30px rgba(239,68,68,.25)":"0 0 20px rgba(139,92,246,.15)",animation:liveActive?"ml 2s infinite":"none"}}><Radio size={24}/><span style={{fontSize:9,fontWeight:600}}>{liveActive?"End":"Talk"}</span></button></div>}
       </div>
     </div>
