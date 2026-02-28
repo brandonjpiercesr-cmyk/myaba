@@ -1,5 +1,5 @@
-// ⬡B:myaba.genesis:APP:v2.5.0:20260228⬡
-// MyABA v2.4.0 — Mobile Keyboard Fix + Ken Burns + Voice Fixes
+// ⬡B:myaba.genesis:APP:v2.6.0:20260228⬡
+// MyABA v2.6.0 — Mobile Keyboard Fix + Ken Burns + Voice Fixes
 // ════════════════════════════════════════════════════════════════════════════
 // SPURTS IMPLEMENTED:
 //   1. Split Screen: Desktop=chat+talk panel, Mobile=chat+floating orb
@@ -24,7 +24,7 @@ import {
   MessageCircle, Zap, Activity, Clock, CheckCircle, AlertTriangle,
   Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock,
   Trash2, Archive, Search, WifiOff, Wifi, RefreshCw, Share2, Paperclip,
-  FolderOpen, Image, File
+  FolderOpen, Image, File, FolderPlus, MoreVertical, Edit2
 } from "lucide-react";
 import { auth, signInGoogle, signOutUser } from "./firebase.js";
 import { onAuthStateChanged } from "firebase/auth";
@@ -45,7 +45,7 @@ function useIsMobile() {
 // ═══════════════════════════════════════════════════════════════════════════
 // ABABASE — Fat Prompt Architecture. Every interaction. ZERO local thinking.
 // ═══════════════════════════════════════════════════════════════════════════
-// ⬡B:MYABA:ABABASE:v2.5.0:20260228⬡
+// ⬡B:MYABA:ABABASE:v2.6.0:20260228⬡
 // ABABASE = Fat Prompt Architecture (87 agents, HAM identity)
 const ABABASE = "https://abacia-services.onrender.com";
 
@@ -340,7 +340,7 @@ function Login({onLogin}){
 // ═══════════════════════════════════════════════════════════════════════════
 // SIDEBAR — v2.2.0: Chats + Projects + Share
 // ═══════════════════════════════════════════════════════════════════════════
-function Sidebar({open,convos,activeId,onSelect,onCreate,onClose,onDelete,onArchive,onShare,projects,activeProject,onSelectProject,onCreateProject,user}){
+function Sidebar({open,convos,activeId,onSelect,onCreate,onClose,onDelete,onArchive,onShare,projects,activeProject,onSelectProject,onCreateProject,onProjectDetail,user}){
   const[search,setSearch]=useState("");
   const[showArchived,setShowArchived]=useState(false);
   const[tab,setTab]=useState("chats"); // "chats" or "projects"
@@ -407,10 +407,13 @@ function Sidebar({open,convos,activeId,onSelect,onCreate,onClose,onDelete,onArch
     {tab==="projects"&&<>
     <button onClick={onCreateProject} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",borderRadius:12,border:"1px solid rgba(139,92,246,.2)",background:"rgba(139,92,246,.08)",color:"rgba(139,92,246,.9)",cursor:"pointer",fontWeight:600,fontSize:13,marginBottom:12,minHeight:44}}><Plus size={16}/>New Project</button>
     <div style={{flex:1,overflowY:"auto"}}>
-      {projects&&projects.length>0?projects.map(p=>(<div key={p.id} style={{padding:"10px 12px",borderRadius:10,background:p.id===activeProject?"rgba(139,92,246,.15)":"transparent",marginBottom:4,cursor:"pointer"}} onClick={()=>{onSelectProject(p.id);onClose()}}>
+      {projects&&projects.length>0?projects.map(p=>(<div key={p.id} style={{padding:"10px 12px",borderRadius:10,background:p.id===activeProject?"rgba(139,92,246,.15)":"transparent",marginBottom:4}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <FileText size={14} style={{color:"rgba(139,92,246,.6)"}}/>
-          <span style={{color:"rgba(255,255,255,.8)",fontSize:13,fontWeight:500}}>{p.name}</span>
+          <div style={{flex:1,cursor:"pointer",display:"flex",alignItems:"center",gap:8}} onClick={()=>{onSelectProject(p.id);onClose()}}>
+            <FileText size={14} style={{color:"rgba(139,92,246,.6)"}}/>
+            <span style={{color:"rgba(255,255,255,.8)",fontSize:13,fontWeight:500}}>{p.name}</span>
+          </div>
+          <button onClick={(e)=>{e.stopPropagation();onProjectDetail&&onProjectDetail(p)}} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.3)",padding:4,minWidth:28,minHeight:28,display:"flex",alignItems:"center",justifyContent:"center"}}><MoreVertical size={14}/></button>
         </div>
         {p.files&&p.files.length>0&&<div style={{marginTop:6,paddingLeft:22}}>
           {p.files.slice(0,3).map((f,i)=>(<div key={i} style={{color:"rgba(255,255,255,.4)",fontSize:11,marginBottom:2}}>{f.name}</div>))}
@@ -501,6 +504,126 @@ function ShareModal({ open, onClose, conversation, onShare }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // PROACTIVE QUEUE
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NEW CHAT MODAL — Project vs Solo, Private vs Shared flow
+// ═══════════════════════════════════════════════════════════════════════════
+function NewChatModal({ open, onClose, onCreate, projects, onCreateProject }) {
+  const [step, setStep] = useState(1);
+  const [chatType, setChatType] = useState(null);
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [showNewProject, setShowNewProject] = useState(false);
+  
+  if (!open) return null;
+  
+  const reset = () => { setStep(1); setChatType(null); setSelectedProject(null); setNewProjectName(""); setShowNewProject(false); };
+  const handleClose = () => { reset(); onClose(); };
+  
+  const handleCreate = (privacy) => {
+    const projectId = chatType === "project" ? (showNewProject ? null : selectedProject) : null;
+    const projectName = showNewProject ? newProjectName.trim() : null;
+    onCreate(privacy === "shared", projectId, projectName);
+    handleClose();
+  };
+  
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 150, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={handleClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.7)" }} />
+      <div style={{ position: "relative", width: "90%", maxWidth: 380, background: "rgba(12,10,24,.98)", backdropFilter: "blur(24px)", borderRadius: 20, padding: 24, border: "1px solid rgba(139,92,246,.2)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h3 style={{ color: "white", fontSize: 18, fontWeight: 700, margin: 0 }}>{step === 1 ? "New Chat" : (chatType === "project" ? "Project Chat" : "Solo Chat")}</h3>
+          <button onClick={handleClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,.4)", cursor: "pointer", padding: 4 }}><X size={18} /></button>
+        </div>
+        
+        {step === 1 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <button onClick={() => { setChatType("solo"); setStep(2); }} style={{ padding: "16px 20px", borderRadius: 14, border: "1px solid rgba(139,92,246,.2)", background: "rgba(139,92,246,.08)", color: "white", cursor: "pointer", textAlign: "left" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}><MessageSquare size={20} style={{ color: "#8B5CF6" }} /><div><div style={{ fontWeight: 600, fontSize: 14 }}>Solo Chat</div><div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", marginTop: 2 }}>Quick conversation</div></div></div>
+            </button>
+            <button onClick={() => { setChatType("project"); setStep(2); }} style={{ padding: "16px 20px", borderRadius: 14, border: "1px solid rgba(59,130,246,.2)", background: "rgba(59,130,246,.08)", color: "white", cursor: "pointer", textAlign: "left" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}><FolderPlus size={20} style={{ color: "#3B82F6" }} /><div><div style={{ fontWeight: 600, fontSize: 14 }}>Project Chat</div><div style={{ fontSize: 11, color: "rgba(255,255,255,.5)", marginTop: 2 }}>Organized with files</div></div></div>
+            </button>
+          </div>
+        )}
+        
+        {step === 2 && chatType === "project" && !showNewProject && (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 180, overflowY: "auto", marginBottom: 12 }}>
+              {projects?.length > 0 ? projects.map(p => (
+                <button key={p.id} onClick={() => setSelectedProject(p.id)} style={{ padding: "12px 16px", borderRadius: 10, border: `1px solid ${selectedProject === p.id ? "rgba(59,130,246,.4)" : "rgba(255,255,255,.1)"}`, background: selectedProject === p.id ? "rgba(59,130,246,.15)" : "transparent", color: "white", cursor: "pointer", textAlign: "left", fontSize: 13 }}>{p.name}</button>
+              )) : <p style={{ color: "rgba(255,255,255,.4)", fontSize: 12, textAlign: "center", padding: 16 }}>No projects yet</p>}
+            </div>
+            <button onClick={() => setShowNewProject(true)} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "1px dashed rgba(139,92,246,.3)", background: "transparent", color: "rgba(139,92,246,.7)", cursor: "pointer", fontSize: 13, marginBottom: 16 }}>+ Create New Project</button>
+            {selectedProject && <div style={{ display: "flex", gap: 8 }}><button onClick={() => handleCreate("private")} style={{ flex: 1, padding: "14px", borderRadius: 12, border: "none", background: "rgba(139,92,246,.4)", color: "white", cursor: "pointer", fontWeight: 600 }}><Lock size={14} style={{ marginRight: 6, verticalAlign: -2 }} />Private</button><button onClick={() => handleCreate("shared")} style={{ flex: 1, padding: "14px", borderRadius: 12, border: "none", background: "rgba(59,130,246,.4)", color: "white", cursor: "pointer", fontWeight: 600 }}><Users size={14} style={{ marginRight: 6, verticalAlign: -2 }} />Shared</button></div>}
+          </>
+        )}
+        
+        {step === 2 && chatType === "project" && showNewProject && (
+          <>
+            <input value={newProjectName} onChange={e => setNewProjectName(e.target.value)} placeholder="Project name..." style={{ width: "100%", padding: "14px 16px", borderRadius: 12, border: "1px solid rgba(139,92,246,.2)", background: "rgba(255,255,255,.05)", color: "white", fontSize: 14, outline: "none", marginBottom: 16, boxSizing: "border-box" }} />
+            <div style={{ display: "flex", gap: 8 }}><button onClick={() => setShowNewProject(false)} style={{ flex: 1, padding: "14px", borderRadius: 12, border: "1px solid rgba(255,255,255,.1)", background: "transparent", color: "rgba(255,255,255,.6)", cursor: "pointer" }}>Back</button><button onClick={() => handleCreate("private")} disabled={!newProjectName.trim()} style={{ flex: 1, padding: "14px", borderRadius: 12, border: "none", background: newProjectName.trim() ? "rgba(139,92,246,.4)" : "rgba(255,255,255,.1)", color: newProjectName.trim() ? "white" : "rgba(255,255,255,.3)", cursor: newProjectName.trim() ? "pointer" : "default", fontWeight: 600 }}>Create</button></div>
+          </>
+        )}
+        
+        {step === 2 && chatType === "solo" && (
+          <div style={{ display: "flex", gap: 12 }}>
+            <button onClick={() => handleCreate("private")} style={{ flex: 1, padding: "20px 16px", borderRadius: 14, border: "1px solid rgba(139,92,246,.2)", background: "rgba(139,92,246,.08)", color: "white", cursor: "pointer", textAlign: "center" }}><Lock size={24} style={{ color: "#8B5CF6", marginBottom: 8 }} /><div style={{ fontWeight: 600, fontSize: 14 }}>Private</div><div style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: 4 }}>Just me</div></button>
+            <button onClick={() => handleCreate("shared")} style={{ flex: 1, padding: "20px 16px", borderRadius: 14, border: "1px solid rgba(59,130,246,.2)", background: "rgba(59,130,246,.08)", color: "white", cursor: "pointer", textAlign: "center" }}><Users size={24} style={{ color: "#3B82F6", marginBottom: 8 }} /><div style={{ fontWeight: 600, fontSize: 14 }}>Shared</div><div style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: 4 }}>Team access</div></button>
+          </div>
+        )}
+        
+        {step === 2 && <button onClick={() => setStep(1)} style={{ width: "100%", padding: "12px", marginTop: 16, borderRadius: 10, border: "none", background: "transparent", color: "rgba(255,255,255,.4)", cursor: "pointer", fontSize: 12 }}>← Back</button>}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PROJECT DETAIL MODAL — Manage files, rename, delete
+// ═══════════════════════════════════════════════════════════════════════════
+function ProjectDetailModal({ open, onClose, project, onRename, onDelete, onAddFile, onRemoveFile }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(project?.name || "");
+  const fileInputRef = useRef(null);
+  
+  useEffect(() => { if (project) setName(project.name); }, [project]);
+  
+  if (!open || !project) return null;
+  
+  const handleRename = () => { if (name.trim() && name !== project.name) { onRename(project.id, name.trim()); } setEditing(false); };
+  const handleFileSelect = (e) => { const files = Array.from(e.target.files); files.forEach(f => onAddFile(project.id, f)); e.target.value = ""; };
+  
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 150, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.7)" }} />
+      <div style={{ position: "relative", width: "90%", maxWidth: 420, background: "rgba(12,10,24,.98)", backdropFilter: "blur(24px)", borderRadius: 20, padding: 24, border: "1px solid rgba(139,92,246,.2)", maxHeight: "80vh", overflow: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          {editing ? <input value={name} onChange={e => setName(e.target.value)} onBlur={handleRename} onKeyDown={e => e.key === "Enter" && handleRename()} autoFocus style={{ flex: 1, background: "rgba(255,255,255,.1)", border: "1px solid rgba(139,92,246,.3)", borderRadius: 8, padding: "8px 12px", color: "white", fontSize: 18, fontWeight: 700 }} />
+            : <h3 onClick={() => setEditing(true)} style={{ color: "white", fontSize: 18, fontWeight: 700, margin: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>{project.name} <Edit2 size={14} style={{ color: "rgba(255,255,255,.3)" }} /></h3>}
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,.4)", cursor: "pointer", padding: 4 }}><X size={18} /></button>
+        </div>
+        
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <span style={{ color: "rgba(255,255,255,.5)", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>Files ({project.files?.length || 0})</span>
+            <button onClick={() => fileInputRef.current?.click()} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(139,92,246,.3)", background: "rgba(139,92,246,.1)", color: "rgba(139,92,246,.9)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}><Plus size={12} style={{ marginRight: 4, verticalAlign: -1 }} />Add</button>
+            <input ref={fileInputRef} type="file" multiple onChange={handleFileSelect} style={{ display: "none" }} />
+          </div>
+          {project.files?.length > 0 ? project.files.map(f => (
+            <div key={f.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", background: "rgba(255,255,255,.03)", borderRadius: 10, marginBottom: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}><File size={14} style={{ color: "rgba(139,92,246,.5)" }} /><span style={{ color: "rgba(255,255,255,.7)", fontSize: 13 }}>{f.name}</span></div>
+              <button onClick={() => onRemoveFile(project.id, f.id)} style={{ background: "none", border: "none", color: "rgba(239,68,68,.5)", cursor: "pointer", padding: 4 }}><Trash2 size={14} /></button>
+            </div>
+          )) : <p style={{ color: "rgba(255,255,255,.3)", fontSize: 12, textAlign: "center", padding: 20 }}>No files yet</p>}
+        </div>
+        
+        <button onClick={() => { onDelete(project.id); onClose(); }} style={{ width: "100%", padding: "14px", borderRadius: 12, border: "1px solid rgba(239,68,68,.3)", background: "rgba(239,68,68,.08)", color: "rgba(239,68,68,.8)", cursor: "pointer", fontSize: 14, fontWeight: 600 }}><Trash2 size={14} style={{ marginRight: 8, verticalAlign: -2 }} />Delete Project</button>
+      </div>
+    </div>
+  );
+}
+
 function Queue({open,onToggle,items}){
   const iconMap={briefing:Bell,email:Mail,meeting:Calendar,deadline:AlertTriangle,followup:Clock};const pColors={critical:"#EF4444",high:"#F59E0B",medium:"#3B82F6",low:"#6B7280"};
   if(!open)return(<button onClick={onToggle} style={{position:"fixed",bottom:160,right:14,width:48,height:48,borderRadius:99,background:items.length>0?"linear-gradient(135deg,#8B5CF6,#3B82F6)":"rgba(255,255,255,.08)",border:"none",boxShadow:"0 4px 20px rgba(0,0,0,.3)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",zIndex:50,minWidth:48,minHeight:48}}><Bell size={20}/>{items.length>0&&<div style={{position:"absolute",top:-2,right:-2,width:20,height:20,borderRadius:99,background:"#EF4444",color:"#fff",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center"}}>{items.length}</div>}</button>);
@@ -521,7 +644,7 @@ function SettingsDrawer({open,onClose,bg,setBg,onLogout}){if(!open)return null;
     <p style={{color:"rgba(255,255,255,.35)",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Background</p>
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>{Object.entries(BG).map(([k,{u,l}])=>(<button key={k} onClick={()=>{setBg(k);onClose()}} style={{position:"relative",aspectRatio:"16/10",borderRadius:10,overflow:"hidden",border:bg===k?"2px solid rgba(139,92,246,.8)":"2px solid rgba(255,255,255,.06)",cursor:"pointer",background:"#111",padding:0,boxShadow:bg===k?"0 0 14px rgba(139,92,246,.4)":"none",minHeight:44}}><img src={u} alt={l} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8}}/><span style={{position:"absolute",bottom:0,left:0,right:0,padding:"10px 4px 4px",background:"linear-gradient(transparent,rgba(0,0,0,.8))",color:bg===k?"rgba(139,92,246,.95)":"rgba(255,255,255,.6)",fontSize:8,fontWeight:600,textAlign:"center"}}>{l}</span></button>))}</div>
     <button onClick={onLogout} style={{display:"flex",alignItems:"center",gap:8,width:"100%",marginTop:20,padding:"12px 16px",borderRadius:12,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.06)",color:"rgba(239,68,68,.7)",cursor:"pointer",fontSize:13,fontWeight:600,minHeight:48}}><LogOut size={16}/>Sign Out</button>
-    <div style={{marginTop:16,padding:"12px 14px",background:"rgba(139,92,246,.05)",borderRadius:12,border:"1px solid rgba(139,92,246,.1)"}}><p style={{color:"rgba(139,92,246,.6)",fontSize:10,fontWeight:600,margin:0}}>MyABA v2.5.0</p></div>
+    <div style={{marginTop:16,padding:"12px 14px",background:"rgba(139,92,246,.05)",borderRadius:12,border:"1px solid rgba(139,92,246,.1)"}}><p style={{color:"rgba(139,92,246,.6)",fontSize:10,fontWeight:600,margin:0}}>MyABA v2.6.0</p></div>
   </div></div>)}
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -544,6 +667,8 @@ export default function MyABA(){
   const[settingsOpen,setSettingsOpen]=useState(false);const[sidebarOpen,setSidebarOpen]=useState(false);
   const[shareModal,setShareModal]=useState(null); // conversation being shared
   const[projects,setProjects]=useState([]); // SPURT 4: projects list
+  const[newChatModal,setNewChatModal]=useState(false); // New chat flow modal
+  const[projectDetailModal,setProjectDetailModal]=useState(null); // Project detail modal
   const[activeProject,setActiveProject]=useState(null);
   const[queueOpen,setQueueOpen]=useState(false);
   const[isListening,setIsListening]=useState(false);
@@ -588,7 +713,7 @@ export default function MyABA(){
 
   const showToast=useCallback((message,type="info")=>{setToast({message,type})},[]);
 
-  const createConv=useCallback((shared=false)=>{const id=`conv-${Date.now()}`;const conv={id,title:"New Chat",shared,archived:false,messages:[],createdAt:Date.now(),updatedAt:Date.now(),autoNamed:false};setConvos(p=>[conv,...p]);setActiveId(id);return id},[]);
+  const createConv=useCallback((shared=false,projectId=null)=>{const id=`conv-${Date.now()}`;const conv={id,title:"New Chat",shared,archived:false,messages:[],createdAt:Date.now(),updatedAt:Date.now(),autoNamed:false,projectId};setConvos(p=>[conv,...p]);setActiveId(id);return id},[]);
   const addMsg=useCallback((msg)=>{setConvos(p=>p.map(c=>c.id===activeId?{...c,messages:[...c.messages,msg],updatedAt:Date.now()}:c))},[activeId]);
 
   // v1.2.0: Delete and archive via AIR → Supabase
@@ -616,12 +741,23 @@ export default function MyABA(){
   },[user]);
   
   // SPURT 4: Create project
-  const createProject=useCallback(()=>{
+  const createProject=useCallback((name="New Project")=>{
     const id=`proj-${Date.now()}`;
-    const proj={id,name:"New Project",files:[],createdAt:Date.now()};
+    const proj={id,name,files:[],createdAt:Date.now()};
     setProjects(p=>[proj,...p]);
     setActiveProject(id);
     return id;
+  },[]);
+  
+  // Delete project
+  const deleteProject=useCallback((projectId)=>{
+    setProjects(p=>p.filter(proj=>proj.id!==projectId));
+    if(activeProject===projectId)setActiveProject(null);
+  },[activeProject]);
+  
+  // Remove file from project
+  const removeFileFromProject=useCallback((projectId,fileId)=>{
+    setProjects(p=>p.map(proj=>proj.id===projectId?{...proj,files:proj.files.filter(f=>f.id!==fileId)}:proj));
   },[]);
   
   // SPURT 4: Add file to project
@@ -780,8 +916,10 @@ export default function MyABA(){
         {voiceMode==="talk"&&<div style={{display:"flex",justifyContent:"center"}}><button onClick={toggleLive} style={{width:80,height:80,borderRadius:99,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,border:`3px solid ${liveActive?"rgba(239,68,68,.6)":"rgba(139,92,246,.3)"}`,background:liveActive?"rgba(239,68,68,.12)":"rgba(139,92,246,.08)",color:liveActive?"rgba(239,68,68,.9)":"rgba(139,92,246,.7)",boxShadow:liveActive?"0 0 30px rgba(239,68,68,.25)":"0 0 20px rgba(139,92,246,.15)",animation:liveActive?"ml 2s infinite":"none"}}><Radio size={24}/><span style={{fontSize:9,fontWeight:600}}>{liveActive?"End":"Talk"}</span></button></div>}
       </div>
     </div>
-    <Sidebar open={sidebarOpen} convos={convos} activeId={activeId} onSelect={setActiveId} onCreate={()=>createConv()} onClose={()=>setSidebarOpen(false)} onDelete={deleteConv} onArchive={archiveConv} onShare={c=>setShareModal(c)} projects={projects} activeProject={activeProject} onSelectProject={setActiveProject} onCreateProject={createProject} user={user}/>
+    <Sidebar open={sidebarOpen} convos={convos} activeId={activeId} onSelect={setActiveId} onCreate={()=>setNewChatModal(true)} onClose={()=>setSidebarOpen(false)} onDelete={deleteConv} onArchive={archiveConv} onShare={c=>setShareModal(c)} projects={projects} activeProject={activeProject} onSelectProject={setActiveProject} onCreateProject={()=>setNewChatModal(true)} onProjectDetail={p=>setProjectDetailModal(p)} user={user}/>
     <ShareModal open={!!shareModal} conversation={shareModal} onClose={()=>setShareModal(null)} onShare={shareConversation}/>
+    <NewChatModal open={newChatModal} onClose={()=>setNewChatModal(false)} onCreate={(shared,projectId,projectName)=>{if(projectName){const pId=createProject(projectName);createConv(shared,pId)}else{createConv(shared,projectId)}}} projects={projects} onCreateProject={createProject}/>
+    <ProjectDetailModal open={!!projectDetailModal} project={projectDetailModal} onClose={()=>setProjectDetailModal(null)} onRename={renameProject} onDelete={deleteProject} onAddFile={addFileToProject} onRemoveFile={removeFileFromProject}/>
     <Queue open={queueOpen} onToggle={()=>setQueueOpen(!queueOpen)} items={proactiveItems}/>
     <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
     <ConnectionStatus online={online}/>
