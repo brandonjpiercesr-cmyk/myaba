@@ -696,15 +696,23 @@ function JobsView({userId}){
     })();
   },[]);
   
-  const filtered=jobs.filter(j=>!filter||(j.title||"").toLowerCase().includes(filter.toLowerCase())||(j.company||"").toLowerCase().includes(filter.toLowerCase())||(j.assignee||"").toLowerCase().includes(filter.toLowerCase()));
+  const filtered=jobs.filter(j=>{
+    if(!filter)return true;
+    const f=filter.toLowerCase();
+    const title=(j.job_title||j.title||"").toLowerCase();
+    const company=(j.organization||j.company||"").toLowerCase();
+    const assignees=((j.assignees||[])[0]||j.assignee||"").toLowerCase();
+    return title.includes(f)||company.includes(f)||assignees.includes(f);
+  });
   
   const handleGenerate=async(type)=>{
     if(!selectedJob)return;
     setGenerating(type);setOutput(null);
     try{
+      const assignee=(selectedJob.assignees||[])[0]||selectedJob.assignee||"brandon";
       const res=await fetch(`https://abacia-services.onrender.com/api/awa/${type==="cover"?"cover-letter":"resume"}`,{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({job:selectedJob,userId:selectedJob.assignee?.toLowerCase().replace(" ","_")||userId||"brandon"})
+        body:JSON.stringify({job:selectedJob,userId:assignee.toLowerCase().replace(" ","_")})
       });
       const data=await res.json();
       setOutput(data.coverLetter||data.resume||data.response||JSON.stringify(data,null,2));
@@ -730,27 +738,32 @@ function JobsView({userId}){
       {/* Job list */}
       <div style={{flex:selectedJob?1:2,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
         {filtered.length===0&&<p style={{color:"rgba(255,255,255,.4)",textAlign:"center",padding:20}}>No jobs found</p>}
-        {filtered.map(job=>(
-          <div key={job.id} onClick={()=>setSelectedJob(job)} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[job.assignee]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
+        {filtered.map(job=>{
+          const title=job.job_title||job.title||"Untitled";
+          const company=job.organization||job.company||"Unknown";
+          const assignee=(job.assignees||[])[0]||job.assignee||"Unassigned";
+          const assigneeDisplay=assignee==="brandon"?"Brandon Pierce":assignee==="eric"?"Eric Lane":assignee==="bj"?"BJ Pierce":assignee;
+          return(
+          <div key={job.id} onClick={()=>setSelectedJob(job)} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-              <p style={{color:"rgba(255,255,255,.9)",fontSize:13,fontWeight:600,margin:0,lineHeight:1.3}}>{job.title||"Untitled"}</p>
+              <p style={{color:"rgba(255,255,255,.9)",fontSize:13,fontWeight:600,margin:0,lineHeight:1.3}}>{title}</p>
               {job.remote&&<span style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:"rgba(16,185,129,.15)",color:"#10B981",flexShrink:0}}>Remote</span>}
             </div>
-            <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"4px 0 0"}}>{job.company||"Unknown"}</p>
+            <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"4px 0 0"}}>{company}</p>
             <div style={{display:"flex",gap:6,marginTop:6,alignItems:"center"}}>
-              <span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:`${TEAM_COLORS[job.assignee]||"rgba(255,255,255,.1)"}20`,color:TEAM_COLORS[job.assignee]||"rgba(255,255,255,.5)"}}>{job.assignee||"Unassigned"}</span>
+              <span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:`${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.1)"}20`,color:TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.5)"}}>{assigneeDisplay}</span>
               {job.salary&&<span style={{fontSize:10,color:"rgba(255,255,255,.3)"}}>{job.salary}</span>}
             </div>
           </div>
-        ))}
+        )})}
       </div>
       
       {/* Detail panel */}
       {selectedJob&&<div style={{flex:1,background:"rgba(255,255,255,.03)",borderRadius:12,padding:16,overflowY:"auto",border:"1px solid rgba(255,255,255,.05)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
           <div>
-            <h3 style={{color:"white",fontSize:16,fontWeight:600,margin:0}}>{selectedJob.title}</h3>
-            <p style={{color:"rgba(255,255,255,.5)",fontSize:12,margin:"4px 0 0"}}>{selectedJob.company}</p>
+            <h3 style={{color:"white",fontSize:16,fontWeight:600,margin:0}}>{selectedJob.job_title||selectedJob.title}</h3>
+            <p style={{color:"rgba(255,255,255,.5)",fontSize:12,margin:"4px 0 0"}}>{selectedJob.organization||selectedJob.company}</p>
           </div>
           <button onClick={()=>{setSelectedJob(null);setOutput(null)}} style={{background:"none",border:"none",cursor:"pointer",padding:4}}><X size={18} style={{color:"rgba(255,255,255,.4)"}}/></button>
         </div>
