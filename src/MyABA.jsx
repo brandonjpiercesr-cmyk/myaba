@@ -152,7 +152,7 @@ async function reachSynthesize(text) {
     const res = await fetch(`${ABABASE}/api/voice/synthesize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voiceId: "LD658Mupr7vNwTTJSPsk", model: "eleven_turbo_v2_5" }),
+      body: JSON.stringify({ text, voiceId: "bcbkbYJpNzQGHml4XFrp", model: "eleven_flash_v2_5" }),
     });
     if (!res.ok) return null;
     const data = await res.json();
