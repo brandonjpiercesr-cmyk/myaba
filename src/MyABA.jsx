@@ -1,5 +1,5 @@
-// ⬡B:myaba.genesis:APP:v2.13.0:20260305⬡
-// MyABA v2.13.0 - PHASE 9 FIXES: Voice + Mobile Keyboard
+// ⬡B:myaba.genesis:APP:v2.14.0:20260305⬡
+// MyABA v2.14.0 - AWA Jobs Tab + OMI Integration
 // ════════════════════════════════════════════════════════════════════════════
 // SPURTS IMPLEMENTED:
 //   1. Split Screen: Desktop=chat+talk panel, Mobile=chat+floating orb
@@ -12,12 +12,11 @@
 //   8. F6 Approve Mode: Dedicated /api/pending-approvals + /api/approve-action
 //   9. F7 Settings: Voice, notifications, backgrounds, user profile
 //   10. F8 Push Notifications: Web Push API + toggle in settings
-// v2.13.0 FIXES:
-//   - Voice transcription fixed (raw audio blob handling)
-//   - Voice synthesis fixed (data URL return)
-//   - Mobile keyboard viewport handling improved
-//   - Input fontSize increased to 16px to prevent iOS zoom
-//   - Added onFocus scroll for mobile keyboard
+// v2.14.0 NEW:
+//   - AWA Jobs tab with full job listings
+//   - Cover letter / Resume generation from job detail
+//   - Team color coding by assignee
+//   - Search and filter jobs
 // ARCHITECTURE:
 //   - Firebase = AUTH ONLY (Google sign-in)
 //   - Conversations = AIR → Supabase (NOT Firebase Firestore)
@@ -34,7 +33,8 @@ import {
   MessageCircle, Zap, Activity, Clock, CheckCircle, AlertTriangle,
   Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock,
   Trash2, Archive, Search, WifiOff, Wifi, RefreshCw, Share2, Paperclip,
-  FolderOpen, Image, File, FolderPlus, MoreVertical, Edit2, Copy
+  FolderOpen, Image, File, FolderPlus, MoreVertical, Edit2, Copy, Briefcase,
+  MapPin, ExternalLink, Building
 } from "lucide-react";
 import { auth, signInGoogle, signOutUser } from "./firebase.js";
 import { onAuthStateChanged } from "firebase/auth";
@@ -433,12 +433,13 @@ function VoiceMode({mode,setMode}){const modes=[{k:"chat",i:MessageSquare,l:"Cha
   return(<div style={{display:"flex",gap:4,padding:6,background:"rgba(0,0,0,.3)",borderRadius:14}}>{modes.map(m=>{const a=mode===m.k;const I=m.i;return(<button key={m.k} onClick={()=>setMode(m.k)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"8px 10px",borderRadius:10,border:"none",cursor:"pointer",background:a?"rgba(139,92,246,.25)":"transparent",color:a?"rgba(139,92,246,.95)":"rgba(255,255,255,.35)",fontSize:11,fontWeight:a?600:400,transition:"all .2s",minHeight:44}}><I size={14}/>{m.l}</button>)})}</div>)}
 
 // ═══════════════════════════════════════════════════════════════════════════
-// F5: MAIN TAB SWITCHER - Chat | Briefing | Approve
+// F5: MAIN TAB SWITCHER - Chat | Briefing | Approve | Jobs
 // ═══════════════════════════════════════════════════════════════════════════
 function MainTabSwitcher({tab,setTab}){
   const tabs=[
     {k:"chat",i:MessageSquare,l:"Chat"},
     {k:"briefing",i:Bell,l:"Briefing"},
+    {k:"jobs",i:Briefcase,l:"Jobs"},
     {k:"approve",i:CheckCircle,l:"Approve"}
   ];
   return(<div style={{display:"flex",gap:2,padding:4,background:"rgba(0,0,0,.4)",borderRadius:12,marginBottom:8}}>
@@ -663,6 +664,128 @@ function ApproveView({userId,onAction}){
       <button onClick={()=>handleSwipe("right")} style={{width:56,height:56,borderRadius:"50%",border:"2px solid rgba(16,185,129,.3)",background:"rgba(16,185,129,.1)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
         <CheckCircle size={24} style={{color:"#10B981"}}/>
       </button>
+    </div>
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AWA JOBS VIEW - Apply With ABA job listings
+// ═══════════════════════════════════════════════════════════════════════════
+function JobsView({userId}){
+  const[jobs,setJobs]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[selectedJob,setSelectedJob]=useState(null);
+  const[filter,setFilter]=useState("");
+  const[generating,setGenerating]=useState(null);
+  const[output,setOutput]=useState(null);
+  
+  // Team colors
+  const TEAM_COLORS={"Brandon Pierce":"#8B5CF6","Eric Lane":"#3B82F6","BJ Pierce":"#10B981","CJ Moore":"#F59E0B","Vante":"#F97316","Dwayne":"#EC4899"};
+  
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const res=await fetch("https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory?memory_type=eq.awa_job&select=*&limit=200",{
+          headers:{"apikey":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw"}
+        });
+        const data=await res.json();
+        const parsed=data.map(j=>{try{return{...JSON.parse(j.content),id:j.id}}catch{return{title:"Unknown",id:j.id}}});
+        setJobs(parsed);
+      }catch(e){console.error("[AWA] Load failed:",e)}
+      setLoading(false);
+    })();
+  },[]);
+  
+  const filtered=jobs.filter(j=>!filter||(j.title||"").toLowerCase().includes(filter.toLowerCase())||(j.company||"").toLowerCase().includes(filter.toLowerCase())||(j.assignee||"").toLowerCase().includes(filter.toLowerCase()));
+  
+  const handleGenerate=async(type)=>{
+    if(!selectedJob)return;
+    setGenerating(type);setOutput(null);
+    try{
+      const res=await fetch(`https://abacia-services.onrender.com/api/awa/${type==="cover"?"cover-letter":"resume"}`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({job:selectedJob,userId:selectedJob.assignee?.toLowerCase().replace(" ","_")||userId||"brandon"})
+      });
+      const data=await res.json();
+      setOutput(data.coverLetter||data.resume||data.response||JSON.stringify(data,null,2));
+    }catch(e){setOutput("Error: "+e.message)}
+    setGenerating(null);
+  };
+  
+  if(loading){
+    return(<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+      <div style={{width:50,height:50,borderRadius:"50%",border:"3px solid rgba(139,92,246,.2)",borderTopColor:"rgba(139,92,246,.8)",animation:"spin 1s linear infinite"}}/>
+      <p style={{color:"rgba(255,255,255,.5)",fontSize:13}}>Loading jobs...</p>
+    </div>);
+  }
+  
+  return(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    {/* Search */}
+    <div style={{padding:"0 0 8px"}}>
+      <input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Search jobs..." style={{width:"100%",padding:"12px 16px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.05)",color:"white",fontSize:14,outline:"none"}}/>
+    </div>
+    
+    {/* Split view */}
+    <div style={{flex:1,display:"flex",gap:8,overflow:"hidden"}}>
+      {/* Job list */}
+      <div style={{flex:selectedJob?1:2,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
+        {filtered.length===0&&<p style={{color:"rgba(255,255,255,.4)",textAlign:"center",padding:20}}>No jobs found</p>}
+        {filtered.map(job=>(
+          <div key={job.id} onClick={()=>setSelectedJob(job)} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[job.assignee]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+              <p style={{color:"rgba(255,255,255,.9)",fontSize:13,fontWeight:600,margin:0,lineHeight:1.3}}>{job.title||"Untitled"}</p>
+              {job.remote&&<span style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:"rgba(16,185,129,.15)",color:"#10B981",flexShrink:0}}>Remote</span>}
+            </div>
+            <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"4px 0 0"}}>{job.company||"Unknown"}</p>
+            <div style={{display:"flex",gap:6,marginTop:6,alignItems:"center"}}>
+              <span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:`${TEAM_COLORS[job.assignee]||"rgba(255,255,255,.1)"}20`,color:TEAM_COLORS[job.assignee]||"rgba(255,255,255,.5)"}}>{job.assignee||"Unassigned"}</span>
+              {job.salary&&<span style={{fontSize:10,color:"rgba(255,255,255,.3)"}}>{job.salary}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      {/* Detail panel */}
+      {selectedJob&&<div style={{flex:1,background:"rgba(255,255,255,.03)",borderRadius:12,padding:16,overflowY:"auto",border:"1px solid rgba(255,255,255,.05)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+          <div>
+            <h3 style={{color:"white",fontSize:16,fontWeight:600,margin:0}}>{selectedJob.title}</h3>
+            <p style={{color:"rgba(255,255,255,.5)",fontSize:12,margin:"4px 0 0"}}>{selectedJob.company}</p>
+          </div>
+          <button onClick={()=>{setSelectedJob(null);setOutput(null)}} style={{background:"none",border:"none",cursor:"pointer",padding:4}}><X size={18} style={{color:"rgba(255,255,255,.4)"}}/></button>
+        </div>
+        
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+          <div style={{padding:8,borderRadius:8,background:"rgba(255,255,255,.05)"}}>
+            <p style={{color:"rgba(255,255,255,.4)",fontSize:10,margin:0}}>Location</p>
+            <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:"2px 0 0"}}>{selectedJob.location||"Not specified"}</p>
+          </div>
+          <div style={{padding:8,borderRadius:8,background:"rgba(255,255,255,.05)"}}>
+            <p style={{color:"rgba(255,255,255,.4)",fontSize:10,margin:0}}>Salary</p>
+            <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:"2px 0 0"}}>{selectedJob.salary||"Not specified"}</p>
+          </div>
+        </div>
+        
+        {selectedJob.url&&<a href={selectedJob.url} target="_blank" rel="noopener noreferrer" style={{display:"flex",alignItems:"center",gap:4,color:"rgba(139,92,246,.8)",fontSize:12,marginBottom:12,textDecoration:"none"}}><ExternalLink size={12}/>View Original</a>}
+        
+        <div style={{display:"flex",gap:8,marginBottom:12}}>
+          <button onClick={()=>handleGenerate("cover")} disabled={generating} style={{flex:1,padding:"10px 12px",borderRadius:8,border:"none",cursor:generating?"wait":"pointer",background:"rgba(139,92,246,.2)",color:"#A78BFA",fontSize:12,fontWeight:500,opacity:generating?.5:1}}>{generating==="cover"?"Generating...":"Cover Letter"}</button>
+          <button onClick={()=>handleGenerate("resume")} disabled={generating} style={{flex:1,padding:"10px 12px",borderRadius:8,border:"none",cursor:generating?"wait":"pointer",background:"rgba(59,130,246,.2)",color:"#60A5FA",fontSize:12,fontWeight:500,opacity:generating?.5:1}}>{generating==="resume"?"Generating...":"Resume"}</button>
+        </div>
+        
+        {output&&<div style={{background:"rgba(0,0,0,.3)",borderRadius:8,padding:12,maxHeight:200,overflowY:"auto"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <span style={{color:"rgba(255,255,255,.5)",fontSize:11}}>Generated Output</span>
+            <button onClick={()=>navigator.clipboard.writeText(output)} style={{background:"none",border:"none",cursor:"pointer",padding:2}}><Copy size={14} style={{color:"rgba(139,92,246,.6)"}}/></button>
+          </div>
+          <pre style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:0,whiteSpace:"pre-wrap",lineHeight:1.5}}>{output}</pre>
+        </div>}
+      </div>}
+    </div>
+    
+    {/* Stats footer */}
+    <div style={{padding:"8px 0 0",borderTop:"1px solid rgba(255,255,255,.05)",marginTop:8}}>
+      <p style={{color:"rgba(255,255,255,.3)",fontSize:10,textAlign:"center",margin:0}}>{filtered.length} of {jobs.length} jobs • AWA powered by ABA</p>
     </div>
   </div>);
 }
@@ -1466,6 +1589,9 @@ export default function MyABA(){
         setBriefingData(data);
         setBriefingLoading(false);
       }}/>}
+      
+      {/* Jobs Mode - AWA Integration */}
+      {mainTab==="jobs"&&<JobsView userId={user?.email||"brandon"}/>}
       
       {/* Approve Mode */}
       {mainTab==="approve"&&<ApproveView userId={user?.email||"brandon"}/>}
