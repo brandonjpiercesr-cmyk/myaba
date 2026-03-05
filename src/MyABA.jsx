@@ -195,12 +195,13 @@ async function getDawnGreeting(userId, userName) {
     }
   }
   
-  // Fallback - still dynamic based on time
+  // Fallback - JARVIS style even without full context
   const hour = new Date().getHours();
-  const timeGreeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const timeGreeting = hour < 5 ? "Late night" : hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : hour < 21 ? "Evening" : "Late night";
+  const firstName = userName?.split(' ')[0] || "there";
   return {
-    greeting: `${timeGreeting}, ${userName || "there"}`,
-    context: "I'm ready when you are.",
+    greeting: `${timeGreeting}, ${firstName}.`,
+    context: "What's on your mind?",
     proactive: null
   };
 }
