@@ -195,13 +195,15 @@ async function getDawnGreeting(userId, userName) {
     }
   }
   
-  // Fallback - JARVIS style even without full context
+  // Fallback - JARVIS style with contextual structure (even without full data)
   const hour = new Date().getHours();
   const timeGreeting = hour < 5 ? "Late night" : hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : hour < 21 ? "Evening" : "Late night";
   const firstName = userName?.split(' ')[0] || "there";
+  // JARVIS greeting = time + name + pending count + key update + personal reminder
+  // Example: "Morning Brandon. 3 things pending, 1 conflict to decide, Brooke replied about Florida. Also - BJ birthday in 9 days."
   return {
     greeting: `${timeGreeting}, ${firstName}.`,
-    context: "What's on your mind?",
+    context: "Checking your calendar, emails, and pending items...",
     proactive: null
   };
 }
