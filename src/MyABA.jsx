@@ -1,5 +1,5 @@
-// ⬡B:myaba.genesis:APP:v2.12.0:20260305⬡
-// MyABA v2.12.0 - ALL FRONTEND FEATURES COMPLETE
+// ⬡B:myaba.genesis:APP:v2.13.0:20260305⬡
+// MyABA v2.13.0 - PHASE 9 FIXES: Voice + Mobile Keyboard
 // ════════════════════════════════════════════════════════════════════════════
 // SPURTS IMPLEMENTED:
 //   1. Split Screen: Desktop=chat+talk panel, Mobile=chat+floating orb
@@ -7,11 +7,17 @@
 //   3. Private/Shared Chats: Email-based sharing
 //   4. Projects: Project folders with files
 //   5. Attachments: File/image upload support
-//   6. Voice Responses: ElevenLabs TTS (already wired)
+//   6. Voice Responses: ElevenLabs TTS (FIXED in v2.13.0)
 //   7. F5 Briefing Mode: Dedicated /api/briefing endpoint
 //   8. F6 Approve Mode: Dedicated /api/pending-approvals + /api/approve-action
 //   9. F7 Settings: Voice, notifications, backgrounds, user profile
 //   10. F8 Push Notifications: Web Push API + toggle in settings
+// v2.13.0 FIXES:
+//   - Voice transcription fixed (raw audio blob handling)
+//   - Voice synthesis fixed (data URL return)
+//   - Mobile keyboard viewport handling improved
+//   - Input fontSize increased to 16px to prevent iOS zoom
+//   - Added onFocus scroll for mobile keyboard
 // ARCHITECTURE:
 //   - Firebase = AUTH ONLY (Google sign-in)
 //   - Conversations = AIR → Supabase (NOT Firebase Firestore)
@@ -1116,8 +1122,8 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
       
       {/* Version */}
       <div style={{marginTop:16,padding:"14px",background:"rgba(139,92,246,.05)",borderRadius:14,border:"1px solid rgba(139,92,246,.1)",textAlign:"center"}}>
-        <p style={{color:"rgba(139,92,246,.7)",fontSize:11,fontWeight:600,margin:0}}>MyABA v2.12.0</p>
-        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"4px 0 0"}}>All Features Complete</p>
+        <p style={{color:"rgba(139,92,246,.7)",fontSize:11,fontWeight:600,margin:0}}>MyABA v2.13.0</p>
+        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"4px 0 0"}}>Phase 9 Fixes Complete</p>
       </div>
     </div>
   </div>);
@@ -1171,20 +1177,43 @@ export default function MyABA(){
   useEffect(()=>{try{localStorage.setItem("myaba_bg",bg)}catch{}},[bg]);
   useEffect(()=>{try{localStorage.setItem("myaba_voiceOut",String(voiceOut))}catch{}},[voiceOut]);
   useEffect(()=>{try{localStorage.setItem("myaba_voiceMode",voiceMode)}catch{}},[voiceMode]);
-  // Mobile keyboard viewport fix
+  // Mobile keyboard viewport fix - more robust
   useEffect(()=>{
     const handleResize=()=>{
+      // Use visualViewport for accurate mobile keyboard detection
       const vh=window.visualViewport?window.visualViewport.height:window.innerHeight;
       setViewportHeight(vh);
       document.documentElement.style.setProperty('--vh',`${vh}px`);
+      document.documentElement.style.setProperty('--viewport-height',`${vh}px`);
     };
     handleResize();
-    window.visualViewport?.addEventListener('resize',handleResize);
+    
+    // Listen to both visualViewport and window resize
+    if(window.visualViewport){
+      window.visualViewport.addEventListener('resize',handleResize);
+      window.visualViewport.addEventListener('scroll',handleResize);
+    }
     window.addEventListener('resize',handleResize);
+    window.addEventListener('orientationchange',handleResize);
+    
     return()=>{
-      window.visualViewport?.removeEventListener('resize',handleResize);
+      if(window.visualViewport){
+        window.visualViewport.removeEventListener('resize',handleResize);
+        window.visualViewport.removeEventListener('scroll',handleResize);
+      }
       window.removeEventListener('resize',handleResize);
+      window.removeEventListener('orientationchange',handleResize);
     };
+  },[]);
+  
+  // Scroll input into view when focused (mobile keyboard fix)
+  const scrollInputIntoView=useCallback(()=>{
+    if(scrollRef.current){
+      // Small delay to allow keyboard to appear
+      setTimeout(()=>{
+        scrollRef.current.scrollTop=scrollRef.current.scrollHeight;
+      },300);
+    }
   },[]);
 
   useEffect(()=>{const unsub=onAuthStateChanged(auth,(u)=>{setUser(u);setAuthLoading(false)});return()=>unsub()},[]);
@@ -1402,7 +1431,7 @@ export default function MyABA(){
         
         {voiceMode==="chat"&&<div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
           <button onClick={()=>fileInputRef.current?.click()} style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:"rgba(255,255,255,.05)",color:"rgba(255,255,255,.4)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Paperclip size={16}/></button>
-          <div style={{flex:1,display:"flex",alignItems:"center",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:24,padding:"0 6px 0 16px",minHeight:48}}><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey} placeholder="Message ABA..." style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.9)",fontSize:14,padding:"12px 0"}}/><button onClick={()=>{if(!isListening)startListening();else stopListening()}} style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:isListening?"rgba(6,182,212,.2)":"rgba(255,255,255,.05)",color:isListening?"rgba(6,182,212,.95)":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{isListening?<MicOff size={16}/>:<Mic size={16}/>}</button></div>
+          <div style={{flex:1,display:"flex",alignItems:"center",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:24,padding:"0 6px 0 16px",minHeight:48}}><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey} onFocus={scrollInputIntoView} placeholder="Message ABA..." style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.9)",fontSize:16,padding:"12px 0",WebkitAppearance:"none"}}/><button onClick={()=>{if(!isListening)startListening();else stopListening()}} style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:isListening?"rgba(6,182,212,.2)":"rgba(255,255,255,.05)",color:isListening?"rgba(6,182,212,.95)":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{isListening?<MicOff size={16}/>:<Mic size={16}/>}</button></div>
           <button onClick={()=>sendMessage(input)} disabled={!input.trim()&&attachments.length===0} style={{width:48,height:48,borderRadius:99,border:"none",cursor:(input.trim()||attachments.length>0)?"pointer":"default",background:(input.trim()||attachments.length>0)?"rgba(139,92,246,.4)":"rgba(255,255,255,.04)",color:(input.trim()||attachments.length>0)?"white":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:(input.trim()||attachments.length>0)?"0 0 16px rgba(139,92,246,.25)":"none"}}><Send size={18}/></button>
         </div>}
         {voiceMode==="talk"&&<div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"radial-gradient(circle at 50% 50%, rgba(139,92,246,.15) 0%, transparent 70%)",zIndex:10}}>
