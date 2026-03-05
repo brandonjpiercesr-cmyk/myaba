@@ -1,5 +1,5 @@
 // ⬡B:myaba.genesis:APP:v2.6.0:20260228⬡
-// MyABA v2.6.0 — Mobile Keyboard Fix + Ken Burns + Voice Fixes
+// MyABA v2.7.0 - Voice Fixed — Mobile Keyboard Fix + Ken Burns + Voice Fixes
 // ════════════════════════════════════════════════════════════════════════════
 // SPURTS IMPLEMENTED:
 //   1. Split Screen: Desktop=chat+talk panel, Mobile=chat+floating orb
@@ -135,10 +135,13 @@ async function uploadAttachment(file) {
 }
 
 async function reachTranscribe(audioBlob) {
-  const form = new FormData();
-  form.append("audio", audioBlob, "voice.webm");
   try {
-    const res = await fetch(`${ABABASE}/api/voice/transcribe`, { method: "POST", body: form });
+    // Send raw audio blob with proper content type
+    const res = await fetch(`${ABABASE}/api/voice/transcribe`, { 
+      method: "POST", 
+      headers: { "Content-Type": "audio/webm" },
+      body: audioBlob 
+    });
     if (!res.ok) return null;
     return (await res.json()).transcript || null;
   } catch { return null; }
@@ -149,10 +152,11 @@ async function reachSynthesize(text) {
     const res = await fetch(`${ABABASE}/api/voice/synthesize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voiceId: "AIFDUhRnM6s61433WMNu", model: "eleven_v3" }),
+      body: JSON.stringify({ text, voiceId: "LD658Mupr7vNwTTJSPsk", model: "eleven_turbo_v2_5" }),
     });
     if (!res.ok) return null;
-    return URL.createObjectURL(await res.blob());
+    const data = await res.json();
+    return data.url || null; // Returns data URL from backend
   } catch { return null; }
 }
 
@@ -644,7 +648,7 @@ function SettingsDrawer({open,onClose,bg,setBg,onLogout}){if(!open)return null;
     <p style={{color:"rgba(255,255,255,.35)",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Background</p>
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>{Object.entries(BG).map(([k,{u,l}])=>(<button key={k} onClick={()=>{setBg(k);onClose()}} style={{position:"relative",aspectRatio:"16/10",borderRadius:10,overflow:"hidden",border:bg===k?"2px solid rgba(139,92,246,.8)":"2px solid rgba(255,255,255,.06)",cursor:"pointer",background:"#111",padding:0,boxShadow:bg===k?"0 0 14px rgba(139,92,246,.4)":"none",minHeight:44}}><img src={u} alt={l} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8}}/><span style={{position:"absolute",bottom:0,left:0,right:0,padding:"10px 4px 4px",background:"linear-gradient(transparent,rgba(0,0,0,.8))",color:bg===k?"rgba(139,92,246,.95)":"rgba(255,255,255,.6)",fontSize:8,fontWeight:600,textAlign:"center"}}>{l}</span></button>))}</div>
     <button onClick={onLogout} style={{display:"flex",alignItems:"center",gap:8,width:"100%",marginTop:20,padding:"12px 16px",borderRadius:12,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.06)",color:"rgba(239,68,68,.7)",cursor:"pointer",fontSize:13,fontWeight:600,minHeight:48}}><LogOut size={16}/>Sign Out</button>
-    <div style={{marginTop:16,padding:"12px 14px",background:"rgba(139,92,246,.05)",borderRadius:12,border:"1px solid rgba(139,92,246,.1)"}}><p style={{color:"rgba(139,92,246,.6)",fontSize:10,fontWeight:600,margin:0}}>MyABA v2.6.0</p></div>
+    <div style={{marginTop:16,padding:"12px 14px",background:"rgba(139,92,246,.05)",borderRadius:12,border:"1px solid rgba(139,92,246,.1)"}}><p style={{color:"rgba(139,92,246,.6)",fontSize:10,fontWeight:600,margin:0}}>MyABA v2.7.0 - Voice Fixed</p></div>
   </div></div>)}
 
 // ═══════════════════════════════════════════════════════════════════════════
