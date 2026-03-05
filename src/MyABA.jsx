@@ -1,5 +1,5 @@
-// ⬡B:myaba.genesis:APP:v2.10.0:20260305⬡
-// MyABA v2.10.0 - F5 Briefing + F6 Approve + F7 Settings COMPLETE
+// ⬡B:myaba.genesis:APP:v2.11.0:20260305⬡
+// MyABA v2.11.0 - F8 Push Notifications COMPLETE
 // ════════════════════════════════════════════════════════════════════════════
 // SPURTS IMPLEMENTED:
 //   1. Split Screen: Desktop=chat+talk panel, Mobile=chat+floating orb
@@ -11,6 +11,7 @@
 //   7. F5 Briefing Mode: What happened, what's pending, what she handled
 //   8. F6 Approve Mode: Swipe cards for rapid-fire decisions
 //   9. F7 Settings: Voice, notifications, backgrounds, user profile
+//   10. F8 Push Notifications: Web Push API subscription + toggle
 // ARCHITECTURE:
 //   - Firebase = AUTH ONLY (Google sign-in)
 //   - Conversations = AIR → Supabase (NOT Firebase Firestore)
@@ -237,6 +238,75 @@ async function getDawnGreeting(userId, userName) {
     context: "Checking your calendar, emails, and pending items...",
     proactive: null
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// F8: PUSH NOTIFICATIONS - Subscribe to ABA alerts
+// ═══════════════════════════════════════════════════════════════════════════
+const VAPID_PUBLIC_KEY = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U';
+
+async function subscribeToPush(userId) {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      console.log('[PUSH] Not supported');
+      return null;
+    }
+    
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      console.log('[PUSH] Permission denied');
+      return null;
+    }
+    
+    const registration = await navigator.serviceWorker.ready;
+    let subscription = await registration.pushManager.getSubscription();
+    
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+    }
+    
+    // Send subscription to backend
+    await fetch('https://abacia-services.onrender.com/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, subscription: subscription.toJSON() })
+    });
+    
+    console.log('[PUSH] Subscribed:', subscription.endpoint.substring(0, 50));
+    return subscription;
+  } catch (e) {
+    console.error('[PUSH] Subscribe failed:', e);
+    return null;
+  }
+}
+
+async function unsubscribeFromPush(userId) {
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (subscription) {
+      await subscription.unsubscribe();
+      await fetch('https://abacia-services.onrender.com/api/push/unsubscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+    }
+  } catch (e) {
+    console.error('[PUSH] Unsubscribe failed:', e);
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
 }
 
 // Legacy support
@@ -952,10 +1022,27 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
   const[notifyBriefing,setNotifyBriefing]=useState(()=>{try{return localStorage.getItem("myaba_notifyBriefing")!=="false"}catch{return true}});
   const[notifyUrgent,setNotifyUrgent]=useState(()=>{try{return localStorage.getItem("myaba_notifyUrgent")!=="false"}catch{return true}});
   const[autoSpeak,setAutoSpeak]=useState(()=>{try{return localStorage.getItem("myaba_autoSpeak")==="true"}catch{return false}});
+  const[pushEnabled,setPushEnabled]=useState(()=>{try{return localStorage.getItem("myaba_pushEnabled")==="true"}catch{return false}});
+  const[pushLoading,setPushLoading]=useState(false);
   
   useEffect(()=>{try{localStorage.setItem("myaba_notifyBriefing",String(notifyBriefing))}catch{}},[notifyBriefing]);
   useEffect(()=>{try{localStorage.setItem("myaba_notifyUrgent",String(notifyUrgent))}catch{}},[notifyUrgent]);
   useEffect(()=>{try{localStorage.setItem("myaba_autoSpeak",String(autoSpeak))}catch{}},[autoSpeak]);
+  useEffect(()=>{try{localStorage.setItem("myaba_pushEnabled",String(pushEnabled))}catch{}},[pushEnabled]);
+  
+  const handlePushToggle=async(enable)=>{
+    setPushLoading(true);
+    try{
+      if(enable){
+        const sub=await subscribeToPush(user?.email||"brandon");
+        if(sub)setPushEnabled(true);
+      }else{
+        await unsubscribeFromPush(user?.email||"brandon");
+        setPushEnabled(false);
+      }
+    }catch(e){console.error(e)}
+    setPushLoading(false);
+  };
   
   if(!open)return null;
   
@@ -1007,6 +1094,15 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
       <Section title="Notifications">
         <Toggle value={notifyBriefing} onChange={setNotifyBriefing} label="Morning briefing" sublabel="Daily summary at 6 AM"/>
         <Toggle value={notifyUrgent} onChange={setNotifyUrgent} label="Urgent alerts" sublabel="Calls and texts for emergencies"/>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0"}}>
+          <div>
+            <p style={{color:"rgba(255,255,255,.85)",fontSize:13,fontWeight:500,margin:0}}>Push notifications</p>
+            <p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:"2px 0 0"}}>Alerts even when app is closed</p>
+          </div>
+          <button onClick={()=>handlePushToggle(!pushEnabled)} disabled={pushLoading} style={{width:48,height:28,borderRadius:99,border:"none",cursor:pushLoading?"wait":"pointer",background:pushEnabled?"rgba(139,92,246,.5)":"rgba(255,255,255,.1)",position:"relative",transition:"background .2s",opacity:pushLoading?.5:1}}>
+            <div style={{position:"absolute",top:2,left:pushEnabled?22:2,width:24,height:24,borderRadius:"50%",background:"white",boxShadow:"0 2px 4px rgba(0,0,0,.2)",transition:"left .2s"}}/>
+          </button>
+        </div>
       </Section>
       
       {/* Appearance */}
@@ -1030,8 +1126,8 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
       
       {/* Version */}
       <div style={{marginTop:16,padding:"14px",background:"rgba(139,92,246,.05)",borderRadius:14,border:"1px solid rgba(139,92,246,.1)",textAlign:"center"}}>
-        <p style={{color:"rgba(139,92,246,.7)",fontSize:11,fontWeight:600,margin:0}}>MyABA v2.10.0</p>
-        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"4px 0 0"}}>F5 Briefing • F6 Approve • F7 Settings</p>
+        <p style={{color:"rgba(139,92,246,.7)",fontSize:11,fontWeight:600,margin:0}}>MyABA v2.11.0</p>
+        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"4px 0 0"}}>F5-F8 Complete • Push Notifications</p>
       </div>
     </div>
   </div>);
