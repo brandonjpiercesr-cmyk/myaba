@@ -1,5 +1,5 @@
-// ⬡B:myaba.genesis:APP:v2.11.0:20260305⬡
-// MyABA v2.11.0 - F8 Push Notifications COMPLETE
+// ⬡B:myaba.genesis:APP:v2.12.0:20260305⬡
+// MyABA v2.12.0 - ALL FRONTEND FEATURES COMPLETE
 // ════════════════════════════════════════════════════════════════════════════
 // SPURTS IMPLEMENTED:
 //   1. Split Screen: Desktop=chat+talk panel, Mobile=chat+floating orb
@@ -8,10 +8,10 @@
 //   4. Projects: Project folders with files
 //   5. Attachments: File/image upload support
 //   6. Voice Responses: ElevenLabs TTS (already wired)
-//   7. F5 Briefing Mode: What happened, what's pending, what she handled
-//   8. F6 Approve Mode: Swipe cards for rapid-fire decisions
+//   7. F5 Briefing Mode: Dedicated /api/briefing endpoint
+//   8. F6 Approve Mode: Dedicated /api/pending-approvals + /api/approve-action
 //   9. F7 Settings: Voice, notifications, backgrounds, user profile
-//   10. F8 Push Notifications: Web Push API subscription + toggle
+//   10. F8 Push Notifications: Web Push API + toggle in settings
 // ARCHITECTURE:
 //   - Firebase = AUTH ONLY (Google sign-in)
 //   - Conversations = AIR → Supabase (NOT Firebase Firestore)
@@ -331,25 +331,22 @@ function safeParseGreeting(response) {
 // ═══════════════════════════════════════════════════════════════════════════
 async function fetchBriefing(userId) {
   try {
-    const result = await airRequest("briefing", {
-      message: "Generate my briefing. What happened today? What's pending? What did you handle autonomously? Include calendar, emails, and any proactive actions taken. Format as JSON with sections: handled (array of items you handled), pending (array of items needing my attention), upcoming (calendar events), summary (one sentence overview)."
-    }, userId);
-    
-    if (result.response) {
-      // Try to parse as JSON
-      try {
-        const text = result.response;
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          return JSON.parse(jsonMatch[0]);
-        }
-      } catch {}
-      // Return as raw text
-      return { summary: result.response, handled: [], pending: [], upcoming: [] };
-    }
-    return null;
+    // Use dedicated briefing endpoint
+    const response = await fetch(`https://abacia-services.onrender.com/api/briefing?userId=${encodeURIComponent(userId)}`);
+    if (!response.ok) throw new Error('Briefing fetch failed');
+    const data = await response.json();
+    return data;
   } catch (e) {
     console.error("[BRIEFING] Fetch failed:", e);
+    // Fallback to AIR
+    try {
+      const result = await airRequest("briefing", {
+        message: "Generate my briefing. What happened today? What's pending? What did you handle autonomously?"
+      }, userId);
+      if (result.response) {
+        return { summary: result.response, handled: [], pending: [], upcoming: [] };
+      }
+    } catch {}
     return null;
   }
 }
@@ -523,21 +520,14 @@ function ApproveView({userId,onAction}){
   const[touchStart,setTouchStart]=useState(null);
   const[touchDelta,setTouchDelta]=useState(0);
   
-  // Fetch pending approvals from AIR
+  // Fetch pending approvals from dedicated endpoint
   useEffect(()=>{
     (async()=>{
       try{
-        const result=await airRequest("pending_approvals",{
-          message:"List all pending items that need my approval or decision. Include emails needing response, calendar conflicts, tasks awaiting my input, and any autonomous actions you want to confirm. Format as JSON array with: id, type (email/calendar/task/confirm), title, summary, options (array of action choices), urgency (1-5)."
-        },userId);
-        if(result.response){
-          try{
-            const jsonMatch=result.response.match(/\[[\s\S]*\]/);
-            if(jsonMatch){
-              const parsed=JSON.parse(jsonMatch[0]);
-              setItems(parsed);
-            }
-          }catch{}
+        const response=await fetch(`https://abacia-services.onrender.com/api/pending-approvals?userId=${encodeURIComponent(userId)}`);
+        if(response.ok){
+          const data=await response.json();
+          setItems(data.items||[]);
         }
       }catch(e){console.error("[APPROVE] Fetch failed:",e)}
       setLoading(false);
@@ -550,13 +540,13 @@ function ApproveView({userId,onAction}){
     if(!currentItem)return;
     setSwipeDir(direction);
     
-    // Execute action
+    // Execute action via dedicated endpoint
     const action=direction==="right"?"approve":"reject";
-    airRequest("approve_action",{
-      message:`User ${action}ed: ${currentItem.title}. Item ID: ${currentItem.id}. Type: ${currentItem.type}. Execute the ${action} action.`,
-      itemId:currentItem.id,
-      action
-    },userId);
+    fetch('https://abacia-services.onrender.com/api/approve-action',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({itemId:currentItem.id,action,userId})
+    }).catch(e=>console.error('[APPROVE] Action failed:',e));
     
     // Animate out then advance
     setTimeout(()=>{
@@ -1126,8 +1116,8 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
       
       {/* Version */}
       <div style={{marginTop:16,padding:"14px",background:"rgba(139,92,246,.05)",borderRadius:14,border:"1px solid rgba(139,92,246,.1)",textAlign:"center"}}>
-        <p style={{color:"rgba(139,92,246,.7)",fontSize:11,fontWeight:600,margin:0}}>MyABA v2.11.0</p>
-        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"4px 0 0"}}>F5-F8 Complete • Push Notifications</p>
+        <p style={{color:"rgba(139,92,246,.7)",fontSize:11,fontWeight:600,margin:0}}>MyABA v2.12.0</p>
+        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"4px 0 0"}}>All Features Complete</p>
       </div>
     </div>
   </div>);
