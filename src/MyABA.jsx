@@ -1,5 +1,5 @@
 // ⬡B:myaba.genesis:APP:v2.6.0:20260228⬡
-// MyABA v2.7.0 - Voice Fixed — Mobile Keyboard Fix + Ken Burns + Voice Fixes
+// MyABA v2.8.0 - Conversation Persistence — Mobile Keyboard Fix + Ken Burns + Voice Fixes
 // ════════════════════════════════════════════════════════════════════════════
 // SPURTS IMPLEMENTED:
 //   1. Split Screen: Desktop=chat+talk panel, Mobile=chat+floating orb
@@ -78,27 +78,55 @@ async function airRequest(type, payload = {}, userId = "brandon", maxRetries = 3
   return { response: null, error: true, errorMessage: lastError?.message };
 }
 
-// v1.2.0: Conversations via AIR → Supabase (NOT Firebase)
-async function airSaveConversation(userId, conv) {
-  return airRequest("save_conversation", { 
-    conversationId: conv.id, title: conv.title, messages: conv.messages,
-    createdAt: conv.createdAt, archived: conv.archived || false
-  }, userId);
+// v2.8.0: Conversations via direct Supabase endpoints (not AIR)
+async function saveConversation(userId, conv) {
+  try {
+    const res = await fetch(`${ABABASE}/api/conversations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        id: conv.id, 
+        userId, 
+        title: conv.title, 
+        messages: conv.messages,
+        shared: conv.shared,
+        projectId: conv.projectId
+      })
+    });
+    return res.ok ? await res.json() : { error: true };
+  } catch { return { error: true }; }
 }
 
-async function airLoadConversations(userId) {
-  const result = await airRequest("load_conversations", {}, userId);
-  if (result.conversations) return result.conversations;
-  if (result.response?.conversations) return result.response.conversations;
-  return [];
+async function loadConversations(userId) {
+  try {
+    const res = await fetch(`${ABABASE}/api/conversations?userId=${userId}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.conversations || []).map(c => ({
+      id: c.id,
+      title: c.title,
+      messages: c.messages || [],
+      shared: c.shared || false,
+      archived: c.archived || false,
+      createdAt: new Date(c.created_at).getTime(),
+      updatedAt: new Date(c.updated_at).getTime(),
+      projectId: c.project_id
+    }));
+  } catch { return []; }
 }
 
-async function airDeleteConversation(userId, convId) {
-  return airRequest("delete_conversation", { conversationId: convId }, userId);
+async function deleteConversation(userId, convId) {
+  try {
+    await fetch(`${ABABASE}/api/conversations/${convId}?userId=${userId}`, { method: "DELETE" });
+    return { success: true };
+  } catch { return { error: true }; }
 }
 
-async function airArchiveConversation(userId, convId) {
-  return airRequest("archive_conversation", { conversationId: convId }, userId);
+async function archiveConversation(userId, convId) {
+  try {
+    await fetch(`${ABABASE}/api/conversations/${convId}/archive?userId=${userId}`, { method: "PATCH" });
+    return { success: true };
+  } catch { return { error: true }; }
 }
 
 // SPURT 3: Share chat by email
@@ -651,7 +679,7 @@ function SettingsDrawer({open,onClose,bg,setBg,onLogout}){if(!open)return null;
     <p style={{color:"rgba(255,255,255,.35)",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Background</p>
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>{Object.entries(BG).map(([k,{u,l}])=>(<button key={k} onClick={()=>{setBg(k);onClose()}} style={{position:"relative",aspectRatio:"16/10",borderRadius:10,overflow:"hidden",border:bg===k?"2px solid rgba(139,92,246,.8)":"2px solid rgba(255,255,255,.06)",cursor:"pointer",background:"#111",padding:0,boxShadow:bg===k?"0 0 14px rgba(139,92,246,.4)":"none",minHeight:44}}><img src={u} alt={l} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8}}/><span style={{position:"absolute",bottom:0,left:0,right:0,padding:"10px 4px 4px",background:"linear-gradient(transparent,rgba(0,0,0,.8))",color:bg===k?"rgba(139,92,246,.95)":"rgba(255,255,255,.6)",fontSize:8,fontWeight:600,textAlign:"center"}}>{l}</span></button>))}</div>
     <button onClick={onLogout} style={{display:"flex",alignItems:"center",gap:8,width:"100%",marginTop:20,padding:"12px 16px",borderRadius:12,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.06)",color:"rgba(239,68,68,.7)",cursor:"pointer",fontSize:13,fontWeight:600,minHeight:48}}><LogOut size={16}/>Sign Out</button>
-    <div style={{marginTop:16,padding:"12px 14px",background:"rgba(139,92,246,.05)",borderRadius:12,border:"1px solid rgba(139,92,246,.1)"}}><p style={{color:"rgba(139,92,246,.6)",fontSize:10,fontWeight:600,margin:0}}>MyABA v2.7.0 - Voice Fixed</p></div>
+    <div style={{marginTop:16,padding:"12px 14px",background:"rgba(139,92,246,.05)",borderRadius:12,border:"1px solid rgba(139,92,246,.1)"}}><p style={{color:"rgba(139,92,246,.6)",fontSize:10,fontWeight:600,margin:0}}>MyABA v2.8.0 - Conversation Persistence</p></div>
   </div></div>)}
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -727,12 +755,12 @@ export default function MyABA(){
   const deleteConv=useCallback((id)=>{
     setConvos(p=>p.filter(c=>c.id!==id));
     if(activeId===id){const remaining=convos.filter(c=>c.id!==id);setActiveId(remaining[0]?.id||null)}
-    if(user)airDeleteConversation(user.uid,id).catch(()=>{});
+    if(user)deleteConversation(user.uid,id).catch(()=>{});
   },[activeId,convos,user]);
 
   const archiveConv=useCallback((id)=>{
     setConvos(p=>p.map(c=>c.id===id?{...c,archived:true}:c));
-    if(user)airArchiveConversation(user.uid,id).catch(()=>{});
+    if(user)archiveConversation(user.uid,id).catch(()=>{});
   },[user]);
 
   // SPURT 3: Share conversation via email
@@ -781,7 +809,7 @@ export default function MyABA(){
   // v1.2.0: Load conversations via AIR → Supabase + DAWN greeting
   useEffect(()=>{
     if(!user)return;
-    airLoadConversations(user.uid).then(loaded=>{
+    loadConversations(user.uid).then(loaded=>{
       if(loaded&&loaded.length>0){
         setConvos(loaded);
         setActiveId(loaded[0].id);
@@ -811,8 +839,8 @@ export default function MyABA(){
     }
   },[messages.length,activeId]);
 
-  // v1.2.0: Save via AIR → Supabase
-  useEffect(()=>{if(user&&activeConv&&activeConv.messages.length>0)airSaveConversation(user.uid,activeConv).catch(()=>{})},[activeConv?.messages?.length]);
+  // v2.8.0: Save via direct Supabase endpoint
+  useEffect(()=>{if(user&&activeConv&&activeConv.messages.length>0)saveConversation(user.uid,activeConv).catch(()=>{})},[activeConv?.messages?.length]);
 
   // SPURT 5: Handle file selection
   const handleFileSelect=useCallback((e)=>{
