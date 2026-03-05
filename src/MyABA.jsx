@@ -1,5 +1,5 @@
-// ⬡B:myaba.genesis:APP:v2.6.0:20260228⬡
-// MyABA v2.8.0 - Conversation Persistence — Mobile Keyboard Fix + Ken Burns + Voice Fixes
+// ⬡B:myaba.genesis:APP:v2.9.0:20260305⬡
+// MyABA v2.9.0 - F5 Briefing Mode + F6 Approve Mode (placeholder)
 // ════════════════════════════════════════════════════════════════════════════
 // SPURTS IMPLEMENTED:
 //   1. Split Screen: Desktop=chat+talk panel, Mobile=chat+floating orb
@@ -8,13 +8,15 @@
 //   4. Projects: Project folders with files
 //   5. Attachments: File/image upload support
 //   6. Voice Responses: ElevenLabs TTS (already wired)
+//   7. F5 Briefing Mode: What happened, what's pending, what she handled
+//   8. F6 Approve Mode: Placeholder for swipe decisions
 // ARCHITECTURE:
 //   - Firebase = AUTH ONLY (Google sign-in)
 //   - Conversations = AIR → Supabase (NOT Firebase Firestore)
 //   - Greetings = AGENT DAWN (Dynamic, JARVIS-style, contextual)
 //   - ABA = Life assistant (not AI/personal assistant)
 // ════════════════════════════════════════════════════════════════════════════
-// ROUTING: USER → MyABA → ABABASE → FAT PROMPT (87 agents) → Response
+// ROUTING: USER → MyABA → ABABASE → FAT PROMPT (88 agents) → Response
 // This file is SKIN. It has NO brain. ZERO hardcoded content.
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -254,6 +256,34 @@ function safeParseGreeting(response) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// F5: BRIEFING MODE - What happened, what's pending, what she handled
+// ═══════════════════════════════════════════════════════════════════════════
+async function fetchBriefing(userId) {
+  try {
+    const result = await airRequest("briefing", {
+      message: "Generate my briefing. What happened today? What's pending? What did you handle autonomously? Include calendar, emails, and any proactive actions taken. Format as JSON with sections: handled (array of items you handled), pending (array of items needing my attention), upcoming (calendar events), summary (one sentence overview)."
+    }, userId);
+    
+    if (result.response) {
+      // Try to parse as JSON
+      try {
+        const text = result.response;
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          return JSON.parse(jsonMatch[0]);
+        }
+      } catch {}
+      // Return as raw text
+      return { summary: result.response, handled: [], pending: [], upcoming: [] };
+    }
+    return null;
+  } catch (e) {
+    console.error("[BRIEFING] Fetch failed:", e);
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // ABA PRESENCE — Premium glass translucent animated orb
 // ═══════════════════════════════════════════════════════════════════════════
 // v1.2.0: Premium animated ABA presence imported
@@ -327,6 +357,100 @@ function Typing(){return(<div style={{display:"flex",justifyContent:"flex-start"
 // SPURT 2: Talk to ABA (renamed from Live)
 function VoiceMode({mode,setMode}){const modes=[{k:"chat",i:MessageSquare,l:"Chat with ABA"},{k:"talk",i:Radio,l:"Talk to ABA"}];
   return(<div style={{display:"flex",gap:4,padding:6,background:"rgba(0,0,0,.3)",borderRadius:14}}>{modes.map(m=>{const a=mode===m.k;const I=m.i;return(<button key={m.k} onClick={()=>setMode(m.k)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"8px 10px",borderRadius:10,border:"none",cursor:"pointer",background:a?"rgba(139,92,246,.25)":"transparent",color:a?"rgba(139,92,246,.95)":"rgba(255,255,255,.35)",fontSize:11,fontWeight:a?600:400,transition:"all .2s",minHeight:44}}><I size={14}/>{m.l}</button>)})}</div>)}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// F5: MAIN TAB SWITCHER - Chat | Briefing | Approve
+// ═══════════════════════════════════════════════════════════════════════════
+function MainTabSwitcher({tab,setTab}){
+  const tabs=[
+    {k:"chat",i:MessageSquare,l:"Chat"},
+    {k:"briefing",i:Bell,l:"Briefing"},
+    {k:"approve",i:CheckCircle,l:"Approve"}
+  ];
+  return(<div style={{display:"flex",gap:2,padding:4,background:"rgba(0,0,0,.4)",borderRadius:12,marginBottom:8}}>
+    {tabs.map(t=>{const a=tab===t.k;const I=t.i;return(
+      <button key={t.k} onClick={()=>setTab(t.k)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5,padding:"10px 8px",borderRadius:10,border:"none",cursor:"pointer",background:a?"rgba(139,92,246,.25)":"transparent",color:a?"rgba(139,92,246,.95)":"rgba(255,255,255,.4)",fontSize:12,fontWeight:a?600:500,transition:"all .2s"}}>
+        <I size={14}/>{t.l}
+      </button>
+    )})}
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// F5: BRIEFING VIEW - What happened, what's pending, what she handled
+// ═══════════════════════════════════════════════════════════════════════════
+function BriefingView({data,loading,onRefresh}){
+  if(loading){
+    return(<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+      <div style={{width:50,height:50,borderRadius:"50%",border:"3px solid rgba(139,92,246,.2)",borderTopColor:"rgba(139,92,246,.8)",animation:"spin 1s linear infinite"}}/>
+      <p style={{color:"rgba(255,255,255,.5)",fontSize:13}}>Loading briefing...</p>
+    </div>);
+  }
+  
+  if(!data){
+    return(<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20}}>
+      <Bell size={48} style={{color:"rgba(139,92,246,.4)"}}/>
+      <p style={{color:"rgba(255,255,255,.5)",fontSize:14,textAlign:"center"}}>No briefing loaded yet</p>
+      <button onClick={onRefresh} style={{padding:"12px 24px",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(139,92,246,.25)",color:"rgba(139,92,246,.95)",fontSize:13,fontWeight:600}}>Load Briefing</button>
+    </div>);
+  }
+  
+  const Section=({title,icon:Icon,items,emptyText,color})=>(
+    <div style={{marginBottom:16}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+        <Icon size={16} style={{color:color||"rgba(139,92,246,.7)"}}/>
+        <span style={{color:"rgba(255,255,255,.8)",fontSize:13,fontWeight:600}}>{title}</span>
+        {items?.length>0&&<span style={{background:"rgba(139,92,246,.2)",color:"rgba(139,92,246,.9)",fontSize:10,padding:"2px 8px",borderRadius:99}}>{items.length}</span>}
+      </div>
+      {items?.length>0?(
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {items.map((item,i)=>(
+            <div key={i} style={{padding:"10px 14px",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)",borderRadius:12}}>
+              <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:0,lineHeight:1.5}}>{typeof item==="string"?item:item.text||item.title||item.description||JSON.stringify(item)}</p>
+              {item.time&&<span style={{color:"rgba(255,255,255,.4)",fontSize:10}}>{item.time}</span>}
+            </div>
+          ))}
+        </div>
+      ):(
+        <p style={{color:"rgba(255,255,255,.3)",fontSize:12,fontStyle:"italic",padding:"8px 0"}}>{emptyText}</p>
+      )}
+    </div>
+  );
+  
+  return(<div style={{flex:1,overflowY:"auto",padding:"8px 4px"}}>
+    {/* Summary */}
+    {data.summary&&<div style={{padding:"14px 16px",background:"linear-gradient(135deg,rgba(139,92,246,.15),rgba(99,102,241,.1))",border:"1px solid rgba(139,92,246,.2)",borderRadius:14,marginBottom:16}}>
+      <p style={{color:"rgba(255,255,255,.9)",fontSize:13,margin:0,lineHeight:1.6}}>{data.summary}</p>
+    </div>}
+    
+    {/* Handled - What ABA did autonomously */}
+    <Section title="Handled" icon={CheckCircle} items={data.handled} emptyText="Nothing handled yet today" color="#10B981"/>
+    
+    {/* Pending - Needs your attention */}
+    <Section title="Pending" icon={AlertTriangle} items={data.pending} emptyText="Nothing pending" color="#F59E0B"/>
+    
+    {/* Upcoming - Calendar events */}
+    <Section title="Upcoming" icon={Calendar} items={data.upcoming} emptyText="No upcoming events" color="#3B82F6"/>
+    
+    {/* Refresh button */}
+    <div style={{display:"flex",justifyContent:"center",paddingTop:8}}>
+      <button onClick={onRefresh} style={{display:"flex",alignItems:"center",gap:6,padding:"10px 20px",borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.05)",color:"rgba(255,255,255,.4)",fontSize:12}}>
+        <RefreshCw size={14}/>Refresh
+      </button>
+    </div>
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// F6: APPROVE VIEW - Swipe stack of pending decisions (placeholder)
+// ═══════════════════════════════════════════════════════════════════════════
+function ApproveView(){
+  return(<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20}}>
+    <CheckCircle size={48} style={{color:"rgba(139,92,246,.4)"}}/>
+    <p style={{color:"rgba(255,255,255,.5)",fontSize:14,textAlign:"center"}}>Approve Mode coming soon</p>
+    <p style={{color:"rgba(255,255,255,.3)",fontSize:12,textAlign:"center",maxWidth:280}}>Swipe left/right on pending decisions for rapid-fire approval</p>
+  </div>);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LOGIN — v1.1.3-P1-S1: Fixed JSON parsing
@@ -699,6 +823,9 @@ export default function MyABA(){
   const[voiceMode,setVoiceMode]=useState(()=>{try{return localStorage.getItem("myaba_voiceMode")||"chat"}catch{return "chat"}});
   
   const[settingsOpen,setSettingsOpen]=useState(false);const[sidebarOpen,setSidebarOpen]=useState(false);
+  const[mainTab,setMainTab]=useState("chat"); // F5/F6: "chat" | "briefing" | "approve"
+  const[briefingData,setBriefingData]=useState(null);
+  const[briefingLoading,setBriefingLoading]=useState(false);
   const[shareModal,setShareModal]=useState(null); // conversation being shared
   const[projects,setProjects]=useState([]); // SPURT 4: projects list
   const[newChatModal,setNewChatModal]=useState(false); // New chat flow modal
@@ -905,7 +1032,7 @@ export default function MyABA(){
   const bgUrl=BG[bg]?.u||BG.pinkSmoke.u;
 
   return(<div style={{width:"100%",height:`${viewportHeight}px`,position:"relative",overflow:"hidden",fontFamily:"'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:"#08080d",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)"}}>
-    <style>{`@keyframes mp{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}@keyframes mf{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes mb{0%,100%{opacity:.6}50%{opacity:1}}@keyframes ml{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 12px rgba(239,68,68,0)}}@keyframes kenBurns{0%{transform:scale(1) translate(0,0)}25%{transform:scale(1.08) translate(-1%,-1%)}50%{transform:scale(1.12) translate(1%,0)}75%{transform:scale(1.06) translate(-0.5%,1%)}100%{transform:scale(1) translate(0,0)}}@keyframes pulse{0%{transform:scale(1);opacity:1}100%{transform:scale(1.5);opacity:0}}@keyframes breathe{0%,100%{transform:scale(1);box-shadow:0 0 40px rgba(139,92,246,.3)}50%{transform:scale(1.05);box-shadow:0 0 60px rgba(139,92,246,.5)}}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(139,92,246,.15);border-radius:99px}`}</style>
+    <style>{`@keyframes mp{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}@keyframes mf{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes mb{0%,100%{opacity:.6}50%{opacity:1}}@keyframes ml{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 12px rgba(239,68,68,0)}}@keyframes kenBurns{0%{transform:scale(1) translate(0,0)}25%{transform:scale(1.08) translate(-1%,-1%)}50%{transform:scale(1.12) translate(1%,0)}75%{transform:scale(1.06) translate(-0.5%,1%)}100%{transform:scale(1) translate(0,0)}}@keyframes pulse{0%{transform:scale(1);opacity:1}100%{transform:scale(1.5);opacity:0}}@keyframes breathe{0%,100%{transform:scale(1);box-shadow:0 0 40px rgba(139,92,246,.3)}50%{transform:scale(1.05);box-shadow:0 0 60px rgba(139,92,246,.5)}}@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(139,92,246,.15);border-radius:99px}`}</style>
     <div style={{position:"absolute",inset:0,zIndex:0,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.4) saturate(.7)",transition:"background-image 1s",animation:"kenBurns 30s ease-in-out infinite"}}/>
     <div style={{position:"absolute",inset:0,zIndex:1,background:"radial-gradient(ellipse at center,rgba(0,0,0,0) 0%,rgba(0,0,0,.55) 100%)"}}/>
     <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",height:"100%",maxWidth:480,margin:"0 auto",padding:"0 14px"}}>
@@ -923,6 +1050,19 @@ export default function MyABA(){
           <button onClick={()=>setSettingsOpen(true)} style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)",color:"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><Settings size={15}/></button>
         </div>
       </div>
+      {/* F5/F6: Main Tab Switcher - Chat | Briefing | Approve */}
+      <MainTabSwitcher tab={mainTab} setTab={async(t)=>{
+        setMainTab(t);
+        if(t==="briefing"&&!briefingData&&!briefingLoading){
+          setBriefingLoading(true);
+          const data=await fetchBriefing(user?.email||"brandon");
+          setBriefingData(data);
+          setBriefingLoading(false);
+        }
+      }}/>
+      
+      {/* Chat Mode */}
+      {mainTab==="chat"&&<>
       <div style={{flexShrink:0,padding:"4px 0"}}><VoiceMode mode={voiceMode} setMode={m=>{setVoiceMode(m);if(m!=="talk"&&liveActive){liveRef.current=false;setLiveActive(false);stopListening()}}}/></div>
       <div style={{flexShrink:0,display:"flex",justifyContent:"center",padding:"2px 0",transition:"all .5s"}}><Blob state={abaState} size={messages.length<=1?140:70}/></div>
       <div ref={scrollRef} style={{flex:1,overflowY:"auto",padding:"4px 2px",display:"flex",flexDirection:"column",gap:2,maskImage:"linear-gradient(transparent 0%,black 2%,black 96%,transparent 100%)",WebkitMaskImage:"linear-gradient(transparent 0%,black 2%,black 96%,transparent 100%)"}}>
@@ -970,6 +1110,18 @@ export default function MyABA(){
           </div>}
         </div>}
       </div>
+      </>}
+      
+      {/* Briefing Mode */}
+      {mainTab==="briefing"&&<BriefingView data={briefingData} loading={briefingLoading} onRefresh={async()=>{
+        setBriefingLoading(true);
+        const data=await fetchBriefing(user?.email||"brandon");
+        setBriefingData(data);
+        setBriefingLoading(false);
+      }}/>}
+      
+      {/* Approve Mode */}
+      {mainTab==="approve"&&<ApproveView/>}
     </div>
     <Sidebar open={sidebarOpen} convos={convos} activeId={activeId} onSelect={setActiveId} onCreate={()=>setNewChatModal(true)} onClose={()=>setSidebarOpen(false)} onDelete={deleteConv} onArchive={archiveConv} onShare={c=>setShareModal(c)} projects={projects} activeProject={activeProject} onSelectProject={setActiveProject} onCreateProject={()=>setNewChatModal(true)} onProjectDetail={p=>setProjectDetailModal(p)} user={user}/>
     <ShareModal open={!!shareModal} conversation={shareModal} onClose={()=>setShareModal(null)} onShare={shareConversation}/>
