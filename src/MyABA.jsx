@@ -1,5 +1,5 @@
-// ⬡B:myaba.genesis:APP:v2.9.0:20260305⬡
-// MyABA v2.9.0 - F5 Briefing Mode + F6 Approve Mode (placeholder)
+// ⬡B:myaba.genesis:APP:v2.10.0:20260305⬡
+// MyABA v2.10.0 - F5 Briefing + F6 Approve + F7 Settings COMPLETE
 // ════════════════════════════════════════════════════════════════════════════
 // SPURTS IMPLEMENTED:
 //   1. Split Screen: Desktop=chat+talk panel, Mobile=chat+floating orb
@@ -9,7 +9,8 @@
 //   5. Attachments: File/image upload support
 //   6. Voice Responses: ElevenLabs TTS (already wired)
 //   7. F5 Briefing Mode: What happened, what's pending, what she handled
-//   8. F6 Approve Mode: Placeholder for swipe decisions
+//   8. F6 Approve Mode: Swipe cards for rapid-fire decisions
+//   9. F7 Settings: Voice, notifications, backgrounds, user profile
 // ARCHITECTURE:
 //   - Firebase = AUTH ONLY (Google sign-in)
 //   - Conversations = AIR → Supabase (NOT Firebase Firestore)
@@ -442,13 +443,161 @@ function BriefingView({data,loading,onRefresh}){
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// F6: APPROVE VIEW - Swipe stack of pending decisions (placeholder)
+// F6: APPROVE VIEW - Swipe stack of pending decisions
 // ═══════════════════════════════════════════════════════════════════════════
-function ApproveView(){
-  return(<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20}}>
-    <CheckCircle size={48} style={{color:"rgba(139,92,246,.4)"}}/>
-    <p style={{color:"rgba(255,255,255,.5)",fontSize:14,textAlign:"center"}}>Approve Mode coming soon</p>
-    <p style={{color:"rgba(255,255,255,.3)",fontSize:12,textAlign:"center",maxWidth:280}}>Swipe left/right on pending decisions for rapid-fire approval</p>
+function ApproveView({userId,onAction}){
+  const[items,setItems]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[currentIndex,setCurrentIndex]=useState(0);
+  const[swipeDir,setSwipeDir]=useState(null);
+  const[touchStart,setTouchStart]=useState(null);
+  const[touchDelta,setTouchDelta]=useState(0);
+  
+  // Fetch pending approvals from AIR
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const result=await airRequest("pending_approvals",{
+          message:"List all pending items that need my approval or decision. Include emails needing response, calendar conflicts, tasks awaiting my input, and any autonomous actions you want to confirm. Format as JSON array with: id, type (email/calendar/task/confirm), title, summary, options (array of action choices), urgency (1-5)."
+        },userId);
+        if(result.response){
+          try{
+            const jsonMatch=result.response.match(/\[[\s\S]*\]/);
+            if(jsonMatch){
+              const parsed=JSON.parse(jsonMatch[0]);
+              setItems(parsed);
+            }
+          }catch{}
+        }
+      }catch(e){console.error("[APPROVE] Fetch failed:",e)}
+      setLoading(false);
+    })();
+  },[userId]);
+  
+  const currentItem=items[currentIndex];
+  
+  const handleSwipe=(direction)=>{
+    if(!currentItem)return;
+    setSwipeDir(direction);
+    
+    // Execute action
+    const action=direction==="right"?"approve":"reject";
+    airRequest("approve_action",{
+      message:`User ${action}ed: ${currentItem.title}. Item ID: ${currentItem.id}. Type: ${currentItem.type}. Execute the ${action} action.`,
+      itemId:currentItem.id,
+      action
+    },userId);
+    
+    // Animate out then advance
+    setTimeout(()=>{
+      setSwipeDir(null);
+      setTouchDelta(0);
+      if(currentIndex<items.length-1){
+        setCurrentIndex(currentIndex+1);
+      }else{
+        setItems([]);
+      }
+    },300);
+  };
+  
+  const handleTouchStart=(e)=>setTouchStart(e.touches[0].clientX);
+  const handleTouchMove=(e)=>{
+    if(touchStart===null)return;
+    setTouchDelta(e.touches[0].clientX-touchStart);
+  };
+  const handleTouchEnd=()=>{
+    if(Math.abs(touchDelta)>100){
+      handleSwipe(touchDelta>0?"right":"left");
+    }else{
+      setTouchDelta(0);
+    }
+    setTouchStart(null);
+  };
+  
+  if(loading){
+    return(<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+      <div style={{width:50,height:50,borderRadius:"50%",border:"3px solid rgba(139,92,246,.2)",borderTopColor:"rgba(139,92,246,.8)",animation:"spin 1s linear infinite"}}/>
+      <p style={{color:"rgba(255,255,255,.5)",fontSize:13}}>Loading pending items...</p>
+    </div>);
+  }
+  
+  if(items.length===0||currentIndex>=items.length){
+    return(<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20}}>
+      <CheckCircle size={56} style={{color:"rgba(16,185,129,.6)"}}/>
+      <p style={{color:"rgba(255,255,255,.7)",fontSize:16,fontWeight:600}}>All caught up!</p>
+      <p style={{color:"rgba(255,255,255,.4)",fontSize:13,textAlign:"center"}}>No pending decisions right now</p>
+    </div>);
+  }
+  
+  const urgencyColors={5:"#EF4444",4:"#F59E0B",3:"#3B82F6",2:"#6B7280",1:"#6B7280"};
+  const typeIcons={email:Mail,calendar:Calendar,task:CheckCircle,confirm:AlertTriangle};
+  const TypeIcon=typeIcons[currentItem.type]||Zap;
+  
+  const cardStyle={
+    transform:`translateX(${swipeDir==="right"?300:swipeDir==="left"?-300:touchDelta}px) rotate(${(swipeDir==="right"?15:swipeDir==="left"?-15:touchDelta/20)}deg)`,
+    opacity:swipeDir?0:1,
+    transition:swipeDir?"transform .3s, opacity .3s":"none"
+  };
+  
+  return(<div style={{flex:1,display:"flex",flexDirection:"column",padding:"8px 4px"}}>
+    {/* Progress */}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,padding:"0 8px"}}>
+      <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{currentIndex+1} of {items.length}</span>
+      <div style={{flex:1,margin:"0 12px",height:3,background:"rgba(255,255,255,.1)",borderRadius:99}}>
+        <div style={{width:`${((currentIndex+1)/items.length)*100}%`,height:"100%",background:"rgba(139,92,246,.6)",borderRadius:99,transition:"width .3s"}}/>
+      </div>
+      <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{items.length-currentIndex-1} left</span>
+    </div>
+    
+    {/* Swipe hints */}
+    <div style={{display:"flex",justifyContent:"space-between",padding:"0 20px",marginBottom:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,opacity:touchDelta<-30?.8:.3,transition:"opacity .2s"}}>
+        <X size={16} style={{color:"#EF4444"}}/><span style={{color:"#EF4444",fontSize:11,fontWeight:600}}>Reject</span>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:6,opacity:touchDelta>30?.8:.3,transition:"opacity .2s"}}>
+        <span style={{color:"#10B981",fontSize:11,fontWeight:600}}>Approve</span><CheckCircle size={16} style={{color:"#10B981"}}/>
+      </div>
+    </div>
+    
+    {/* Card */}
+    <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 16px"}}
+      onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
+      <div style={{width:"100%",maxWidth:340,background:"rgba(255,255,255,.06)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.1)",borderRadius:20,padding:20,boxShadow:"0 8px 32px rgba(0,0,0,.3)",...cardStyle}}>
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+          <div style={{width:40,height:40,borderRadius:12,background:`rgba(${currentItem.urgency>=4?"239,68,68":currentItem.urgency>=3?"59,130,246":"139,92,246"},.15)`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <TypeIcon size={20} style={{color:urgencyColors[currentItem.urgency]||"#8B5CF6"}}/>
+          </div>
+          <div style={{flex:1}}>
+            <p style={{color:"rgba(255,255,255,.9)",fontSize:14,fontWeight:600,margin:0}}>{currentItem.title}</p>
+            <p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:"2px 0 0",textTransform:"capitalize"}}>{currentItem.type}</p>
+          </div>
+          {currentItem.urgency>=4&&<span style={{background:"rgba(239,68,68,.15)",color:"#EF4444",fontSize:9,fontWeight:700,padding:"3px 8px",borderRadius:99}}>URGENT</span>}
+        </div>
+        
+        {/* Summary */}
+        <p style={{color:"rgba(255,255,255,.7)",fontSize:13,lineHeight:1.6,margin:"0 0 16px"}}>{currentItem.summary}</p>
+        
+        {/* Options */}
+        {currentItem.options&&currentItem.options.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {currentItem.options.map((opt,i)=>(
+            <button key={i} onClick={()=>handleSwipe(i===0?"right":"left")} style={{padding:"8px 14px",borderRadius:10,border:"none",cursor:"pointer",background:i===0?"rgba(16,185,129,.2)":"rgba(239,68,68,.15)",color:i===0?"#10B981":"#EF4444",fontSize:12,fontWeight:500}}>
+              {opt}
+            </button>
+          ))}
+        </div>}
+      </div>
+    </div>
+    
+    {/* Bottom buttons for desktop */}
+    <div style={{display:"flex",justifyContent:"center",gap:24,padding:"16px 0"}}>
+      <button onClick={()=>handleSwipe("left")} style={{width:56,height:56,borderRadius:"50%",border:"2px solid rgba(239,68,68,.3)",background:"rgba(239,68,68,.1)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <X size={24} style={{color:"#EF4444"}}/>
+      </button>
+      <button onClick={()=>handleSwipe("right")} style={{width:56,height:56,borderRadius:"50%",border:"2px solid rgba(16,185,129,.3)",background:"rgba(16,185,129,.1)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <CheckCircle size={24} style={{color:"#10B981"}}/>
+      </button>
+    </div>
   </div>);
 }
 
@@ -796,14 +945,97 @@ function Queue({open,onToggle,items}){
 // ═══════════════════════════════════════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════════════════════════════════════
-function SettingsDrawer({open,onClose,bg,setBg,onLogout}){if(!open)return null;
-  return(<div style={{position:"fixed",inset:0,zIndex:100,display:"flex",alignItems:"flex-end",justifyContent:"center"}}><div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(0,0,0,.6)"}}/><div style={{position:"relative",zIndex:101,width:"100%",maxWidth:480,background:"rgba(12,10,24,.98)",backdropFilter:"blur(24px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:"24px 24px 0 0",padding:"24px 20px calc(32px + env(safe-area-inset-bottom))",maxHeight:"75vh",overflowY:"auto"}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}><span style={{color:"rgba(255,255,255,.9)",fontSize:16,fontWeight:700}}>Settings</span><button onClick={onClose} style={{background:"rgba(255,255,255,.08)",border:"none",color:"white",width:32,height:32,borderRadius:99,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",minWidth:44,minHeight:44}}><X size={16}/></button></div>
-    <p style={{color:"rgba(255,255,255,.35)",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>Background</p>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>{Object.entries(BG).map(([k,{u,l}])=>(<button key={k} onClick={()=>{setBg(k);onClose()}} style={{position:"relative",aspectRatio:"16/10",borderRadius:10,overflow:"hidden",border:bg===k?"2px solid rgba(139,92,246,.8)":"2px solid rgba(255,255,255,.06)",cursor:"pointer",background:"#111",padding:0,boxShadow:bg===k?"0 0 14px rgba(139,92,246,.4)":"none",minHeight:44}}><img src={u} alt={l} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8}}/><span style={{position:"absolute",bottom:0,left:0,right:0,padding:"10px 4px 4px",background:"linear-gradient(transparent,rgba(0,0,0,.8))",color:bg===k?"rgba(139,92,246,.95)":"rgba(255,255,255,.6)",fontSize:8,fontWeight:600,textAlign:"center"}}>{l}</span></button>))}</div>
-    <button onClick={onLogout} style={{display:"flex",alignItems:"center",gap:8,width:"100%",marginTop:20,padding:"12px 16px",borderRadius:12,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.06)",color:"rgba(239,68,68,.7)",cursor:"pointer",fontSize:13,fontWeight:600,minHeight:48}}><LogOut size={16}/>Sign Out</button>
-    <div style={{marginTop:16,padding:"12px 14px",background:"rgba(139,92,246,.05)",borderRadius:12,border:"1px solid rgba(139,92,246,.1)"}}><p style={{color:"rgba(139,92,246,.6)",fontSize:10,fontWeight:600,margin:0}}>MyABA v2.8.0 - Conversation Persistence</p></div>
-  </div></div>)}
+// ═══════════════════════════════════════════════════════════════════════════
+// F7: SETTINGS DRAWER - Full settings panel
+// ═══════════════════════════════════════════════════════════════════════════
+function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,user}){
+  const[notifyBriefing,setNotifyBriefing]=useState(()=>{try{return localStorage.getItem("myaba_notifyBriefing")!=="false"}catch{return true}});
+  const[notifyUrgent,setNotifyUrgent]=useState(()=>{try{return localStorage.getItem("myaba_notifyUrgent")!=="false"}catch{return true}});
+  const[autoSpeak,setAutoSpeak]=useState(()=>{try{return localStorage.getItem("myaba_autoSpeak")==="true"}catch{return false}});
+  
+  useEffect(()=>{try{localStorage.setItem("myaba_notifyBriefing",String(notifyBriefing))}catch{}},[notifyBriefing]);
+  useEffect(()=>{try{localStorage.setItem("myaba_notifyUrgent",String(notifyUrgent))}catch{}},[notifyUrgent]);
+  useEffect(()=>{try{localStorage.setItem("myaba_autoSpeak",String(autoSpeak))}catch{}},[autoSpeak]);
+  
+  if(!open)return null;
+  
+  const Toggle=({value,onChange,label,sublabel})=>(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
+      <div>
+        <p style={{color:"rgba(255,255,255,.85)",fontSize:13,fontWeight:500,margin:0}}>{label}</p>
+        {sublabel&&<p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:"2px 0 0"}}>{sublabel}</p>}
+      </div>
+      <button onClick={()=>onChange(!value)} style={{width:48,height:28,borderRadius:99,border:"none",cursor:"pointer",background:value?"rgba(139,92,246,.5)":"rgba(255,255,255,.1)",position:"relative",transition:"background .2s"}}>
+        <div style={{position:"absolute",top:2,left:value?22:2,width:24,height:24,borderRadius:"50%",background:"white",boxShadow:"0 2px 4px rgba(0,0,0,.2)",transition:"left .2s"}}/>
+      </button>
+    </div>
+  );
+  
+  const Section=({title,children})=>(
+    <div style={{marginBottom:20}}>
+      <p style={{color:"rgba(255,255,255,.35)",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>{title}</p>
+      <div style={{background:"rgba(255,255,255,.03)",borderRadius:14,padding:"4px 14px"}}>{children}</div>
+    </div>
+  );
+  
+  return(<div style={{position:"fixed",inset:0,zIndex:100,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+    <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(0,0,0,.6)"}}/>
+    <div style={{position:"relative",zIndex:101,width:"100%",maxWidth:480,background:"rgba(12,10,24,.98)",backdropFilter:"blur(24px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:"24px 24px 0 0",padding:"24px 20px calc(32px + env(safe-area-inset-bottom))",maxHeight:"85vh",overflowY:"auto"}}>
+      
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <span style={{color:"rgba(255,255,255,.9)",fontSize:18,fontWeight:700}}>Settings</span>
+        <button onClick={onClose} style={{background:"rgba(255,255,255,.08)",border:"none",color:"white",width:36,height:36,borderRadius:99,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><X size={18}/></button>
+      </div>
+      
+      {/* User info */}
+      {user&&<div style={{display:"flex",alignItems:"center",gap:12,padding:14,background:"rgba(139,92,246,.08)",borderRadius:14,marginBottom:20}}>
+        {user.photoURL?<img src={user.photoURL} alt="" style={{width:44,height:44,borderRadius:"50%",border:"2px solid rgba(139,92,246,.3)"}}/>:<div style={{width:44,height:44,borderRadius:"50%",background:"rgba(139,92,246,.2)",display:"flex",alignItems:"center",justifyContent:"center"}}><User size={22} style={{color:"rgba(139,92,246,.7)"}}/></div>}
+        <div style={{flex:1}}>
+          <p style={{color:"rgba(255,255,255,.9)",fontSize:14,fontWeight:600,margin:0}}>{user.displayName||"User"}</p>
+          <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"2px 0 0"}}>{user.email}</p>
+        </div>
+      </div>}
+      
+      {/* Voice */}
+      <Section title="Voice">
+        <Toggle value={voiceOut} onChange={setVoiceOut} label="Voice responses" sublabel="ABA speaks her responses aloud"/>
+        <Toggle value={autoSpeak} onChange={setAutoSpeak} label="Auto-speak" sublabel="Automatically speak without tapping"/>
+      </Section>
+      
+      {/* Notifications */}
+      <Section title="Notifications">
+        <Toggle value={notifyBriefing} onChange={setNotifyBriefing} label="Morning briefing" sublabel="Daily summary at 6 AM"/>
+        <Toggle value={notifyUrgent} onChange={setNotifyUrgent} label="Urgent alerts" sublabel="Calls and texts for emergencies"/>
+      </Section>
+      
+      {/* Appearance */}
+      <Section title="Background">
+        <div style={{padding:"8px 0"}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+            {Object.entries(BG).map(([k,{u,l}])=>(
+              <button key={k} onClick={()=>setBg(k)} style={{position:"relative",aspectRatio:"16/10",borderRadius:10,overflow:"hidden",border:bg===k?"2px solid rgba(139,92,246,.8)":"2px solid rgba(255,255,255,.06)",cursor:"pointer",background:"#111",padding:0,boxShadow:bg===k?"0 0 14px rgba(139,92,246,.4)":"none"}}>
+                <img src={u} alt={l} style={{width:"100%",height:"100%",objectFit:"cover",opacity:.8}}/>
+                <span style={{position:"absolute",bottom:0,left:0,right:0,padding:"10px 4px 4px",background:"linear-gradient(transparent,rgba(0,0,0,.8))",color:bg===k?"rgba(139,92,246,.95)":"rgba(255,255,255,.6)",fontSize:8,fontWeight:600,textAlign:"center"}}>{l}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </Section>
+      
+      {/* Sign out */}
+      <button onClick={onLogout} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px 16px",borderRadius:14,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.06)",color:"rgba(239,68,68,.8)",cursor:"pointer",fontSize:14,fontWeight:600}}>
+        <LogOut size={18}/>Sign Out
+      </button>
+      
+      {/* Version */}
+      <div style={{marginTop:16,padding:"14px",background:"rgba(139,92,246,.05)",borderRadius:14,border:"1px solid rgba(139,92,246,.1)",textAlign:"center"}}>
+        <p style={{color:"rgba(139,92,246,.7)",fontSize:11,fontWeight:600,margin:0}}>MyABA v2.10.0</p>
+        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"4px 0 0"}}>F5 Briefing • F6 Approve • F7 Settings</p>
+      </div>
+    </div>
+  </div>);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MYABA — v1.1.3-P1: All Phase 1 fixes applied
@@ -1121,14 +1353,14 @@ export default function MyABA(){
       }}/>}
       
       {/* Approve Mode */}
-      {mainTab==="approve"&&<ApproveView/>}
+      {mainTab==="approve"&&<ApproveView userId={user?.email||"brandon"}/>}
     </div>
     <Sidebar open={sidebarOpen} convos={convos} activeId={activeId} onSelect={setActiveId} onCreate={()=>setNewChatModal(true)} onClose={()=>setSidebarOpen(false)} onDelete={deleteConv} onArchive={archiveConv} onShare={c=>setShareModal(c)} projects={projects} activeProject={activeProject} onSelectProject={setActiveProject} onCreateProject={()=>setNewChatModal(true)} onProjectDetail={p=>setProjectDetailModal(p)} user={user}/>
     <ShareModal open={!!shareModal} conversation={shareModal} onClose={()=>setShareModal(null)} onShare={shareConversation}/>
     <NewChatModal open={newChatModal} onClose={()=>setNewChatModal(false)} onCreate={(shared,projectId,projectName)=>{if(projectName){const pId=createProject(projectName);createConv(shared,pId)}else{createConv(shared,projectId)}}} projects={projects} onCreateProject={createProject}/>
     <ProjectDetailModal open={!!projectDetailModal} project={projectDetailModal} onClose={()=>setProjectDetailModal(null)} onRename={renameProject} onDelete={deleteProject} onAddFile={addFileToProject} onRemoveFile={removeFileFromProject}/>
     <Queue open={queueOpen} onToggle={()=>setQueueOpen(!queueOpen)} items={proactiveItems}/>
-    <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
+    <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} voiceOut={voiceOut} setVoiceOut={setVoiceOut} user={user} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
     <ConnectionStatus online={online}/>
     {toast&&<Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)}/>}
   </div>)}
