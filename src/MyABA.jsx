@@ -524,9 +524,14 @@ function AdminPanel({ open, onClose, lastResponse }) {
             <div style={{ marginBottom: 16 }}>
               <div style={{ color: "rgba(255,255,255,.5)", fontSize: 11, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Tools Executed</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {tools.map((tool, i) => (
-                  <span key={i} style={{ padding: "4px 10px", background: "rgba(34,197,94,.15)", borderRadius: 8, color: "rgba(34,197,94,.9)", fontSize: 11, fontWeight: 500 }}>{tool}</span>
-                ))}
+                {tools.map((tool, i) => {
+                  // Handle both string and object formats
+                  const toolName = typeof tool === 'string' ? tool : (tool.tool_name || tool.name || 'unknown');
+                  const success = typeof tool === 'object' ? tool.result?.success : true;
+                  return (
+                    <span key={i} style={{ padding: "4px 10px", background: success ? "rgba(34,197,94,.15)" : "rgba(239,68,68,.15)", borderRadius: 8, color: success ? "rgba(34,197,94,.9)" : "rgba(239,68,68,.9)", fontSize: 11, fontWeight: 500 }}>{toolName}</span>
+                  );
+                })}
               </div>
             </div>
           )}
