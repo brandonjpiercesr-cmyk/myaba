@@ -1,5 +1,5 @@
-// ⬡B:myaba.genesis:APP:v2.14.0:20260305⬡
-// MyABA v2.14.0 - AWA Jobs Tab + OMI Integration
+// ⬡B:myaba.genesis:APP:v2.15.0:20260310⬡
+// MyABA v2.15.0 - Admin Mode + Full Screen Talk + Project Persistence
 // ════════════════════════════════════════════════════════════════════════════
 // SPURTS IMPLEMENTED:
 //   1. Split Screen: Desktop=chat+talk panel, Mobile=chat+floating orb
@@ -62,26 +62,49 @@ const ABABASE = "https://abacia-services.onrender.com";
 // v1.2.0: Check online status
 function isOnline() { return navigator.onLine; }
 
-// v1.2.0: AIR with retry + offline awareness
+// v2.15.0: AIR with retry + offline awareness + proper userId handling
+// HAM users: brandonjpiercesr@gmail.com, brandon@globalmajoritygroup.com
+const HAM_EMAILS = ['brandonjpiercesr@gmail.com', 'brandon@globalmajoritygroup.com'];
+function isHAM(email) { return HAM_EMAILS.includes(email?.toLowerCase()); }
+
 async function airRequest(type, payload = {}, userId = "brandon", maxRetries = 3) {
   if (!isOnline()) {
     return { response: null, offline: true, queued: true };
   }
+  
+  // v2.15.0: Ensure message is never empty/undefined
+  const message = (payload.message || "").trim() || "hello";
+  
   let lastError;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // ⬡B:MYABA:ABABASE_WIRED:v2.0:20260227⬡
-      // Chat uses ababase backend (fat context, exact contacts)
-      // Voice/presence still use original endpoints
+      // ⬡B:MYABA:ABABASE_WIRED:v2.15.0:20260310⬡
       const res = await fetch(`${ABABASE}/api/air/process`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: payload.message || "", type, userId, channel: "myaba", context: { ...payload, timestamp: Date.now() } }),
+        body: JSON.stringify({ 
+          message, 
+          type: type || "text",
+          user_id: userId,  // Backend expects user_id
+          userId,           // Also send as userId for compatibility
+          channel: "myaba", 
+          context: { ...payload, timestamp: Date.now() } 
+        }),
       });
-      if (!res.ok) throw new Error(`REACH ${res.status}`);
-      return await res.json();
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => "");
+        console.error(`[AIR] ${res.status}:`, errorText);
+        throw new Error(`REACH ${res.status}: ${errorText}`);
+      }
+      
+      const data = await res.json();
+      // Store last response for admin mode
+      window.__lastABAResponse = data;
+      return data;
     } catch (e) {
       lastError = e;
+      console.error(`[AIR] Attempt ${attempt} failed:`, e.message);
       if (attempt < maxRetries) await new Promise(r => setTimeout(r, 1000 * attempt));
     }
   }
@@ -330,6 +353,107 @@ function safeParseGreeting(response) {
     return { title: parsed.greeting || parsed.title || "", subtitle: parsed.context || parsed.subtitle || "" };
   }
   return { title: String(response), subtitle: "" };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ADMIN PANEL — HAM-only agent activity viewer
+// ═══════════════════════════════════════════════════════════════════════════
+function AdminPanel({ open, onClose, lastResponse }) {
+  if (!open) return null;
+  
+  const data = lastResponse || window.__lastABAResponse || {};
+  const agents = data.agentsUsed || [];
+  const tools = data.toolsExecuted || [];
+  const duration = data.duration || 0;
+  const tokens = data.tokenCount || 0;
+  const iterations = data.iterations || 0;
+  const gritRan = agents.includes("GRIT");
+  
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.6)" }} />
+      <div style={{ position: "relative", width: "100%", maxWidth: 480, maxHeight: "70vh", background: "rgba(12,10,24,.98)", backdropFilter: "blur(24px)", borderRadius: "20px 20px 0 0", border: "1px solid rgba(139,92,246,.2)", overflow: "hidden" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3 style={{ color: "white", fontSize: 16, fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+            <Activity size={18} style={{ color: "rgba(139,92,246,.8)" }} />
+            Admin Mode
+          </h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,.4)", cursor: "pointer", padding: 4 }}><X size={18} /></button>
+        </div>
+        
+        <div style={{ padding: 20, overflowY: "auto", maxHeight: "calc(70vh - 60px)" }}>
+          {/* Stats Grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+            <div style={{ padding: 12, background: "rgba(139,92,246,.1)", borderRadius: 12, textAlign: "center" }}>
+              <div style={{ color: "rgba(139,92,246,.9)", fontSize: 20, fontWeight: 700 }}>{agents.length}</div>
+              <div style={{ color: "rgba(255,255,255,.4)", fontSize: 10, marginTop: 2 }}>Agents</div>
+            </div>
+            <div style={{ padding: 12, background: "rgba(34,197,94,.1)", borderRadius: 12, textAlign: "center" }}>
+              <div style={{ color: "rgba(34,197,94,.9)", fontSize: 20, fontWeight: 700 }}>{tools.length}</div>
+              <div style={{ color: "rgba(255,255,255,.4)", fontSize: 10, marginTop: 2 }}>Tools</div>
+            </div>
+            <div style={{ padding: 12, background: "rgba(245,158,11,.1)", borderRadius: 12, textAlign: "center" }}>
+              <div style={{ color: "rgba(245,158,11,.9)", fontSize: 20, fontWeight: 700 }}>{iterations}</div>
+              <div style={{ color: "rgba(255,255,255,.4)", fontSize: 10, marginTop: 2 }}>Iterations</div>
+            </div>
+            <div style={{ padding: 12, background: "rgba(6,182,212,.1)", borderRadius: 12, textAlign: "center" }}>
+              <div style={{ color: "rgba(6,182,212,.9)", fontSize: 20, fontWeight: 700 }}>{(duration/1000).toFixed(1)}s</div>
+              <div style={{ color: "rgba(255,255,255,.4)", fontSize: 10, marginTop: 2 }}>Duration</div>
+            </div>
+          </div>
+          
+          {/* GRIT Alert */}
+          {gritRan && (
+            <div style={{ padding: 12, background: "rgba(34,197,94,.1)", borderRadius: 12, marginBottom: 16, display: "flex", alignItems: "center", gap: 10, border: "1px solid rgba(34,197,94,.2)" }}>
+              <CheckCircle size={18} style={{ color: "rgba(34,197,94,.9)" }} />
+              <div>
+                <div style={{ color: "rgba(34,197,94,.9)", fontSize: 13, fontWeight: 600 }}>GRIT Agent Ran</div>
+                <div style={{ color: "rgba(255,255,255,.4)", fontSize: 11 }}>Attempted up to 8 retries for tools</div>
+              </div>
+            </div>
+          )}
+          
+          {/* Tools Executed */}
+          {tools.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: "rgba(255,255,255,.5)", fontSize: 11, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Tools Executed</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {tools.map((tool, i) => (
+                  <span key={i} style={{ padding: "4px 10px", background: "rgba(34,197,94,.15)", borderRadius: 8, color: "rgba(34,197,94,.9)", fontSize: 11, fontWeight: 500 }}>{tool}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {tools.length === 0 && (
+            <div style={{ padding: 12, background: "rgba(245,158,11,.1)", borderRadius: 12, marginBottom: 16, display: "flex", alignItems: "center", gap: 10, border: "1px solid rgba(245,158,11,.2)" }}>
+              <AlertTriangle size={18} style={{ color: "rgba(245,158,11,.9)" }} />
+              <div>
+                <div style={{ color: "rgba(245,158,11,.9)", fontSize: 13, fontWeight: 600 }}>No Tools Executed</div>
+                <div style={{ color: "rgba(255,255,255,.4)", fontSize: 11 }}>Response generated from FCW only</div>
+              </div>
+            </div>
+          )}
+          
+          {/* Agents List */}
+          <div>
+            <div style={{ color: "rgba(255,255,255,.5)", fontSize: 11, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Agents Loaded ({agents.length})</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 120, overflowY: "auto" }}>
+              {agents.map((agent, i) => (
+                <span key={i} style={{ padding: "3px 8px", background: "rgba(139,92,246,.1)", borderRadius: 6, color: "rgba(139,92,246,.7)", fontSize: 10, fontWeight: 500 }}>{agent}</span>
+              ))}
+            </div>
+          </div>
+          
+          {/* Token Count */}
+          <div style={{ marginTop: 16, padding: 12, background: "rgba(255,255,255,.03)", borderRadius: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ color: "rgba(255,255,255,.4)", fontSize: 11 }}>Tokens Used</span>
+            <span style={{ color: "rgba(255,255,255,.7)", fontSize: 13, fontWeight: 600 }}>{tokens.toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1258,8 +1382,8 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
       
       {/* Version */}
       <div style={{marginTop:16,padding:"14px",background:"rgba(139,92,246,.05)",borderRadius:14,border:"1px solid rgba(139,92,246,.1)",textAlign:"center"}}>
-        <p style={{color:"rgba(139,92,246,.7)",fontSize:11,fontWeight:600,margin:0}}>MyABA v2.13.0</p>
-        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"4px 0 0"}}>Phase 9 Fixes Complete</p>
+        <p style={{color:"rgba(139,92,246,.7)",fontSize:11,fontWeight:600,margin:0}}>MyABA v2.15.0</p>
+        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"4px 0 0"}}>Admin Mode + Talk Mode Fixed</p>
       </div>
     </div>
   </div>);
@@ -1287,7 +1411,11 @@ export default function MyABA(){
   const[briefingData,setBriefingData]=useState(null);
   const[briefingLoading,setBriefingLoading]=useState(false);
   const[shareModal,setShareModal]=useState(null); // conversation being shared
-  const[projects,setProjects]=useState([]); // SPURT 4: projects list
+  // v2.15.0: Projects persist to localStorage (backend has no /api/projects yet)
+  const[projects,setProjects]=useState(()=>{
+    try{const saved=localStorage.getItem("myaba_projects");return saved?JSON.parse(saved):[];}
+    catch{return[];}
+  });
   const[newChatModal,setNewChatModal]=useState(false); // New chat flow modal
   const[projectDetailModal,setProjectDetailModal]=useState(null); // Project detail modal
   const[activeProject,setActiveProject]=useState(null);
@@ -1298,6 +1426,9 @@ export default function MyABA(){
   const[proactiveItems,setProactiveItems]=useState([]);
   const[toast,setToast]=useState(null);
   const[online,setOnline]=useState(navigator.onLine);
+  // v2.15.0: Admin mode for HAM users
+  const[adminPanelOpen,setAdminPanelOpen]=useState(false);
+  const[lastABAResponse,setLastABAResponse]=useState(null);
   const scrollRef=useRef(null);const recorderRef=useRef(null);const liveRef=useRef(false);
 
   // v1.2.0: Track online/offline status
@@ -1313,6 +1444,8 @@ export default function MyABA(){
   useEffect(()=>{try{localStorage.setItem("myaba_bg",bg)}catch{}},[bg]);
   useEffect(()=>{try{localStorage.setItem("myaba_voiceOut",String(voiceOut))}catch{}},[voiceOut]);
   useEffect(()=>{try{localStorage.setItem("myaba_voiceMode",voiceMode)}catch{}},[voiceMode]);
+  // v2.15.0: Save projects to localStorage
+  useEffect(()=>{try{localStorage.setItem("myaba_projects",JSON.stringify(projects))}catch{}},[projects]);
   // Mobile keyboard viewport fix - more robust
   useEffect(()=>{
     const handleResize=()=>{
@@ -1416,16 +1549,18 @@ export default function MyABA(){
   },[]);
 
   // v1.2.0: Load conversations via AIR → Supabase + DAWN greeting
+  // v2.15.0: Use email for userId to match HAM resolution
   useEffect(()=>{
     if(!user)return;
-    loadConversations(user.uid).then(loaded=>{
+    const userId = user.email || user.uid;
+    loadConversations(userId).then(loaded=>{
       if(loaded&&loaded.length>0){
         setConvos(loaded);
         setActiveId(loaded[0].id);
       }else{
         const id=createConv();
         // Get JARVIS-style welcome from DAWN
-        getDawnGreeting(user.uid,user.displayName).then(g=>{
+        getDawnGreeting(userId,user.displayName).then(g=>{
           let welcomeMsg=g.greeting||"";
           if(g.context)welcomeMsg+="\n\n"+g.context;
           if(g.proactive)welcomeMsg+="\n\n"+g.proactive;
@@ -1436,20 +1571,21 @@ export default function MyABA(){
         });
       }
     }).catch(()=>{createConv()});
-    reachPresence(user.uid).then(d=>{if(d.items)setProactiveItems(d.items)});
+    reachPresence(userId).then(d=>{if(d.items)setProactiveItems(d.items)});
   },[user]);
 
   useEffect(()=>{
     if(!activeConv||activeConv.autoNamed||!user)return;
     if(activeConv.messages.length>=5){
-      airNameChat(activeConv.messages,user.uid).then(name=>{
+      airNameChat(activeConv.messages,user.email||user.uid).then(name=>{
         if(name)setConvos(p=>p.map(c=>c.id===activeId?{...c,title:name,autoNamed:true}:c));
       });
     }
   },[messages.length,activeId]);
 
   // v2.8.0: Save via direct Supabase endpoint
-  useEffect(()=>{if(user&&activeConv&&activeConv.messages.length>0)saveConversation(user.uid,activeConv).catch(()=>{})},[activeConv?.messages?.length]);
+  // v2.15.0: Use email for userId to match HAM resolution
+  useEffect(()=>{if(user&&activeConv&&activeConv.messages.length>0)saveConversation(user.email||user.uid,activeConv).catch(()=>{})},[activeConv?.messages?.length]);
 
   // SPURT 5: Handle file selection
   const handleFileSelect=useCallback((e)=>{
@@ -1468,8 +1604,12 @@ export default function MyABA(){
     // Include attachments in message
     const userMsg={id:`u-${Date.now()}`,role:"user",content:text.trim(),timestamp:Date.now(),isVoice,attachments:attachments.length>0?attachments.map(a=>({name:a.name,type:a.type,size:a.size})):undefined};
     addMsg(userMsg);setInput("");setAttachments([]);setIsTyping(true);setAbaState("thinking");
-    const data=await airRequest("text",{message:text.trim(),conversationId:activeId,attachments:attachments.map(a=>({name:a.name,type:a.type}))},user?.uid);
+    // v2.15.0: Use email as userId for proper HAM resolution
+    const data=await airRequest("text",{message:text.trim(),conversationId:activeId,attachments:attachments.map(a=>({name:a.name,type:a.type}))},user?.email||user?.uid||"brandon");
     setIsTyping(false);
+    
+    // v2.15.0: Track response for admin panel
+    setLastABAResponse(data);
     
     if(data.error){
       showToast("Taking a moment to reconnect...","offline");
@@ -1529,6 +1669,8 @@ export default function MyABA(){
           <span style={{color:"rgba(255,255,255,.2)",fontSize:10}}>{abaState!=="idle"?(abaState==="thinking"?"thinking...":abaState==="speaking"?"speaking...":"listening..."):""}</span>
         </div>
         <div style={{display:"flex",gap:4}}>
+          {/* v2.15.0: Admin button for HAM users */}
+          {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{background:lastABAResponse?"rgba(34,197,94,.15)":"rgba(255,255,255,.04)",border:`1px solid ${lastABAResponse?"rgba(34,197,94,.2)":"rgba(255,255,255,.06)"}`,color:lastABAResponse?"rgba(34,197,94,.85)":"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} title="Admin Mode"><Activity size={15}/></button>}
           <button onClick={()=>setVoiceOut(!voiceOut)} style={{background:voiceOut?"rgba(139,92,246,.15)":"rgba(255,255,255,.04)",border:`1px solid ${voiceOut?"rgba(139,92,246,.2)":"rgba(255,255,255,.06)"}`,color:voiceOut?"rgba(139,92,246,.85)":"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={15}/>:<VolumeX size={15}/>}</button>
           <button onClick={()=>setSettingsOpen(true)} style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)",color:"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><Settings size={15}/></button>
         </div>
@@ -1570,26 +1712,46 @@ export default function MyABA(){
           <div style={{flex:1,display:"flex",alignItems:"center",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:24,padding:"0 6px 0 16px",minHeight:48}}><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey} onFocus={scrollInputIntoView} placeholder="Message ABA..." style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.9)",fontSize:16,padding:"12px 0",WebkitAppearance:"none"}}/><button onClick={()=>{if(!isListening)startListening();else stopListening()}} style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:isListening?"rgba(6,182,212,.2)":"rgba(255,255,255,.05)",color:isListening?"rgba(6,182,212,.95)":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{isListening?<MicOff size={16}/>:<Mic size={16}/>}</button></div>
           <button onClick={()=>sendMessage(input)} disabled={!input.trim()&&attachments.length===0} style={{width:48,height:48,borderRadius:99,border:"none",cursor:(input.trim()||attachments.length>0)?"pointer":"default",background:(input.trim()||attachments.length>0)?"rgba(139,92,246,.4)":"rgba(255,255,255,.04)",color:(input.trim()||attachments.length>0)?"white":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:(input.trim()||attachments.length>0)?"0 0 16px rgba(139,92,246,.25)":"none"}}><Send size={18}/></button>
         </div>}
-        {voiceMode==="talk"&&<div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"radial-gradient(circle at 50% 50%, rgba(139,92,246,.15) 0%, transparent 70%)",zIndex:10}}>
+        
+        {/* v2.15.0: Talk to ABA - Full Screen Mode (not overlay) */}
+        {voiceMode==="talk"&&<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,position:"relative"}}>
+          {/* Back to Chat button */}
+          <button onClick={()=>{setVoiceMode("chat");if(liveActive){liveRef.current=false;setLiveActive(false);stopListening();setAbaState("idle")}}} style={{position:"absolute",top:0,left:0,display:"flex",alignItems:"center",gap:6,padding:"8px 14px",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:12,fontWeight:500}}>
+            <MessageSquare size={14}/>Back to Chat
+          </button>
+          
           {/* Pulsing rings */}
           <div style={{position:"absolute",width:200,height:200,borderRadius:"50%",border:"1px solid rgba(139,92,246,.1)",animation:liveActive?"pulse 2s ease-out infinite":"none",opacity:.5}}/>
           <div style={{position:"absolute",width:280,height:280,borderRadius:"50%",border:"1px solid rgba(139,92,246,.08)",animation:liveActive?"pulse 2s ease-out .5s infinite":"none",opacity:.3}}/>
           <div style={{position:"absolute",width:360,height:360,borderRadius:"50%",border:"1px solid rgba(139,92,246,.05)",animation:liveActive?"pulse 2s ease-out 1s infinite":"none",opacity:.2}}/>
           
           {/* Central orb */}
-          <button onClick={toggleLive} style={{width:140,height:140,borderRadius:"50%",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,border:"none",background:liveActive?"radial-gradient(circle at 30% 30%, rgba(239,68,68,.4), rgba(139,92,246,.3))":"radial-gradient(circle at 30% 30%, rgba(139,92,246,.4), rgba(99,102,241,.3))",color:"white",boxShadow:liveActive?"0 0 60px rgba(239,68,68,.4), inset 0 0 30px rgba(255,255,255,.1)":"0 0 60px rgba(139,92,246,.4), inset 0 0 30px rgba(255,255,255,.1)",animation:liveActive?"breathe 1.5s ease-in-out infinite":"breathe 3s ease-in-out infinite",backdropFilter:"blur(8px)"}}>
-            {abaState==="speaking"?<Volume2 size={36}/>:abaState==="thinking"?<Sparkles size={36}/>:isListening?<MicOff size={36}/>:<Mic size={36}/>}
-            <span style={{fontSize:12,fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>{liveActive?(abaState==="speaking"?"Speaking":isListening?"Listening":"Ready"):"Tap to Talk"}</span>
+          <button onClick={toggleLive} style={{width:160,height:160,borderRadius:"50%",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,border:"none",background:liveActive?"radial-gradient(circle at 30% 30%, rgba(239,68,68,.4), rgba(139,92,246,.3))":"radial-gradient(circle at 30% 30%, rgba(139,92,246,.4), rgba(99,102,241,.3))",color:"white",boxShadow:liveActive?"0 0 80px rgba(239,68,68,.5), inset 0 0 40px rgba(255,255,255,.1)":"0 0 80px rgba(139,92,246,.5), inset 0 0 40px rgba(255,255,255,.1)",animation:liveActive?"breathe 1.5s ease-in-out infinite":"breathe 3s ease-in-out infinite",backdropFilter:"blur(8px)",zIndex:5}}>
+            {abaState==="speaking"?<Volume2 size={44}/>:abaState==="thinking"?<div style={{animation:"spin 1s linear infinite"}}><Sparkles size={44}/></div>:isListening?<MicOff size={44}/>:<Mic size={44}/>}
+            <span style={{fontSize:14,fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>{liveActive?(abaState==="speaking"?"Speaking":abaState==="thinking"?"Thinking":isListening?"Listening":"Ready"):"Tap to Start"}</span>
           </button>
           
-          {/* Status text */}
-          <p style={{position:"absolute",bottom:100,color:"rgba(255,255,255,.5)",fontSize:13,textAlign:"center",maxWidth:280}}>
-            {liveActive?"Listening. Speak naturally. Tap orb to end.":"Tap the orb to start a voice conversation with ABA."}
-          </p>
+          {/* Status indicator */}
+          <div style={{position:"absolute",bottom:120,display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+            <p style={{color:"rgba(255,255,255,.5)",fontSize:14,textAlign:"center",maxWidth:300,margin:0}}>
+              {liveActive?"Speak naturally. Tap orb to end conversation.":"Tap the orb above to start talking with ABA."}
+            </p>
+            {liveActive&&<div style={{display:"flex",alignItems:"center",gap:6}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:"rgba(239,68,68,.9)",animation:"mb 1s ease infinite"}}/>
+              <span style={{color:"rgba(239,68,68,.8)",fontSize:12,fontWeight:600}}>LIVE</span>
+            </div>}
+          </div>
           
-          {/* Recent message preview */}
-          {messages.length>0&&messages[messages.length-1].role==="aba"&&<div style={{position:"absolute",bottom:160,maxWidth:320,padding:"12px 16px",background:"rgba(0,0,0,.4)",backdropFilter:"blur(12px)",borderRadius:16,border:"1px solid rgba(255,255,255,.08)"}}>
-            <p style={{color:"rgba(255,255,255,.7)",fontSize:12,margin:0,lineHeight:1.5,maxHeight:60,overflow:"hidden"}}>{messages[messages.length-1].content.substring(0,150)}{messages[messages.length-1].content.length>150?"...":""}</p>
+          {/* Recent ABA response card */}
+          {messages.length>0&&messages[messages.length-1].role==="aba"&&<div style={{position:"absolute",bottom:20,left:20,right:20,padding:"14px 18px",background:"rgba(0,0,0,.5)",backdropFilter:"blur(16px)",borderRadius:18,border:"1px solid rgba(139,92,246,.15)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <Sparkles size={12} style={{color:"rgba(139,92,246,.8)"}}/>
+              <span style={{color:"rgba(139,92,246,.7)",fontSize:10,fontWeight:600}}>ABA's Response</span>
+            </div>
+            <p style={{color:"rgba(255,255,255,.8)",fontSize:13,margin:0,lineHeight:1.5,maxHeight:80,overflow:"hidden"}}>{messages[messages.length-1].content.substring(0,200)}{messages[messages.length-1].content.length>200?"...":""}</p>
+            {voiceOut&&<button onClick={()=>speakText(messages[messages.length-1].content)} style={{marginTop:8,display:"flex",alignItems:"center",gap:6,padding:"6px 12px",background:"rgba(139,92,246,.15)",border:"1px solid rgba(139,92,246,.2)",borderRadius:10,color:"rgba(139,92,246,.9)",cursor:"pointer",fontSize:11,fontWeight:500}}>
+              <Volume2 size={12}/>Replay
+            </button>}
           </div>}
         </div>}
       </div>
@@ -1616,5 +1778,7 @@ export default function MyABA(){
     <Queue open={queueOpen} onToggle={()=>setQueueOpen(!queueOpen)} items={proactiveItems}/>
     <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} voiceOut={voiceOut} setVoiceOut={setVoiceOut} user={user} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
     <ConnectionStatus online={online}/>
+    {/* v2.15.0: Admin Panel for HAM users */}
+    {isHAM(user?.email)&&<AdminPanel open={adminPanelOpen} onClose={()=>setAdminPanelOpen(false)} lastResponse={lastABAResponse}/>}
     {toast&&<Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)}/>}
   </div>)}
