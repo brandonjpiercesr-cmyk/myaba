@@ -192,6 +192,71 @@ async function airCreateProject(userId, name, shared = false, sharedWith = []) {
     return { success: false };
   } catch { return { success: false }; }
 }
+
+// SPURT 4B: Conversation functions - using /api/conversations endpoint
+async function airLoadConversations(userId, projectId = null) {
+  try {
+    let url = `${ABABASE}/api/conversations?userId=${encodeURIComponent(userId)}`;
+    if (projectId) url += `&projectId=${encodeURIComponent(projectId)}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, conversations: data.conversations || [] };
+    }
+    return { success: false, conversations: [] };
+  } catch { return { success: false, conversations: [] }; }
+}
+
+async function airCreateConversation(userId, title = 'New Chat', projectId = null) {
+  try {
+    const res = await fetch(`${ABABASE}/api/conversations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, title, projectId })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, conversation: data.conversation };
+    }
+    return { success: false };
+  } catch { return { success: false }; }
+}
+
+async function airAddMessage(conversationId, role, content) {
+  try {
+    const res = await fetch(`${ABABASE}/api/conversations/${conversationId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role, content })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, message: data.message };
+    }
+    return { success: false };
+  } catch { return { success: false }; }
+}
+
+async function airUpdateConversation(conversationId, updates) {
+  try {
+    const res = await fetch(`${ABABASE}/api/conversations/${conversationId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates)
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+async function airDeleteConversation(conversationId) {
+  try {
+    const res = await fetch(`${ABABASE}/api/conversations/${conversationId}`, {
+      method: "DELETE"
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
 async function airAddProjectFile(userId, projectId, file) {
   const formData = new FormData();
   formData.append("file", file);
@@ -1644,6 +1709,29 @@ export default function MyABA(){
       }).catch(()=>setProjectsLoading(false));
     }
   },[user?.email]);
+  // v2.16.0: Load conversations from backend when user is authenticated
+  useEffect(()=>{
+    if(user?.email){
+      airLoadConversations(user.email).then(result=>{
+        if(result.success&&result.conversations&&result.conversations.length>0){
+          // Map backend format to local format
+          const mapped=result.conversations.map(c=>({
+            id:c.id,
+            title:c.title||"Untitled",
+            shared:false,
+            archived:false,
+            messages:c.messages||[],
+            createdAt:new Date(c.created_at).getTime(),
+            updatedAt:new Date(c.updated_at).getTime(),
+            autoNamed:true,
+            projectId:c.projectId||null
+          }));
+          setConvos(mapped);
+          setActiveId(mapped[0].id);
+        }
+      }).catch(()=>{});
+    }
+  },[user?.email]);
   // Mobile keyboard viewport fix - more robust
   useEffect(()=>{
     const handleResize=()=>{
@@ -1688,15 +1776,54 @@ export default function MyABA(){
 
   const showToast=useCallback((message,type="info")=>{setToast({message,type})},[]);
 
-  const createConv=useCallback((shared=false,projectId=null)=>{const id=`conv-${Date.now()}`;const conv={id,title:"New Chat",shared,archived:false,messages:[],createdAt:Date.now(),updatedAt:Date.now(),autoNamed:false,projectId};setConvos(p=>[conv,...p]);setActiveId(id);return id},[]);
-  const addMsg=useCallback((msg)=>{setConvos(p=>p.map(c=>c.id===activeId?{...c,messages:[...c.messages,msg],updatedAt:Date.now()}:c))},[activeId]);
+  // v2.16.0: Create conversation via backend
+  const createConv=useCallback(async(shared=false,projectId=null)=>{
+    const userId=user?.email||"brandon";
+    const result=await airCreateConversation(userId,"New Chat",projectId);
+    if(result.success&&result.conversation){
+      const conv={
+        id:result.conversation.id,
+        title:result.conversation.title||"New Chat",
+        shared,
+        archived:false,
+        messages:result.conversation.messages||[],
+        createdAt:Date.now(),
+        updatedAt:Date.now(),
+        autoNamed:false,
+        projectId
+      };
+      setConvos(p=>[conv,...p]);
+      setActiveId(conv.id);
+      return conv.id;
+    }
+    // Fallback to local-only if backend fails
+    const id=`conv-${Date.now()}`;
+    const conv={id,title:"New Chat",shared,archived:false,messages:[],createdAt:Date.now(),updatedAt:Date.now(),autoNamed:false,projectId};
+    setConvos(p=>[conv,...p]);
+    setActiveId(id);
+    return id;
+  },[user]);
+  
+  // v2.16.0: Add message via backend
+  const addMsg=useCallback(async(msg)=>{
+    // Update local state immediately for responsiveness
+    setConvos(p=>p.map(c=>c.id===activeId?{...c,messages:[...c.messages,msg],updatedAt:Date.now()}:c));
+    // Sync to backend
+    if(activeId&&!String(activeId).startsWith('conv-')){
+      // Only sync if it's a backend ID (not local fallback)
+      airAddMessage(activeId,msg.role,msg.content).catch(()=>{});
+    }
+  },[activeId]);
 
-  // v1.2.0: Delete and archive via AIR → Supabase
-  const deleteConv=useCallback((id)=>{
+  // v2.16.0: Delete via backend
+  const deleteConv=useCallback(async(id)=>{
     setConvos(p=>p.filter(c=>c.id!==id));
     if(activeId===id){const remaining=convos.filter(c=>c.id!==id);setActiveId(remaining[0]?.id||null)}
-    if(user)deleteConversation(user.uid,id).catch(()=>{});
-  },[activeId,convos,user]);
+    // Delete from backend
+    if(!String(id).startsWith('conv-')){
+      await airDeleteConversation(id);
+    }
+  },[activeId,convos]);
 
   const archiveConv=useCallback((id)=>{
     setConvos(p=>p.map(c=>c.id===id?{...c,archived:true}:c));
