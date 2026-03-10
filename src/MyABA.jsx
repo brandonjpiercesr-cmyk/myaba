@@ -167,12 +167,30 @@ async function airShareChat(userId, convId, emails) {
   return airRequest("share_chat", { conversationId: convId, emails }, userId);
 }
 
-// SPURT 4: Project functions
+// SPURT 4: Project functions - now using direct /api/projects endpoint
 async function airLoadProjects(userId) {
-  return airRequest("load_projects", {}, userId);
+  try {
+    const res = await fetch(`${ABABASE}/api/projects?userId=${encodeURIComponent(userId)}`);
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, projects: data.projects || [] };
+    }
+    return { success: false, projects: [] };
+  } catch { return { success: false, projects: [] }; }
 }
-async function airCreateProject(userId, name) {
-  return airRequest("create_project", { name }, userId);
+async function airCreateProject(userId, name, shared = false, sharedWith = []) {
+  try {
+    const res = await fetch(`${ABABASE}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, name, shared, sharedWith })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, project: data.project };
+    }
+    return { success: false };
+  } catch { return { success: false }; }
 }
 async function airAddProjectFile(userId, projectId, file) {
   const formData = new FormData();
@@ -1581,11 +1599,8 @@ export default function MyABA(){
   const[briefingData,setBriefingData]=useState(null);
   const[briefingLoading,setBriefingLoading]=useState(false);
   const[shareModal,setShareModal]=useState(null); // conversation being shared
-  // v2.15.0: Projects persist to localStorage (backend has no /api/projects yet)
-  const[projects,setProjects]=useState(()=>{
-    try{const saved=localStorage.getItem("myaba_projects");return saved?JSON.parse(saved):[];}
-    catch{return[];}
-  });
+  // v2.16.0: Projects load from backend (not localStorage)
+  const[projects,setProjects]=useState([]);
   const[newChatModal,setNewChatModal]=useState(false); // New chat flow modal
   const[projectDetailModal,setProjectDetailModal]=useState(null); // Project detail modal
   const[activeProject,setActiveProject]=useState(null);
@@ -1600,6 +1615,8 @@ export default function MyABA(){
   const[adminPanelOpen,setAdminPanelOpen]=useState(false);
   const[commandCenterOpen,setCommandCenterOpen]=useState(false);
   const[lastABAResponse,setLastABAResponse]=useState(null);
+  // v2.16.0: Projects now load from backend
+  const[projectsLoading,setProjectsLoading]=useState(false);
   const scrollRef=useRef(null);const recorderRef=useRef(null);const liveRef=useRef(false);
 
   // v1.2.0: Track online/offline status
@@ -1615,8 +1632,18 @@ export default function MyABA(){
   useEffect(()=>{try{localStorage.setItem("myaba_bg",bg)}catch{}},[bg]);
   useEffect(()=>{try{localStorage.setItem("myaba_voiceOut",String(voiceOut))}catch{}},[voiceOut]);
   useEffect(()=>{try{localStorage.setItem("myaba_voiceMode",voiceMode)}catch{}},[voiceMode]);
-  // v2.15.0: Save projects to localStorage
-  useEffect(()=>{try{localStorage.setItem("myaba_projects",JSON.stringify(projects))}catch{}},[projects]);
+  // v2.16.0: Load projects from backend when user is authenticated
+  useEffect(()=>{
+    if(user?.email){
+      setProjectsLoading(true);
+      airLoadProjects(user.email).then(result=>{
+        if(result.success&&result.projects){
+          setProjects(result.projects);
+        }
+        setProjectsLoading(false);
+      }).catch(()=>setProjectsLoading(false));
+    }
+  },[user?.email]);
   // Mobile keyboard viewport fix - more robust
   useEffect(()=>{
     const handleResize=()=>{
@@ -1860,17 +1887,22 @@ export default function MyABA(){
       {/* Chat Mode */}
       {mainTab==="chat"&&<>
       <div style={{flexShrink:0,padding:"4px 0"}}><VoiceMode mode={voiceMode} setMode={m=>{setVoiceMode(m);if(m!=="talk"&&liveActive){liveRef.current=false;setLiveActive(false);stopListening()}}}/></div>
+      
+      {/* Hide chat elements when in Talk mode */}
+      {voiceMode!=="talk"&&<>
       <div style={{flexShrink:0,display:"flex",justifyContent:"center",padding:"2px 0",transition:"all .5s"}}><Blob state={abaState} size={messages.length<=1?140:70}/></div>
       <div ref={scrollRef} style={{flex:1,overflowY:"auto",padding:"4px 2px",display:"flex",flexDirection:"column",gap:2,maskImage:"linear-gradient(transparent 0%,black 2%,black 96%,transparent 100%)",WebkitMaskImage:"linear-gradient(transparent 0%,black 2%,black 96%,transparent 100%)"}}>
         {messages.map(msg=><div key={msg.id} style={{animation:"mf .3s ease"}}><Bubble msg={msg} userPhoto={user?.photoURL} onSpeak={speakText}/></div>)}
         {isTyping&&<Typing/>}
       </div>
+      </>}
+      
       <div style={{flexShrink:0,padding:"6px 0 14px"}}>
         {/* Hidden file input */}
         <input type="file" ref={fileInputRef} multiple accept="image/*,.pdf,.doc,.docx,.txt" onChange={handleFileSelect} style={{display:"none"}}/>
         
-        {/* Attachments preview */}
-        {attachments.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:8,padding:"0 4px"}}>
+        {/* Attachments preview - only show in chat mode */}
+        {voiceMode==="chat"&&attachments.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:8,padding:"0 4px"}}>
           {attachments.map(a=>(<div key={a.id} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:12,background:"rgba(139,92,246,.15)",border:"1px solid rgba(139,92,246,.25)"}}>
             {a.type?.startsWith("image")?<Image size={12} style={{color:"rgba(139,92,246,.8)"}}/>:<File size={12} style={{color:"rgba(139,92,246,.8)"}}/>}
             <span style={{color:"rgba(255,255,255,.8)",fontSize:11,maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
