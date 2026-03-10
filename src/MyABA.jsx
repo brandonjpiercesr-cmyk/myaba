@@ -257,6 +257,29 @@ async function airDeleteConversation(conversationId) {
   } catch { return false; }
 }
 
+// SPURT 4C: Settings functions - using /api/settings endpoint
+async function airLoadSettings(userId) {
+  try {
+    const res = await fetch(`${ABABASE}/api/settings?userId=${encodeURIComponent(userId)}`);
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, settings: data.settings || {} };
+    }
+    return { success: false, settings: {} };
+  } catch { return { success: false, settings: {} }; }
+}
+
+async function airSaveSettings(userId, settings) {
+  try {
+    const res = await fetch(`${ABABASE}/api/settings`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, settings })
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
 async function airAddProjectFile(userId, projectId, file) {
   const formData = new FormData();
   formData.append("file", file);
@@ -1654,10 +1677,11 @@ export default function MyABA(){
   const fileInputRef=useRef(null);
   const[isTyping,setIsTyping]=useState(false);
   
-  // v1.1.3-P1-S3: Settings from localStorage
+  // v2.16.1: Settings from backend (fallback to localStorage, then defaults)
   const[bg,setBg]=useState(()=>{try{return localStorage.getItem("myaba_bg")||"blackLandscape"}catch{return "blackLandscape"}});
   const[voiceOut,setVoiceOut]=useState(()=>{try{return localStorage.getItem("myaba_voiceOut")!=="false"}catch{return true}});
   const[voiceMode,setVoiceMode]=useState(()=>{try{return localStorage.getItem("myaba_voiceMode")||"chat"}catch{return "chat"}});
+  const[settingsLoaded,setSettingsLoaded]=useState(false);
   
   const[settingsOpen,setSettingsOpen]=useState(false);const[sidebarOpen,setSidebarOpen]=useState(false);
   const[mainTab,setMainTab]=useState("chat"); // F5/F6: "chat" | "briefing" | "approve"
@@ -1693,10 +1717,39 @@ export default function MyABA(){
     return()=>{window.removeEventListener("online",handleOnline);window.removeEventListener("offline",handleOffline)};
   },[]);
 
-  // v1.2.0: Save settings to localStorage
-  useEffect(()=>{try{localStorage.setItem("myaba_bg",bg)}catch{}},[bg]);
-  useEffect(()=>{try{localStorage.setItem("myaba_voiceOut",String(voiceOut))}catch{}},[voiceOut]);
-  useEffect(()=>{try{localStorage.setItem("myaba_voiceMode",voiceMode)}catch{}},[voiceMode]);
+  // v2.16.1: Save settings to localStorage AND backend
+  useEffect(()=>{
+    try{localStorage.setItem("myaba_bg",bg)}catch{}
+    // Save to backend if settings already loaded (prevent overwrite on init)
+    if(settingsLoaded&&user?.email){
+      airSaveSettings(user.email,{bg}).catch(()=>{});
+    }
+  },[bg,settingsLoaded,user?.email]);
+  useEffect(()=>{
+    try{localStorage.setItem("myaba_voiceOut",String(voiceOut))}catch{}
+    if(settingsLoaded&&user?.email){
+      airSaveSettings(user.email,{voiceOut}).catch(()=>{});
+    }
+  },[voiceOut,settingsLoaded,user?.email]);
+  useEffect(()=>{
+    try{localStorage.setItem("myaba_voiceMode",voiceMode)}catch{}
+    if(settingsLoaded&&user?.email){
+      airSaveSettings(user.email,{voiceMode}).catch(()=>{});
+    }
+  },[voiceMode,settingsLoaded,user?.email]);
+  // v2.16.1: Load settings from backend when user is authenticated
+  useEffect(()=>{
+    if(user?.email){
+      airLoadSettings(user.email).then(result=>{
+        if(result.success&&result.settings){
+          if(result.settings.bg)setBg(result.settings.bg);
+          if(result.settings.voiceOut!==undefined)setVoiceOut(result.settings.voiceOut);
+          if(result.settings.voiceMode)setVoiceMode(result.settings.voiceMode);
+        }
+        setSettingsLoaded(true);
+      }).catch(()=>setSettingsLoaded(true));
+    }
+  },[user?.email]);
   // v2.16.0: Load projects from backend when user is authenticated
   useEffect(()=>{
     if(user?.email){
