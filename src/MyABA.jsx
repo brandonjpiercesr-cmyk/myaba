@@ -1,5 +1,5 @@
-// ⬡B:myaba.genesis:APP:v2.15.0:20260310⬡
-// MyABA v2.16.0 - Admin Mode + Full Screen Talk + Project Persistence
+// ⬡B:myaba.genesis:APP:v2.17.0:20260313⬡
+// MyABA v2.17.0 - AWA v2 Backend Integration + Ghost Mode
 // ════════════════════════════════════════════════════════════════════════════
 // SPURTS IMPLEMENTED:
 //   1. Split Screen: Desktop=chat+talk panel, Mobile=chat+floating orb
@@ -8,15 +8,19 @@
 //   4. Projects: Project folders with files
 //   5. Attachments: File/image upload support
 //   6. Voice Responses: ElevenLabs TTS (FIXED in v2.13.0)
-//   7. F5 Briefing Mode: Dedicated /api/briefing endpoint
-//   8. F6 Approve Mode: Dedicated /api/pending-approvals + /api/approve-action
-//   9. F7 Settings: Voice, notifications, backgrounds, user profile
+//   7. F5 Briefing Mode: Dedicated /api/myaba/briefing endpoint (v2)
+//   8. F6 Approve Mode: Dedicated /api/myaba/approvals endpoint (v2)
+//   9. F7 Settings: Voice, notifications, backgrounds, user profile, Ghost Mode
 //   10. F8 Push Notifications: Web Push API + toggle in settings
 // v2.14.0 NEW:
 //   - AWA Jobs tab with full job listings
 //   - Cover letter / Resume generation from job detail
 //   - Team color coding by assignee
 //   - Search and filter jobs
+// v2.17.0 NEW:
+//   - Updated to AWA v2 backend endpoints
+//   - Ghost Mode toggle in settings
+//   - References manager integration ready
 // ARCHITECTURE:
 //   - Firebase = AUTH ONLY (Google sign-in)
 //   - Conversations = AIR → Supabase (NOT Firebase Firestore)
@@ -739,14 +743,24 @@ function CommandCenterView({ open, onClose, userEmail }) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // F5: BRIEFING MODE - What happened, what's pending, what she handled
+// ⬡B:MYABA.V2:briefing:20260313⬡ Updated to use /api/myaba/briefing
 // ═══════════════════════════════════════════════════════════════════════════
 async function fetchBriefing(userId) {
   try {
-    // Use dedicated briefing endpoint
-    const response = await fetch(`https://abacia-services.onrender.com/api/briefing?userId=${encodeURIComponent(userId)}`);
+    // Use v2 MyABA briefing endpoint
+    const response = await fetch(`https://abacia-services.onrender.com/api/myaba/briefing?userId=${encodeURIComponent(userId)}`);
     if (!response.ok) throw new Error('Briefing fetch failed');
     const data = await response.json();
-    return data;
+    // Transform v2 response to expected format
+    const briefing = data.briefing || data;
+    return {
+      summary: briefing.spoken_summary || briefing.greeting || '',
+      handled: briefing.sections?.find(s => s.type === 'handled')?.items || [],
+      pending: briefing.sections?.find(s => s.type === 'pending' || s.type === 'approvals')?.items || [],
+      upcoming: briefing.sections?.find(s => s.type === 'calendar')?.items || [],
+      jobs: briefing.sections?.find(s => s.type === 'jobs')?.items || [],
+      raw: briefing
+    };
   } catch (e) {
     console.error("[BRIEFING] Fetch failed:", e);
     // Fallback to AIR
@@ -923,6 +937,7 @@ function BriefingView({data,loading,onRefresh}){
 
 // ═══════════════════════════════════════════════════════════════════════════
 // F6: APPROVE VIEW - Swipe stack of pending decisions
+// ⬡B:MYABA.V2:approvals:20260313⬡ Updated to use /api/myaba/approvals
 // ═══════════════════════════════════════════════════════════════════════════
 function ApproveView({userId,onAction}){
   const[items,setItems]=useState([]);
@@ -932,11 +947,11 @@ function ApproveView({userId,onAction}){
   const[touchStart,setTouchStart]=useState(null);
   const[touchDelta,setTouchDelta]=useState(0);
   
-  // Fetch pending approvals from dedicated endpoint
+  // Fetch pending approvals from v2 endpoint
   useEffect(()=>{
     (async()=>{
       try{
-        const response=await fetch(`https://abacia-services.onrender.com/api/pending-approvals?userId=${encodeURIComponent(userId)}`);
+        const response=await fetch(`https://abacia-services.onrender.com/api/myaba/approvals?userId=${encodeURIComponent(userId)}`);
         if(response.ok){
           const data=await response.json();
           setItems(data.items||[]);
@@ -952,12 +967,12 @@ function ApproveView({userId,onAction}){
     if(!currentItem)return;
     setSwipeDir(direction);
     
-    // Execute action via dedicated endpoint
-    const action=direction==="right"?"approve":"reject";
-    fetch('https://abacia-services.onrender.com/api/approve-action',{
+    // Execute action via v2 endpoint
+    const decision=direction==="right"?"approve":"decline";
+    fetch(`https://abacia-services.onrender.com/api/myaba/approvals/${currentItem.id}`,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({itemId:currentItem.id,action,userId})
+      body:JSON.stringify({decision,userId})
     }).catch(e=>console.error('[APPROVE] Action failed:',e));
     
     // Animate out then advance
@@ -1589,6 +1604,39 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
   const[autoSpeak,setAutoSpeak]=useState(()=>{try{return localStorage.getItem("myaba_autoSpeak")==="true"}catch{return false}});
   const[pushEnabled,setPushEnabled]=useState(()=>{try{return localStorage.getItem("myaba_pushEnabled")==="true"}catch{return false}});
   const[pushLoading,setPushLoading]=useState(false);
+  // ⬡B:MYABA.V2:ghost:20260313⬡ Ghost Mode state
+  const[ghostMode,setGhostMode]=useState(false);
+  const[ghostLoading,setGhostLoading]=useState(false);
+  
+  // Load ghost mode status on mount
+  useEffect(()=>{
+    if(!user?.email)return;
+    (async()=>{
+      try{
+        const res=await fetch(`https://abacia-services.onrender.com/api/myaba/ghost?userId=${encodeURIComponent(user.email)}`);
+        if(res.ok){
+          const data=await res.json();
+          setGhostMode(data.active||false);
+        }
+      }catch(e){console.error("[GHOST] Load failed:",e)}
+    })();
+  },[user?.email]);
+  
+  const handleGhostToggle=async(enable)=>{
+    setGhostLoading(true);
+    try{
+      const res=await fetch('https://abacia-services.onrender.com/api/myaba/ghost',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({userId:user?.email||"brandon",enabled:enable,duration:24})
+      });
+      if(res.ok){
+        const data=await res.json();
+        setGhostMode(data.active||enable);
+      }
+    }catch(e){console.error("[GHOST] Toggle failed:",e)}
+    setGhostLoading(false);
+  };
   
   useEffect(()=>{try{localStorage.setItem("myaba_notifyBriefing",String(notifyBriefing))}catch{}},[notifyBriefing]);
   useEffect(()=>{try{localStorage.setItem("myaba_notifyUrgent",String(notifyUrgent))}catch{}},[notifyUrgent]);
@@ -1670,6 +1718,22 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
         </div>
       </Section>
       
+      {/* ⬡B:MYABA.V2:ghost_ui:20260313⬡ Ghost Mode Section */}
+      <Section title="Privacy">
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
+          <div>
+            <p style={{color:ghostMode?"rgba(139,92,246,.95)":"rgba(255,255,255,.85)",fontSize:13,fontWeight:500,margin:0}}>Ghost Mode {ghostMode&&"👻"}</p>
+            <p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:"2px 0 0"}}>ABA handles everything silently for 24h</p>
+          </div>
+          <button onClick={()=>handleGhostToggle(!ghostMode)} disabled={ghostLoading} style={{width:48,height:28,borderRadius:99,border:"none",cursor:ghostLoading?"wait":"pointer",background:ghostMode?"rgba(139,92,246,.5)":"rgba(255,255,255,.1)",position:"relative",transition:"background .2s",opacity:ghostLoading?.5:1}}>
+            <div style={{position:"absolute",top:2,left:ghostMode?22:2,width:24,height:24,borderRadius:"50%",background:"white",boxShadow:"0 2px 4px rgba(0,0,0,.2)",transition:"left .2s"}}/>
+          </button>
+        </div>
+        {ghostMode&&<div style={{padding:"10px 0",color:"rgba(139,92,246,.7)",fontSize:11}}>
+          ABA is handling your messages autonomously. Toggle off to resume normal notifications.
+        </div>}
+      </Section>
+      
       {/* Appearance */}
       <Section title="Background">
         <div style={{padding:"8px 0"}}>
@@ -1691,8 +1755,8 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
       
       {/* Version */}
       <div style={{marginTop:16,padding:"14px",background:"rgba(139,92,246,.05)",borderRadius:14,border:"1px solid rgba(139,92,246,.1)",textAlign:"center"}}>
-        <p style={{color:"rgba(139,92,246,.7)",fontSize:11,fontWeight:600,margin:0}}>MyABA v2.16.0</p>
-        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"4px 0 0"}}>Command Center Wiring</p>
+        <p style={{color:"rgba(139,92,246,.7)",fontSize:11,fontWeight:600,margin:0}}>MyABA v2.17.0</p>
+        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"4px 0 0"}}>AWA v2 Backend + Ghost Mode</p>
       </div>
     </div>
   </div>);
