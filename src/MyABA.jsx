@@ -1081,10 +1081,22 @@ function JobsView({userId}){
   const[loading,setLoading]=useState(true);
   const[selectedJob,setSelectedJob]=useState(null);
   const[filter,setFilter]=useState("");
+  const[teamFilter,setTeamFilter]=useState("all"); // Default to all jobs
   const[generating,setGenerating]=useState(null);
   const[output,setOutput]=useState(null);
   
-  // Team colors
+  // Team members for filter
+  const TEAM_MEMBERS=[
+    {id:"all",name:"All",color:"#6B7280"},
+    {id:"brandon",name:"Brandon",color:"#8B5CF6"},
+    {id:"eric",name:"Eric",color:"#3B82F6"},
+    {id:"bj",name:"BJ",color:"#10B981"},
+    {id:"cj",name:"CJ",color:"#F59E0B"},
+    {id:"vante",name:"Vante",color:"#F97316"},
+    {id:"dwayne",name:"Dwayne",color:"#EC4899"}
+  ];
+  
+  // Team colors for job cards
   const TEAM_COLORS={"Brandon Pierce":"#8B5CF6","Eric Lane":"#3B82F6","BJ Pierce":"#10B981","CJ Moore":"#F59E0B","Vante":"#F97316","Dwayne":"#EC4899"};
   
   useEffect(()=>{
@@ -1101,7 +1113,14 @@ function JobsView({userId}){
     })();
   },[]);
   
+  // Filter by team AND text
   const filtered=jobs.filter(j=>{
+    // Team filter first
+    if(teamFilter!=="all"){
+      const assignee=((j.assignees||[])[0]||j.assignee||"").toLowerCase();
+      if(!assignee.includes(teamFilter))return false;
+    }
+    // Then text filter
     if(!filter)return true;
     const f=filter.toLowerCase();
     const title=(j.job_title||j.title||"").toLowerCase();
@@ -1133,10 +1152,19 @@ function JobsView({userId}){
   }
   
   return(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-    {/* Search */}
-    <div style={{padding:"0 0 8px"}}>
-      <input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Search jobs..." style={{width:"100%",padding:"12px 16px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.05)",color:"white",fontSize:14,outline:"none"}}/>
+    {/* Team filter buttons */}
+    <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+      {TEAM_MEMBERS.map(tm=>(
+        <button key={tm.id} onClick={()=>setTeamFilter(tm.id)} style={{
+          padding:"6px 12px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:500,
+          background:teamFilter===tm.id?`${tm.color}30`:"rgba(255,255,255,.05)",
+          color:teamFilter===tm.id?tm.color:"rgba(255,255,255,.5)",
+          transition:"all .2s"
+        }}>{tm.name}</button>
+      ))}
     </div>
+    
+    {/* Search */}
     
     {/* Split view */}
     <div style={{flex:1,display:"flex",gap:8,overflow:"hidden"}}>
