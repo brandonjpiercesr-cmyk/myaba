@@ -1278,10 +1278,10 @@ function JobsView({userId}){
   
   // Filter by team AND text
   const filtered=jobs.filter(j=>{
-    // Team filter first
+    // Team filter first - check ALL assignees, not just first
     if(teamFilter!=="all"){
-      const assignee=((j.assignees||[])[0]||j.assignee||"").toLowerCase();
-      if(!assignee.includes(teamFilter))return false;
+      const allAssignees=(j.assignees||[j.assignee]||[]).map(a=>(a||"").toLowerCase());
+      if(!allAssignees.some(a=>a.includes(teamFilter)))return false;
     }
     // Then text filter
     if(!filter)return true;
@@ -1318,7 +1318,7 @@ function JobsView({userId}){
     {/* Team filter buttons */}
     <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
       {TEAM_MEMBERS.map(tm=>(
-        <button key={tm.id} onClick={()=>setTeamFilter(tm.id)} style={{
+        <button key={tm.id} onClick={()=>{setTeamFilter(tm.id);setSelectedJob(null);}} style={{
           padding:"6px 12px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:500,
           background:teamFilter===tm.id?`${tm.color}30`:"rgba(255,255,255,.05)",
           color:teamFilter===tm.id?tm.color:"rgba(255,255,255,.5)",
