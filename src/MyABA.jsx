@@ -1265,9 +1265,18 @@ function JobsView({userId}){
   useEffect(()=>{
     (async()=>{
       try{
-        const res=await fetch("https://abacia-services.onrender.com/api/awa/jobs?userId=brandon");
+        const res=await fetch(`${ABABASE}/api/awa/jobs?userId=brandon`,{
+          headers:{"Accept":"application/json"}
+        });
         const data=await res.json();
-        if(data.success&&data.jobs){setJobs(data.jobs)}else{setJobs([]);console.error("[AWA] ABABASE returned:",data.error||"no jobs")}
+        if(data.success&&data.jobs){setJobs(data.jobs)}
+        else{
+          const parsed=(Array.isArray(data)?data:[]).map(j=>{
+            if(j.id&&j.job_title)return j;
+            try{return{...JSON.parse(j.content),id:j.id}}catch{return{title:"Unknown",id:j.id}}
+          });
+          setJobs(parsed);
+        }
       }catch(e){console.error("[AWA] Load failed:",e)}
       setLoading(false);
     })();
