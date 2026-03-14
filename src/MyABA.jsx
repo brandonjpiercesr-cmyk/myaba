@@ -1265,12 +1265,9 @@ function JobsView({userId}){
   useEffect(()=>{
     (async()=>{
       try{
-        const res=await fetch("https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory?memory_type=eq.awa_job&select=*&limit=200",{
-          headers:{"apikey":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw"}
-        });
+        const res=await fetch("https://abacia-services.onrender.com/api/awa/jobs?userId=brandon");
         const data=await res.json();
-        const parsed=data.map(j=>{try{return{...JSON.parse(j.content),id:j.id}}catch{return{title:"Unknown",id:j.id}}});
-        setJobs(parsed);
+        if(data.success&&data.jobs){setJobs(data.jobs)}else{setJobs([]);console.error("[AWA] ABABASE returned:",data.error||"no jobs")}
       }catch(e){console.error("[AWA] Load failed:",e)}
       setLoading(false);
     })();
