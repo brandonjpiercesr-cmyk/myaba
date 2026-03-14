@@ -166,9 +166,16 @@ async function archiveConversation(userId, convId) {
   } catch { return { error: true }; }
 }
 
-// SPURT 3: Share chat by email
+// SPURT 3: Share chat by email - uses direct endpoint
 async function airShareChat(userId, convId, emails) {
-  return airRequest("share_chat", { conversationId: convId, emails }, userId);
+  try {
+    const res = await fetch(`${ABABASE}/api/conversations/${convId}/share`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, sharedWith: emails })
+    });
+    return await res.json();
+  } catch (e) { return { success: false, error: e.message }; }
 }
 
 // SPURT 4: Project functions - now using direct /api/projects endpoint
