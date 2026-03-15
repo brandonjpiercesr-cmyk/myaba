@@ -1397,6 +1397,21 @@ function JobsView({userId}){
           <button onClick={()=>handleGenerate("resume")} disabled={generating} style={{flex:1,padding:"10px 12px",borderRadius:8,border:"none",cursor:generating?"wait":"pointer",background:"rgba(59,130,246,.2)",color:"#60A5FA",fontSize:12,fontWeight:500,opacity:generating?.5:1}}>{generating==="resume"?"Generating...":"Resume"}</button>
         </div>
         
+        {/* Dismiss button */}
+        <button onClick={async()=>{
+          if(!confirm("Dismiss this job for everyone?"))return;
+          try{
+            await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/dismiss`,{
+              method:"PATCH",headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({userId:"brandon",admin_dismiss:true,reason:"Dismissed from MyABA"})
+            });
+            setJobs(prev=>prev.filter(j=>j.id!==selectedJob.id));
+            setSelectedJob(null);setOutput(null);
+          }catch(e){console.error("[AWA] Dismiss failed:",e)}
+        }} style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid rgba(239,68,68,.2)",cursor:"pointer",background:"rgba(239,68,68,.08)",color:"rgba(239,68,68,.7)",fontSize:11,fontWeight:500,marginBottom:12,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+          <Trash2 size={12}/>Dismiss Job
+        </button>
+        
         {output&&<div style={{background:"rgba(0,0,0,.3)",borderRadius:8,padding:12,maxHeight:200,overflowY:"auto"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
             <span style={{color:"rgba(255,255,255,.5)",fontSize:11}}>Generated Output</span>
@@ -2155,20 +2170,32 @@ export default function MyABA(){
     }
   },[user]);
   
-  // SPURT 4: Create project
-  const createProject=useCallback((name="New Project")=>{
+  // SPURT 4: Create project - saves to backend
+  const createProject=useCallback(async(name="New Project")=>{
+    const userId=user?.email||"brandon";
+    const result=await airCreateProject(userId,name);
+    if(result.success&&result.project){
+      const proj={id:result.project.id,name:result.project.name||name,files:result.project.files||[],createdAt:Date.now()};
+      setProjects(p=>[proj,...p]);
+      setActiveProject(proj.id);
+      return proj.id;
+    }
+    // Fallback local if backend fails
     const id=`proj-${Date.now()}`;
     const proj={id,name,files:[],createdAt:Date.now()};
     setProjects(p=>[proj,...p]);
     setActiveProject(id);
     return id;
-  },[]);
+  },[user]);
   
-  // Delete project
-  const deleteProject=useCallback((projectId)=>{
+  // Delete project - syncs to backend
+  const deleteProject=useCallback(async(projectId)=>{
     setProjects(p=>p.filter(proj=>proj.id!==projectId));
     if(activeProject===projectId)setActiveProject(null);
-  },[activeProject]);
+    if(!String(projectId).startsWith('proj-')){
+      try{await fetch(`${ABABASE}/api/projects/${projectId}`,{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:user?.email||"brandon"})})}catch(e){console.error("[PROJECTS] Delete failed:",e)}
+    }
+  },[activeProject,user]);
   
   // Remove file from project
   const removeFileFromProject=useCallback((projectId,fileId)=>{
@@ -2181,10 +2208,13 @@ export default function MyABA(){
     setProjects(p=>p.map(proj=>proj.id===projectId?{...proj,files:[...proj.files,fileData]}:proj));
   },[]);
   
-  // SPURT 4: Rename project
-  const renameProject=useCallback((projectId,newName)=>{
+  // SPURT 4: Rename project - syncs to backend
+  const renameProject=useCallback(async(projectId,newName)=>{
     setProjects(p=>p.map(proj=>proj.id===projectId?{...proj,name:newName}:proj));
-  },[]);
+    if(!String(projectId).startsWith('proj-')){
+      try{await fetch(`${ABABASE}/api/projects/${projectId}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:user?.email||"brandon",name:newName})})}catch(e){console.error("[PROJECTS] Rename failed:",e)}
+    }
+  },[user]);
 
   // v1.2.0: Load conversations via AIR → Supabase + DAWN greeting
   // v2.15.0: Use email for userId to match HAM resolution
@@ -2278,7 +2308,7 @@ export default function MyABA(){
     try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});setIsListening(true);setAbaState("listening");
       const rec=new MediaRecorder(stream,{mimeType:"audio/webm"});const chunks=[];rec.ondataavailable=e=>chunks.push(e.data);
       rec.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());setAbaState("thinking");setIsListening(false);const blob=new Blob(chunks,{type:"audio/webm"});const transcript=await reachTranscribe(blob);if(transcript)sendMessage(transcript,true);else{setAbaState("idle");if(liveRef.current)setTimeout(startListening,500)}};
-      recorderRef.current=rec;rec.start();if(voiceMode!=="push")setTimeout(()=>{if(rec.state==="recording")rec.stop()},10000);
+      recorderRef.current=rec;rec.start();if(voiceMode!=="push")setTimeout(()=>{if(rec.state==="recording")rec.stop()},15000);
     }catch{setIsListening(false);setAbaState("idle");showToast("Could not access your microphone","warning")}
   },[sendMessage,voiceMode,showToast]);
 
