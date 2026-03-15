@@ -2145,10 +2145,10 @@ export default function MyABA(){
   const shareConversation=useCallback(async(convId,emails,permission)=>{
     // Update local state to mark as shared
     setConvos(p=>p.map(c=>c.id===convId?{...c,shared:true,sharedWith:[...(c.sharedWith||[]),...emails.map(e=>({email:e,permission}))]}:c));
-    // Save to backend
+    // Save to backend via direct share endpoint
     if(user){
       try{
-        await airRequest("share_conversation",{conversationId:convId,emails,permission},user.uid);
+        await airShareChat(user.uid, convId, emails);
       }catch(e){console.error("Share error:",e)}
     }
   },[user]);
