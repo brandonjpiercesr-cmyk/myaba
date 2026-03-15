@@ -218,12 +218,12 @@ async function airLoadConversations(userId, projectId = null) {
   } catch { return { success: false, conversations: [] }; }
 }
 
-async function airCreateConversation(userId, title = 'New Chat', projectId = null) {
+async function airCreateConversation(userId, title = 'New Chat', projectId = null, shared = false) {
   try {
     const res = await fetch(`${ABABASE}/api/conversations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, title, projectId })
+      body: JSON.stringify({ userId, title, projectId, shared })
     });
     if (res.ok) {
       const data = await res.json();
@@ -2107,7 +2107,7 @@ export default function MyABA(){
   // v2.16.0: Create conversation via backend
   const createConv=useCallback(async(shared=false,projectId=null)=>{
     const userId=user?.email||"brandon";
-    const result=await airCreateConversation(userId,"New Chat",projectId);
+    const result=await airCreateConversation(userId,"New Chat",projectId,shared);
     if(result.success&&result.conversation){
       const conv={
         id:result.conversation.id,
@@ -2367,7 +2367,7 @@ export default function MyABA(){
       </div>
       </>}
       
-      <div style={{flexShrink:0,padding:"6px 0 14px"}}>
+      <div style={{flexShrink:voiceMode==="talk"?undefined:0,flex:voiceMode==="talk"?1:undefined,padding:voiceMode==="talk"?"0":"6px 0 14px",display:"flex",flexDirection:"column"}}>
         {/* Hidden file input */}
         <input type="file" ref={fileInputRef} multiple accept="image/*,.pdf,.doc,.docx,.txt" onChange={handleFileSelect} style={{display:"none"}}/>
         

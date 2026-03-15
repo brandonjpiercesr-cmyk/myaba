@@ -1,8 +1,8 @@
-// ⬡B:myaba.pwa:SW:v1.2.0:20260225⬡
+// ⬡B:myaba.pwa:SW:v2.16.2:20260315⬡
 // MyABA Service Worker - Offline support + Background sync
 
-const CACHE_NAME = 'myaba-v2';
-const REACH_URL = 'https://aba-reach.onrender.com';
+const CACHE_NAME = 'myaba-v3';
+const ABABASE_URL = 'https://abacia-services.onrender.com';
 
 // Assets to cache for offline
 const STATIC_ASSETS = [
@@ -38,7 +38,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
   // Don't cache API calls - let them fail gracefully
-  if (url.origin === REACH_URL) {
+  if (url.origin === ABABASE_URL) {
     event.respondWith(
       fetch(event.request).catch(() => {
         return new Response(JSON.stringify({ 
