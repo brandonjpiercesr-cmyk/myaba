@@ -147,7 +147,7 @@ async function loadConversations(userId) {
       archived: c.archived || false,
       createdAt: new Date(c.created_at).getTime(),
       updatedAt: new Date(c.updated_at).getTime(),
-      projectId: c.project_id
+      projectId: c.projectId || c.project_id
     }));
   } catch { return []; }
 }
@@ -2155,7 +2155,7 @@ export default function MyABA(){
 
   const archiveConv=useCallback((id)=>{
     setConvos(p=>p.map(c=>c.id===id?{...c,archived:true}:c));
-    if(user)archiveConversation(user.uid,id).catch(()=>{});
+    if(user)archiveConversation(user.email||user.uid,id).catch(()=>{});
   },[user]);
 
   // SPURT 3: Share conversation via email
@@ -2165,7 +2165,7 @@ export default function MyABA(){
     // Save to backend via direct share endpoint
     if(user){
       try{
-        await airShareChat(user.uid, convId, emails);
+        await airShareChat(user.email||user.uid, convId, emails);
       }catch(e){console.error("Share error:",e)}
     }
   },[user]);
