@@ -1263,16 +1263,17 @@ function JobsView({userId}){
     {id:"bj",name:"BJ",color:"#10B981"},
     {id:"cj",name:"CJ",color:"#F59E0B"},
     {id:"vante",name:"Vante",color:"#F97316"},
-    {id:"dwayne",name:"Dwayne",color:"#EC4899"}
+    {id:"dwayne",name:"Dwayne",color:"#EC4899"},
+    {id:"gmg",name:"GMG",color:"#6B7280"}
   ];
   
   // Team colors for job cards
-  const TEAM_COLORS={"Brandon Pierce":"#8B5CF6","Eric Lane":"#3B82F6","BJ Pierce":"#10B981","CJ Moore":"#F59E0B","Vante":"#F97316","Dwayne":"#EC4899"};
+  const TEAM_COLORS={"Brandon":"#8B5CF6","Eric":"#3B82F6","BJ":"#10B981","CJ":"#F59E0B","Vante":"#F97316","Dwayne":"#EC4899","GMG":"#6B7280"};
   
   useEffect(()=>{
     (async()=>{
       try{
-        const res=await fetch(`${ABABASE}/api/awa/jobs?userId=brandon`,{
+        const res=await fetch(`${ABABASE}/api/awa/jobs?userId=${encodeURIComponent(userId)}`,{
           headers:{"Accept":"application/json"}
         });
         const data=await res.json();
@@ -1351,7 +1352,8 @@ function JobsView({userId}){
           const title=job.job_title||job.title||"Untitled";
           const company=job.organization||job.company||"Unknown";
           const assignee=(job.assignees||[])[0]||job.assignee||"Unassigned";
-          const assigneeDisplay=assignee==="brandon"?"Brandon Pierce":assignee==="eric"?"Eric Lane":assignee==="bj"?"BJ Pierce":assignee;
+          const DISPLAY_NAMES={"brandon":"Brandon","eric":"Eric","bj":"BJ","cj":"CJ","vante":"Vante","dwayne":"Dwayne","gmg":"GMG"};
+          const assigneeDisplay=DISPLAY_NAMES[assignee]||assignee;
           return(
           <div key={job.id} onClick={()=>setSelectedJob(job)} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
@@ -1438,7 +1440,7 @@ function Login({onLogin}){
   const go=async()=>{setLoading(true);setError(null);try{const result=await signInGoogle();onLogin(result.user)}catch(e){setError(e.message)}finally{setLoading(false)}};
 
   return(<div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#08080d",fontFamily:"'SF Pro Display',-apple-system,sans-serif",overflow:"auto"}}>
-    <div style={{position:"absolute",inset:0,backgroundImage:`url(${BG.blackLandscape.u})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.3) saturate(.6)",animation:"kenBurns 30s ease-in-out infinite"}}/>
+    <div style={{position:"absolute",inset:0,backgroundImage:`url(${BG.pinkSmoke.u})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.3) saturate(.6)",animation:"kenBurns 30s ease-in-out infinite"}}/>
     <div style={{position:"relative",zIndex:2,textAlign:"center",maxWidth:360,padding:"24px",margin:"auto"}}>
       <div style={{marginBottom:24}}><Blob state="idle" size={100}/></div>
       <h1 style={{color:"white",fontSize:24,fontWeight:700,margin:"0 0 8px",background:"linear-gradient(135deg,#8B5CF6,#6366F1,#EC4899)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{greeting.greeting||"ABA"}</h1>
@@ -1451,7 +1453,7 @@ function Login({onLogin}){
         {loading?"Signing in...":"Sign in with Google"}
       </button>
       {error&&<p style={{color:"#EF4444",fontSize:12,marginTop:12}}>{error}</p>}
-      <p style={{color:"rgba(255,255,255,.15)",fontSize:10,marginTop:20}}>v1.2.2</p>
+      <p style={{color:"rgba(255,255,255,.15)",fontSize:10,marginTop:20}}>v2.16.2</p>
     </div>
   </div>)}
 
@@ -2227,7 +2229,7 @@ export default function MyABA(){
   const handleFileSelect=useCallback((e)=>{
     const files=Array.from(e.target.files||[]);
     const newAttachments=files.map(f=>({id:`att-${Date.now()}-${Math.random()}`,file:f,name:f.name,type:f.type,size:f.size,url:URL.createObjectURL(f)}));
-    setAttachments(p=>[...p,newAttachments]);
+    setAttachments(p=>[...p,...newAttachments]);
     if(fileInputRef.current)fileInputRef.current.value="";
   },[]);
   
