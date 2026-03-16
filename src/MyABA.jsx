@@ -38,7 +38,7 @@ import {
   Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock,
   Trash2, Archive, Search, WifiOff, Wifi, RefreshCw, Share2, Paperclip,
   FolderOpen, Image, File, FolderPlus, MoreVertical, Edit2, Copy, Briefcase,
-  MapPin, ExternalLink, Building
+  MapPin, ExternalLink, Building, Download
 } from "lucide-react";
 import { auth, signInGoogle, signOutUser } from "./firebase.js";
 import { onAuthStateChanged } from "firebase/auth";
@@ -868,6 +868,7 @@ function MainTabSwitcher({tab,setTab}){
     {k:"chat",i:MessageSquare,l:"Chat"},
     {k:"briefing",i:Bell,l:"Briefing"},
     {k:"jobs",i:Briefcase,l:"Jobs"},
+    {k:"pipeline",i:Activity,l:"Pipeline"},
     {k:"approve",i:CheckCircle,l:"Approve"},
     {k:"refs",i:Users,l:"Refs"}
   ];
@@ -1254,6 +1255,8 @@ function JobsView({userId}){
   const[teamFilter,setTeamFilter]=useState("all"); // Default to all jobs
   const[generating,setGenerating]=useState(null);
   const[output,setOutput]=useState(null);
+  const[showRefs,setShowRefs]=useState(false);
+  const[jobRefs,setJobRefs]=useState([]);
   
   // Team members for filter
   const TEAM_MEMBERS=[
@@ -1364,6 +1367,7 @@ function JobsView({userId}){
             <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"4px 0 0"}}>{company}</p>
             <div style={{display:"flex",gap:6,marginTop:6,alignItems:"center"}}>
               <span style={{fontSize:10,padding:"2px 6px",borderRadius:4,background:`${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.1)"}20`,color:TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.5)"}}>{assigneeDisplay}</span>
+              {job.status&&job.status!=="NEW"&&job.status!=="MATERIALS_READY"&&job.status!=="LIVE"&&<span style={{fontSize:9,padding:"2px 5px",borderRadius:4,background:job.status==="APPLIED"?"rgba(16,185,129,.12)":job.status==="INTERVIEW_SCHEDULED"?"rgba(245,158,11,.12)":job.status==="OFFER"?"rgba(139,92,246,.15)":job.status==="ACCEPTED"?"rgba(16,185,129,.2)":"rgba(255,255,255,.05)",color:job.status==="APPLIED"?"#10B981":job.status==="INTERVIEW_SCHEDULED"?"#FBBF24":job.status==="OFFER"?"#A78BFA":job.status==="ACCEPTED"?"#34D399":"rgba(255,255,255,.4)"}}>{job.status.replace(/_/g," ")}</span>}
               {job.salary&&<span style={{fontSize:10,color:"rgba(255,255,255,.3)"}}>{job.salary}</span>}
             </div>
           </div>
@@ -1408,6 +1412,123 @@ function JobsView({userId}){
           <button onClick={()=>handleGenerate("writing_sample")} disabled={generating} style={{flex:1,padding:"10px 8px",borderRadius:8,border:"none",cursor:generating?"wait":"pointer",background:"rgba(245,158,11,.2)",color:"#FBBF24",fontSize:11,fontWeight:500,opacity:generating?.5:1}}>{generating==="writing_sample"?"...":"Writing Sample"}</button>
         </div>
         
+        {/* ⬡B:AWA.v3:Phase2:download_buttons:20260315⬡ */}
+        <div style={{display:"flex",gap:6,marginBottom:8}}>
+          <button onClick={async()=>{
+            try{
+              const assignee=(selectedJob.assignees||[])[0]||"brandon";
+              const r=await fetch(`${ABABASE}/api/awa/export/combined/preview`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobId:selectedJob.id,format:"pdf",userId:assignee,includeReferences:true})});
+              const d=await r.json();
+              if(d.success&&d.base64){const blob=new Blob([Uint8Array.from(atob(d.base64),c=>c.charCodeAt(0))],{type:"application/pdf"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=d.filename||"application.pdf";a.click();URL.revokeObjectURL(url)}
+              else{setOutput("PDF generation failed: "+(d.error||"Unknown error"))}
+            }catch(e){setOutput("PDF download error: "+e.message)}
+          }} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid rgba(16,185,129,.2)",cursor:"pointer",background:"rgba(16,185,129,.1)",color:"#10B981",fontSize:11,fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+            <Download size={12}/>PDF
+          </button>
+          <button onClick={async()=>{
+            try{
+              const assignee=(selectedJob.assignees||[])[0]||"brandon";
+              const r=await fetch(`${ABABASE}/api/awa/export/combined/preview`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobId:selectedJob.id,format:"docx",userId:assignee,includeReferences:true})});
+              const d=await r.json();
+              if(d.success&&d.base64){const blob=new Blob([Uint8Array.from(atob(d.base64),c=>c.charCodeAt(0))],{type:d.contentType});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=d.filename||"application.docx";a.click();URL.revokeObjectURL(url)}
+              else{setOutput("DOCX generation failed: "+(d.error||"Unknown error"))}
+            }catch(e){setOutput("DOCX download error: "+e.message)}
+          }} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid rgba(59,130,246,.2)",cursor:"pointer",background:"rgba(59,130,246,.1)",color:"#60A5FA",fontSize:11,fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+            <Download size={12}/>DOCX
+          </button>
+        </div>
+        
+        {/* ⬡B:AWA.v3:Phase4:apply_buttons:20260315⬡ */}
+        {selectedJob.status!=="APPLIED"&&selectedJob.status!=="INTERVIEW_SCHEDULED"&&selectedJob.status!=="OFFER"&&selectedJob.status!=="ACCEPTED"&&(
+        <div style={{display:"flex",gap:6,marginBottom:8}}>
+          <button onClick={async()=>{
+            const method=selectedJob.url?"url":"manual";
+            try{
+              const assignee=(selectedJob.assignees||[])[0]||"brandon";
+              const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/apply`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,method})});
+              const d=await r.json();
+              if(d.success){
+                setSelectedJob(prev=>({...prev,status:"APPLIED",applied_at:new Date().toISOString()}));
+                setJobs(prev=>prev.map(j=>j.id===selectedJob.id?{...j,status:"APPLIED"}:j));
+                setOutput(d.message);
+                if(method==="url"&&selectedJob.url)window.open(selectedJob.url,"_blank");
+              }else{setOutput("Apply failed: "+(d.error||"Unknown error"))}
+            }catch(e){setOutput("Apply error: "+e.message)}
+          }} style={{flex:1,padding:"10px 8px",borderRadius:8,border:"none",cursor:"pointer",background:"linear-gradient(135deg,rgba(16,185,129,.3),rgba(59,130,246,.3))",color:"#34D399",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+            <Send size={14}/>{selectedJob.url?"Apply (Open Link)":"Mark Applied"}
+          </button>
+        </div>
+        )}
+        
+        {/* ⬡B:AWA.v3:Phase6:status_badge:20260315⬡ */}
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,padding:"8px 10px",borderRadius:8,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.05)"}}>
+          <span style={{color:"rgba(255,255,255,.4)",fontSize:10}}>Status:</span>
+          <span style={{padding:"3px 8px",borderRadius:6,fontSize:10,fontWeight:600,
+            background:selectedJob.status==="APPLIED"?"rgba(16,185,129,.15)":selectedJob.status==="INTERVIEW_SCHEDULED"?"rgba(245,158,11,.15)":selectedJob.status==="OFFER"?"rgba(139,92,246,.15)":selectedJob.status==="ACCEPTED"?"rgba(16,185,129,.25)":selectedJob.status==="DISMISSED"?"rgba(239,68,68,.12)":"rgba(255,255,255,.08)",
+            color:selectedJob.status==="APPLIED"?"#10B981":selectedJob.status==="INTERVIEW_SCHEDULED"?"#FBBF24":selectedJob.status==="OFFER"?"#A78BFA":selectedJob.status==="ACCEPTED"?"#34D399":selectedJob.status==="DISMISSED"?"rgba(239,68,68,.7)":"rgba(255,255,255,.5)"
+          }}>{selectedJob.status||"NEW"}</span>
+          <select onChange={async(e)=>{
+            const newStatus=e.target.value;if(!newStatus)return;
+            try{
+              const assignee=(selectedJob.assignees||[])[0]||"brandon";
+              const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:newStatus})});
+              const d=await r.json();
+              if(d.success){
+                setSelectedJob(prev=>({...prev,status:newStatus}));
+                setJobs(prev=>prev.map(j=>j.id===selectedJob.id?{...j,status:newStatus}:j));
+              }
+            }catch(e){console.error("[AWA] Status update failed:",e)}
+          }} value="" style={{marginLeft:"auto",padding:"4px 6px",borderRadius:6,border:"1px solid rgba(255,255,255,.1)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.5)",fontSize:10,cursor:"pointer"}}>
+            <option value="">Move to...</option>
+            {["NEW","SAVED","MATERIALS_READY","APPLIED","WAITING","INTERVIEW_SCHEDULED","INTERVIEWED","SECOND_INTERVIEW","OFFER","ACCEPTED","REJECTED","WITHDRAWN"].map(s=><option key={s} value={s}>{s.replace(/_/g," ")}</option>)}
+          </select>
+        </div>
+        
+        {/* ⬡B:AWA.v3:Phase6:interview_details:20260315⬡ */}
+        {(selectedJob.status==="INTERVIEW_SCHEDULED"||selectedJob.interview_date)&&(
+        <div style={{padding:10,borderRadius:8,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.15)",marginBottom:8}}>
+          <p style={{color:"#FBBF24",fontSize:11,fontWeight:600,margin:"0 0 4px"}}>Interview Details</p>
+          {selectedJob.interview_date&&<p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"2px 0"}}>Date: {new Date(selectedJob.interview_date).toLocaleString()}</p>}
+          {selectedJob.interviewer_name&&<p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"2px 0"}}>With: {selectedJob.interviewer_name}</p>}
+          {selectedJob.interview_notes&&<p style={{color:"rgba(255,255,255,.5)",fontSize:10,margin:"4px 0 0"}}>{selectedJob.interview_notes}</p>}
+        </div>
+        )}
+        
+        {/* ⬡B:AWA.v3:Phase6:offer_details:20260315⬡ */}
+        {selectedJob.status==="OFFER"&&(
+        <div style={{padding:10,borderRadius:8,background:"rgba(139,92,246,.08)",border:"1px solid rgba(139,92,246,.15)",marginBottom:8}}>
+          <p style={{color:"#A78BFA",fontSize:11,fontWeight:600,margin:"0 0 4px"}}>Offer Details</p>
+          {selectedJob.offer_salary&&<p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"2px 0"}}>Salary: {selectedJob.offer_salary}</p>}
+          {selectedJob.offer_deadline&&<p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"2px 0"}}>Deadline: {new Date(selectedJob.offer_deadline).toLocaleDateString()}</p>}
+          {selectedJob.offer_details&&<p style={{color:"rgba(255,255,255,.5)",fontSize:10,margin:"4px 0 0"}}>{selectedJob.offer_details}</p>}
+        </div>
+        )}
+        
+        {/* ⬡B:AWA.v3:Phase5:references_in_job:20260315⬡ */}
+        <button onClick={async()=>{
+          if(showRefs){setShowRefs(false);return}
+          try{
+            const assignee=(selectedJob.assignees||[])[0]||"brandon";
+            const r=await fetch(`${ABABASE}/api/awa/references?userId=${assignee}`);
+            const d=await r.json();
+            if(d.success)setJobRefs(d.references||[]);
+            setShowRefs(true);
+          }catch(e){console.error("[AWA] Refs load failed:",e)}
+        }} style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid rgba(139,92,246,.15)",cursor:"pointer",background:"rgba(139,92,246,.06)",color:"rgba(167,139,250,.8)",fontSize:11,fontWeight:500,marginBottom:showRefs?0:8,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+          <Users size={12}/>{showRefs?"Hide References":"Show References"}
+        </button>
+        {showRefs&&<div style={{padding:8,borderRadius:8,background:"rgba(139,92,246,.04)",border:"1px solid rgba(139,92,246,.1)",marginBottom:8,marginTop:4}}>
+          {jobRefs.length===0?<p style={{color:"rgba(255,255,255,.4)",fontSize:10,textAlign:"center",margin:0}}>No references saved yet</p>:
+          jobRefs.map((ref,i)=>(
+            <div key={ref.id||i} style={{padding:6,borderBottom:i<jobRefs.length-1?"1px solid rgba(255,255,255,.04)":"none"}}>
+              <p style={{color:"rgba(255,255,255,.8)",fontSize:11,fontWeight:500,margin:0}}>{ref.name}</p>
+              <p style={{color:"rgba(255,255,255,.5)",fontSize:10,margin:"1px 0"}}>{[ref.title,ref.organization].filter(Boolean).join(", ")}</p>
+              {ref.phone&&<p style={{color:"rgba(255,255,255,.4)",fontSize:9,margin:0}}>{ref.phone}</p>}
+              {ref.email&&<p style={{color:"rgba(255,255,255,.4)",fontSize:9,margin:0}}>{ref.email}</p>}
+            </div>
+          ))}
+        </div>}
+        
         {/* Dismiss button */}
         <button onClick={async()=>{
           if(!confirm("Dismiss this job for everyone?"))return;
@@ -1437,6 +1558,114 @@ function JobsView({userId}){
     <div style={{padding:"8px 0 0",borderTop:"1px solid rgba(255,255,255,.05)",marginTop:8}}>
       <p style={{color:"rgba(255,255,255,.3)",fontSize:10,textAlign:"center",margin:0}}>{filtered.length} of {jobs.length} jobs • AWA powered by ABA</p>
     </div>
+  </div>);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PIPELINE VIEW — Kanban board for AWA job tracking
+// ⬡B:AWA.v3:Phase6:kanban:20260315⬡
+// ═══════════════════════════════════════════════════════════════════════════
+function PipelineView({userId}){
+  const[pipeline,setPipeline]=useState(null);
+  const[loading,setLoading]=useState(true);
+  const[expandedCol,setExpandedCol]=useState(null);
+
+  const ABABASE="https://abacia-services.onrender.com";
+
+  const COLUMNS=[
+    {key:"NEW",label:"New",color:"#6B7280",icon:"📥"},
+    {key:"MATERIALS_READY",label:"Ready",color:"#8B5CF6",icon:"📄"},
+    {key:"APPLIED",label:"Applied",color:"#10B981",icon:"📨"},
+    {key:"WAITING",label:"Waiting",color:"#F59E0B",icon:"⏳"},
+    {key:"INTERVIEW_SCHEDULED",label:"Interview",color:"#EC4899",icon:"🎤"},
+    {key:"INTERVIEWED",label:"Done",color:"#F97316",icon:"✅"},
+    {key:"OFFER",label:"Offer",color:"#A78BFA",icon:"💰"},
+    {key:"ACCEPTED",label:"Won",color:"#34D399",icon:"🎉"},
+  ];
+
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const r=await fetch(`${ABABASE}/api/awa/pipeline?userId=${userId}`);
+        const d=await r.json();
+        if(d.success)setPipeline(d);
+      }catch(e){console.error("[PIPELINE]",e)}
+      setLoading(false);
+    })();
+  },[userId]);
+
+  if(loading)return <div style={{padding:20,textAlign:"center",color:"rgba(255,255,255,.4)"}}>Loading pipeline...</div>;
+  if(!pipeline)return <div style={{padding:20,textAlign:"center",color:"rgba(255,255,255,.4)"}}>Could not load pipeline</div>;
+
+  const jobs=pipeline.jobs||[];
+  const counts=pipeline.pipeline||{};
+  const activeCount=jobs.filter(j=>j.status!=="DISMISSED").length;
+
+  return(<div style={{display:"flex",flexDirection:"column",height:"100%",gap:8}}>
+    {/* Summary bar */}
+    <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
+      <span style={{color:"white",fontSize:14,fontWeight:600}}>Pipeline</span>
+      <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{activeCount} active</span>
+    </div>
+
+    {/* Kanban columns */}
+    <div style={{display:"flex",gap:6,flex:1,overflowX:"auto",paddingBottom:8}}>
+      {COLUMNS.map(col=>{
+        const colJobs=jobs.filter(j=>j.status===col.key);
+        const isExpanded=expandedCol===col.key;
+        return(
+        <div key={col.key} onClick={()=>setExpandedCol(isExpanded?null:col.key)} style={{minWidth:isExpanded?200:80,flex:isExpanded?2:0,background:"rgba(255,255,255,.02)",borderRadius:10,border:`1px solid ${colJobs.length>0?col.color+"30":"rgba(255,255,255,.05)"}`,padding:8,cursor:"pointer",transition:"all .3s",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
+            <span style={{fontSize:12}}>{col.icon}</span>
+            <span style={{color:col.color,fontSize:10,fontWeight:600}}>{col.label}</span>
+            <span style={{marginLeft:"auto",background:`${col.color}20`,color:col.color,fontSize:10,fontWeight:700,padding:"1px 5px",borderRadius:8,minWidth:16,textAlign:"center"}}>{colJobs.length}</span>
+          </div>
+          {isExpanded&&<div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
+            {colJobs.map(job=>(
+              <div key={job.id} style={{padding:8,borderRadius:8,background:"rgba(0,0,0,.3)",border:"1px solid rgba(255,255,255,.05)"}}>
+                <p style={{color:"rgba(255,255,255,.85)",fontSize:11,fontWeight:500,margin:0,lineHeight:1.3}}>{(job.job_title||job.title||"").substring(0,40)}</p>
+                <p style={{color:"rgba(255,255,255,.4)",fontSize:10,margin:"2px 0 0"}}>{(job.organization||"").substring(0,30)}</p>
+                {job.interview_date&&<p style={{color:"#FBBF24",fontSize:9,margin:"3px 0 0"}}>Interview: {new Date(job.interview_date).toLocaleDateString()}</p>}
+                {job.offer_salary&&<p style={{color:"#A78BFA",fontSize:9,margin:"3px 0 0"}}>Offer: {job.offer_salary}</p>}
+                <div style={{display:"flex",gap:4,marginTop:4}}>
+                  {(job.assignees||[]).map(a=><span key={a} style={{fontSize:8,padding:"1px 4px",borderRadius:3,background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.4)"}}>{a}</span>)}
+                </div>
+              </div>
+            ))}
+            {colJobs.length===0&&<p style={{color:"rgba(255,255,255,.2)",fontSize:10,textAlign:"center",padding:12}}>Empty</p>}
+          </div>}
+        </div>
+      )})}
+    </div>
+
+    {/* Alerts summary */}
+    <AlertsSummary userId={userId}/>
+  </div>);
+}
+
+// ⬡B:AWA.v3:proactive:alerts_summary:20260315⬡
+function AlertsSummary({userId}){
+  const[alerts,setAlerts]=useState([]);
+  const ABABASE="https://abacia-services.onrender.com";
+
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const r=await fetch(`${ABABASE}/api/awa/alerts?userId=${userId}`);
+        const d=await r.json();
+        if(d.success)setAlerts(d.alerts||[]);
+      }catch(e){}
+    })();
+  },[userId]);
+
+  const urgent=alerts.filter(a=>a.priority==="critical"||a.priority==="high");
+  if(urgent.length===0)return null;
+
+  return(<div style={{padding:8,borderRadius:8,background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.12)"}}>
+    <p style={{color:"#FBBF24",fontSize:10,fontWeight:600,margin:"0 0 4px"}}>Alerts ({urgent.length})</p>
+    {urgent.slice(0,3).map((a,i)=>(
+      <p key={i} style={{color:"rgba(255,255,255,.6)",fontSize:10,margin:"2px 0",lineHeight:1.4}}>{a.message.substring(0,100)}</p>
+    ))}
   </div>);
 }
 
@@ -2451,6 +2680,9 @@ export default function MyABA(){
       
       {/* Jobs Mode - AWA Integration */}
       {mainTab==="jobs"&&<JobsView userId={user?.email||"brandon"}/>}
+      
+      {/* Pipeline Mode - Kanban ⬡B:AWA.v3:Phase6:pipeline_tab:20260315⬡ */}
+      {mainTab==="pipeline"&&<PipelineView userId={user?.email||"brandon"}/>}
       
       {/* Approve Mode */}
       {mainTab==="approve"&&<ApproveView userId={user?.email||"brandon"}/>}
