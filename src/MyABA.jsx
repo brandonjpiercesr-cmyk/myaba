@@ -1311,12 +1311,13 @@ function JobsView({userId}){
     setGenerating(type);setOutput(null);
     try{
       const assignee=(selectedJob.assignees||[])[0]||selectedJob.assignee||"brandon";
-      const res=await fetch(`https://abacia-services.onrender.com/api/awa/${type==="cover"?"cover-letter":"resume"}`,{
+      const endpoint = type==="cover" ? "cover-letter" : type==="resume" ? "resume" : "writing-sample";
+      const res=await fetch(`https://abacia-services.onrender.com/api/awa/${endpoint}`,{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({job:selectedJob,userId:assignee.toLowerCase().replace(" ","_")})
       });
       const data=await res.json();
-      setOutput(data.coverLetter||data.resume||data.response||JSON.stringify(data,null,2));
+      setOutput(data.coverLetter||data.resume||data.writingSample||data.response||JSON.stringify(data,null,2));
     }catch(e){setOutput("Error: "+e.message)}
     setGenerating(null);
   };
@@ -1392,9 +1393,19 @@ function JobsView({userId}){
         
         {selectedJob.url&&<a href={selectedJob.url} target="_blank" rel="noopener noreferrer" style={{display:"flex",alignItems:"center",gap:4,color:"rgba(139,92,246,.8)",fontSize:12,marginBottom:12,textDecoration:"none"}}><ExternalLink size={12}/>View Original</a>}
         
-        <div style={{display:"flex",gap:8,marginBottom:12}}>
-          <button onClick={()=>handleGenerate("cover")} disabled={generating} style={{flex:1,padding:"10px 12px",borderRadius:8,border:"none",cursor:generating?"wait":"pointer",background:"rgba(139,92,246,.2)",color:"#A78BFA",fontSize:12,fontWeight:500,opacity:generating?.5:1}}>{generating==="cover"?"Generating...":"Cover Letter"}</button>
-          <button onClick={()=>handleGenerate("resume")} disabled={generating} style={{flex:1,padding:"10px 12px",borderRadius:8,border:"none",cursor:generating?"wait":"pointer",background:"rgba(59,130,246,.2)",color:"#60A5FA",fontSize:12,fontWeight:500,opacity:generating?.5:1}}>{generating==="resume"?"Generating...":"Resume"}</button>
+        {/* Apply method + requirements badges */}
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+          {selectedJob.apply_method&&<span style={{padding:"3px 8px",borderRadius:6,fontSize:10,fontWeight:600,background:selectedJob.apply_method==="email"?"rgba(16,185,129,.15)":selectedJob.apply_method==="idealist_form"?"rgba(139,92,246,.15)":"rgba(245,158,11,.15)",color:selectedJob.apply_method==="email"?"#10B981":selectedJob.apply_method==="idealist_form"?"#8B5CF6":"#F59E0B"}}>{selectedJob.apply_method==="email"?"EMAIL":"IDEALIST FORM"}</span>}
+          <span style={{padding:"3px 8px",borderRadius:6,fontSize:10,fontWeight:600,background:"rgba(59,130,246,.12)",color:"rgba(96,165,250,.9)"}}>Resume</span>
+          <span style={{padding:"3px 8px",borderRadius:6,fontSize:10,fontWeight:600,background:"rgba(139,92,246,.12)",color:"rgba(167,139,250,.9)"}}>Cover Letter</span>
+          {selectedJob.application_requirements?.writing_sample&&<span style={{padding:"3px 8px",borderRadius:6,fontSize:10,fontWeight:600,background:"rgba(245,158,11,.15)",color:"#F59E0B"}}>Writing Sample</span>}
+          {selectedJob.application_requirements?.references&&<span style={{padding:"3px 8px",borderRadius:6,fontSize:10,fontWeight:600,background:"rgba(239,68,68,.12)",color:"rgba(239,68,68,.8)"}}>References</span>}
+        </div>
+        
+        <div style={{display:"flex",gap:6,marginBottom:8}}>
+          <button onClick={()=>handleGenerate("cover")} disabled={generating} style={{flex:1,padding:"10px 8px",borderRadius:8,border:"none",cursor:generating?"wait":"pointer",background:"rgba(139,92,246,.2)",color:"#A78BFA",fontSize:11,fontWeight:500,opacity:generating?.5:1}}>{generating==="cover"?"...":"Cover Letter"}</button>
+          <button onClick={()=>handleGenerate("resume")} disabled={generating} style={{flex:1,padding:"10px 8px",borderRadius:8,border:"none",cursor:generating?"wait":"pointer",background:"rgba(59,130,246,.2)",color:"#60A5FA",fontSize:11,fontWeight:500,opacity:generating?.5:1}}>{generating==="resume"?"...":"Resume"}</button>
+          <button onClick={()=>handleGenerate("writing_sample")} disabled={generating} style={{flex:1,padding:"10px 8px",borderRadius:8,border:"none",cursor:generating?"wait":"pointer",background:"rgba(245,158,11,.2)",color:"#FBBF24",fontSize:11,fontWeight:500,opacity:generating?.5:1}}>{generating==="writing_sample"?"...":"Writing Sample"}</button>
         </div>
         
         {/* Dismiss button */}
