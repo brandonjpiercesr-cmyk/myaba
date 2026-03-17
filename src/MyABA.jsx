@@ -2219,6 +2219,12 @@ export default function MyABA(){
   const[adminPanelOpen,setAdminPanelOpen]=useState(false);
   const[commandCenterOpen,setCommandCenterOpen]=useState(false);
   const[lastABAResponse,setLastABAResponse]=useState(null);
+  // ⬡B:snap.quick_question:STATE:20260317⬡
+  const[snapOpen,setSnapOpen]=useState(false);
+  const[snapMessages,setSnapMessages]=useState([]);
+  const[snapInput,setSnapInput]=useState("");
+  const[snapLoading,setSnapLoading]=useState(false);
+  const[snapMigrate,setSnapMigrate]=useState(false);
   // v2.16.0: Projects now load from backend
   const[projectsLoading,setProjectsLoading]=useState(false);
   const scrollRef=useRef(null);const recorderRef=useRef(null);const liveRef=useRef(false);
@@ -2556,6 +2562,26 @@ export default function MyABA(){
   const toggleLive=useCallback(()=>{if(liveActive){liveRef.current=false;setLiveActive(false);stopListening();setAbaState("idle")}else{liveRef.current=true;setLiveActive(true);startListening()}},[liveActive,startListening,stopListening]);
   const handleKey=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage(input)}};
 
+  // ⬡B:snap.quick_question:SEND:20260317⬡
+  const snapSend=useCallback(async(text)=>{
+    if(!text.trim())return;
+    const userMsg={id:"sq-u-"+Date.now(),role:"user",content:text.trim(),timestamp:Date.now()};
+    setSnapMessages(prev=>[...prev,userMsg]);setSnapInput("");setSnapLoading(true);
+    try{
+      const res=await fetch(ABABASE+"/api/air/process",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({message:text.trim(),user_id:user?.email||"brandon",userId:user?.email||"brandon",channel:"snap"})
+      });
+      const data=await res.json();
+      const abaMsg={id:"sq-a-"+Date.now(),role:"aba",content:data.response||data.message||"",timestamp:Date.now()};
+      setSnapMessages(prev=>[...prev,abaMsg]);
+      if(data.migrateToFull){setSnapMigrate(true)}
+    }catch(err){
+      setSnapMessages(prev=>[...prev,{id:"sq-e-"+Date.now(),role:"aba",content:"Connection issue. Try again.",timestamp:Date.now()}]);
+    }
+    setSnapLoading(false);
+  },[user]);
+
   if(authLoading)return <div style={{position:"fixed",inset:0,background:"#08080d",display:"flex",alignItems:"center",justifyContent:"center"}}><Blob state="thinking" size={100}/></div>;
   if(!user)return <Login onLogin={setUser}/>;
 
@@ -2696,6 +2722,70 @@ export default function MyABA(){
     <ProjectDetailModal open={!!projectDetailModal} project={projectDetailModal} onClose={()=>setProjectDetailModal(null)} onRename={renameProject} onDelete={deleteProject} onAddFile={addFileToProject} onRemoveFile={removeFileFromProject}/>
     <Queue open={queueOpen} onToggle={()=>setQueueOpen(!queueOpen)} items={proactiveItems}/>
     <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} voiceOut={voiceOut} setVoiceOut={setVoiceOut} user={user} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
+    {/* ⬡B:snap.quick_question:FAB_AND_PANEL:20260317⬡ */}
+    {/* SNAP Quick Question - Floating Action Button */}
+    {!snapOpen&&mainTab==="chat"&&<button onClick={()=>{setSnapOpen(true);setSnapMigrate(false)}} style={{
+      position:"fixed",bottom:24,right:24,width:56,height:56,borderRadius:99,
+      background:"linear-gradient(135deg,#8B5CF6,#6366F1)",border:"none",cursor:"pointer",
+      display:"flex",alignItems:"center",justifyContent:"center",
+      boxShadow:"0 4px 24px rgba(139,92,246,.4)",zIndex:998,transition:"transform .2s"
+    }} onMouseEnter={e=>e.target.style.transform="scale(1.1)"} onMouseLeave={e=>e.target.style.transform="scale(1)"}>
+      <Zap size={24} color="white"/>
+    </button>}
+    
+    {/* SNAP Quick Question Panel */}
+    {snapOpen&&<div style={{
+      position:"fixed",bottom:0,right:0,left:0,maxHeight:"60vh",
+      background:"rgba(10,10,15,.97)",borderTop:"1px solid rgba(139,92,246,.3)",
+      borderRadius:"20px 20px 0 0",zIndex:999,display:"flex",flexDirection:"column",
+      backdropFilter:"blur(20px)",animation:"slideUp .3s ease"
+    }}>
+      <style>{String.raw`@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <Zap size={16} color="#8B5CF6"/>
+          <span style={{color:"rgba(255,255,255,.8)",fontSize:14,fontWeight:600}}>Quick Question</span>
+          <span style={{color:"rgba(139,92,246,.5)",fontSize:10}}>SNAP</span>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {snapMigrate&&<button onClick={()=>{setSnapOpen(false);setMainTab("chat");const lastQ=snapMessages.filter(m=>m.role==="user").pop();if(lastQ)setInput(lastQ.content)}} style={{
+            background:"rgba(139,92,246,.15)",border:"1px solid rgba(139,92,246,.3)",borderRadius:8,
+            padding:"4px 12px",color:"#8B5CF6",fontSize:11,fontWeight:600,cursor:"pointer"
+          }}>Switch to Full Chat</button>}
+          <button onClick={()=>setSnapOpen(false)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.4)",padding:4}}>
+            <X size={18}/>
+          </button>
+        </div>
+      </div>
+      {/* Messages */}
+      <div style={{flex:1,overflowY:"auto",padding:"8px 16px",display:"flex",flexDirection:"column",gap:8,maxHeight:"35vh"}}>
+        {snapMessages.length===0&&<div style={{textAlign:"center",padding:"24px 0",color:"rgba(255,255,255,.25)",fontSize:13}}>Ask ABA anything quick</div>}
+        {snapMessages.map(m=><div key={m.id} style={{
+          alignSelf:m.role==="user"?"flex-end":"flex-start",
+          maxWidth:"85%",padding:"10px 14px",borderRadius:16,fontSize:13,lineHeight:1.5,
+          background:m.role==="user"?"rgba(139,92,246,.2)":"rgba(255,255,255,.05)",
+          color:m.role==="user"?"rgba(255,255,255,.9)":"rgba(255,255,255,.75)",
+          border:m.role==="user"?"1px solid rgba(139,92,246,.2)":"1px solid rgba(255,255,255,.06)"
+        }}>{m.content}</div>)}
+        {snapLoading&&<div style={{alignSelf:"flex-start",padding:"10px 14px",borderRadius:16,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.06)"}}>
+          <div style={{display:"flex",gap:4}}><div style={{width:6,height:6,borderRadius:99,background:"rgba(139,92,246,.5)",animation:"mb 1.4s ease infinite"}}/><div style={{width:6,height:6,borderRadius:99,background:"rgba(139,92,246,.5)",animation:"mb 1.4s ease .2s infinite"}}/><div style={{width:6,height:6,borderRadius:99,background:"rgba(139,92,246,.5)",animation:"mb 1.4s ease .4s infinite"}}/></div>
+        </div>}
+      </div>
+      {/* Input */}
+      <div style={{padding:"10px 16px 20px",display:"flex",gap:8}}>
+        <input value={snapInput} onChange={e=>setSnapInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();snapSend(snapInput)}}}
+          placeholder="Ask a quick question..." style={{
+          flex:1,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.08)",
+          borderRadius:12,padding:"10px 14px",color:"white",fontSize:14,outline:"none"
+        }}/>
+        <button onClick={()=>snapSend(snapInput)} disabled={!snapInput.trim()||snapLoading} style={{
+          width:42,height:42,borderRadius:12,border:"none",cursor:snapInput.trim()?"pointer":"default",
+          background:snapInput.trim()?"linear-gradient(135deg,#8B5CF6,#6366F1)":"rgba(255,255,255,.06)",
+          display:"flex",alignItems:"center",justifyContent:"center",opacity:snapInput.trim()?1:.4
+        }}><Send size={16} color="white"/></button>
+      </div>
+    </div>}
     <ConnectionStatus online={online}/>
     {/* v2.15.0: Admin Panel for HAM users */}
     {isHAM(user?.email)&&<AdminPanel open={adminPanelOpen} onClose={()=>setAdminPanelOpen(false)} lastResponse={lastABAResponse}/>}
