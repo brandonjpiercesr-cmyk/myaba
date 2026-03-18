@@ -2725,7 +2725,7 @@ export default function MyABA(){
     {/* ⬡B:snap.quick_question:FAB_AND_PANEL:20260317⬡ */}
     {/* SNAP Quick Question - Floating Action Button */}
     {!snapOpen&&mainTab==="chat"&&<button onClick={()=>{setSnapOpen(true);setSnapMigrate(false)}} style={{
-      position:"fixed",bottom:24,right:24,width:56,height:56,borderRadius:99,
+      position:"fixed",bottom:"calc(24px + env(safe-area-inset-bottom, 0px))",right:24,width:56,height:56,borderRadius:99,
       background:"linear-gradient(135deg,#8B5CF6,#6366F1)",border:"none",cursor:"pointer",
       display:"flex",alignItems:"center",justifyContent:"center",
       boxShadow:"0 4px 24px rgba(139,92,246,.4)",zIndex:998,transition:"transform .2s"
@@ -2735,10 +2735,11 @@ export default function MyABA(){
     
     {/* SNAP Quick Question Panel */}
     {snapOpen&&<div style={{
-      position:"fixed",bottom:0,right:0,left:0,maxHeight:"60vh",
-      background:"rgba(10,10,15,.97)",borderTop:"1px solid rgba(139,92,246,.3)",
+      position:"fixed",bottom:0,right:0,left:0,maxHeight:"65vh",
+      background:"rgba(10,10,15,.98)",borderTop:"1px solid rgba(139,92,246,.3)",
       borderRadius:"20px 20px 0 0",zIndex:999,display:"flex",flexDirection:"column",
-      backdropFilter:"blur(20px)",animation:"slideUp .3s ease"
+      backdropFilter:"blur(20px)",animation:"slideUp .3s ease",
+      paddingBottom:"env(safe-area-inset-bottom, 0px)"
     }}>
       <style>{String.raw`@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
       {/* Header */}
@@ -2759,7 +2760,7 @@ export default function MyABA(){
         </div>
       </div>
       {/* Messages */}
-      <div style={{flex:1,overflowY:"auto",padding:"8px 16px",display:"flex",flexDirection:"column",gap:8,maxHeight:"35vh"}}>
+      <div style={{flex:1,overflowY:"auto",padding:"10px 16px",display:"flex",flexDirection:"column",gap:10,maxHeight:"40vh",scrollBehavior:"smooth"}}>
         {snapMessages.length===0&&<div style={{textAlign:"center",padding:"24px 0",color:"rgba(255,255,255,.25)",fontSize:13}}>Ask ABA anything quick</div>}
         {snapMessages.map(m=><div key={m.id} style={{
           alignSelf:m.role==="user"?"flex-end":"flex-start",
@@ -2773,7 +2774,7 @@ export default function MyABA(){
         </div>}
       </div>
       {/* Input */}
-      <div style={{padding:"10px 16px 20px",display:"flex",gap:8}}>
+      <div style={{padding:"10px 16px calc(20px + env(safe-area-inset-bottom, 0px))",display:"flex",gap:8}}>
         <input value={snapInput} onChange={e=>setSnapInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();snapSend(snapInput)}}}
           placeholder="Ask a quick question..." style={{
           flex:1,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.08)",
