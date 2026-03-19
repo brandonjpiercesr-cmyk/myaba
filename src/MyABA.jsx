@@ -869,8 +869,7 @@ function MainTabSwitcher({tab,setTab}){
     {k:"briefing",i:Bell,l:"Briefing"},
     {k:"jobs",i:Briefcase,l:"Jobs"},
     {k:"pipeline",i:Activity,l:"Pipeline"},
-    {k:"approve",i:CheckCircle,l:"Approve"},
-    {k:"refs",i:Users,l:"Refs"}
+    {k:"approve",i:CheckCircle,l:"Approve"}
   ];
   return(<div style={{display:"flex",gap:2,padding:4,background:"rgba(0,0,0,.4)",borderRadius:12,marginBottom:8}}>
     {tabs.map(t=>{const a=tab===t.k;const I=t.i;return(
@@ -1252,11 +1251,16 @@ function JobsView({userId}){
   const[loading,setLoading]=useState(true);
   const[selectedJob,setSelectedJob]=useState(null);
   const[filter,setFilter]=useState("");
-  const[teamFilter,setTeamFilter]=useState("all"); // Default to all jobs
+  const[teamFilter,setTeamFilter]=useState("all");
+  const[statusFilter,setStatusFilter]=useState("active"); // active | applied | all
   const[generating,setGenerating]=useState(null);
   const[output,setOutput]=useState(null);
   const[showRefs,setShowRefs]=useState(false);
   const[jobRefs,setJobRefs]=useState([]);
+  const[applyPreview,setApplyPreview]=useState(null);
+  const[applyLoading,setApplyLoading]=useState(false);
+  const[interviewForm,setInterviewForm]=useState(null); // {jobId, date, name, notes}
+  const[offerForm,setOfferForm]=useState(null); // {jobId, salary, deadline, details}
   
   // Team members for filter
   const TEAM_MEMBERS=[
@@ -1293,14 +1297,22 @@ function JobsView({userId}){
     })();
   },[]);
   
-  // Filter by team AND text
+  // Filter by team, status, AND text
   const filtered=jobs.filter(j=>{
-    // Team filter first - check ALL assignees, not just first
+    // Status filter
+    if(statusFilter==="active"){
+      const s=(j.status||"NEW").toUpperCase();
+      if(["APPLIED","WAITING","INTERVIEW_SCHEDULED","INTERVIEWED","SECOND_INTERVIEW","OFFER","ACCEPTED","REJECTED","WITHDRAWN","DISMISSED"].includes(s))return false;
+    }else if(statusFilter==="applied"){
+      const s=(j.status||"NEW").toUpperCase();
+      if(!["APPLIED","WAITING","INTERVIEW_SCHEDULED","INTERVIEWED","SECOND_INTERVIEW","OFFER","ACCEPTED"].includes(s))return false;
+    }
+    // Team filter - check ALL assignees
     if(teamFilter!=="all"){
       const allAssignees=(j.assignees||[j.assignee]||[]).map(a=>(a||"").toLowerCase());
       if(!allAssignees.some(a=>a.includes(teamFilter)))return false;
     }
-    // Then text filter
+    // Text filter
     if(!filter)return true;
     const f=filter.toLowerCase();
     const title=(j.job_title||j.title||"").toLowerCase();
@@ -1333,6 +1345,16 @@ function JobsView({userId}){
   }
   
   return(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    {/* Status filter: Active | My Applications | All */}
+    <div style={{display:"flex",gap:4,marginBottom:6}}>
+      {[{k:"active",l:"Active Jobs"},{k:"applied",l:"My Applications"},{k:"all",l:"All"}].map(sf=>(
+        <button key={sf.k} onClick={()=>{setStatusFilter(sf.k);setSelectedJob(null);}} style={{
+          flex:1,padding:"8px 6px",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:statusFilter===sf.k?600:400,
+          background:statusFilter===sf.k?"rgba(139,92,246,.2)":"rgba(255,255,255,.04)",
+          color:statusFilter===sf.k?"rgba(139,92,246,.95)":"rgba(255,255,255,.4)",transition:"all .2s"
+        }}>{sf.l}{sf.k==="applied"?` (${jobs.filter(j=>["APPLIED","WAITING","INTERVIEW_SCHEDULED","INTERVIEWED","SECOND_INTERVIEW","OFFER","ACCEPTED"].includes((j.status||"").toUpperCase())).length})`:""}</button>
+      ))}
+    </div>
     {/* Team filter buttons */}
     <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
       {TEAM_MEMBERS.map(tm=>(
@@ -1359,7 +1381,7 @@ function JobsView({userId}){
           const DISPLAY_NAMES={"brandon":"Brandon","eric":"Eric","bj":"BJ","cj":"CJ","vante":"Vante","dwayne":"Dwayne","gmg":"GMG"};
           const assigneeDisplay=DISPLAY_NAMES[assignee]||assignee;
           return(
-          <div key={job.id} onClick={()=>setSelectedJob(job)} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
+          <div key={job.id} onClick={()=>{setSelectedJob(job);setApplyPreview(null);setInterviewForm(null);setOfferForm(null);setShowRefs(false);}} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
               <p style={{color:"rgba(255,255,255,.9)",fontSize:13,fontWeight:600,margin:0,lineHeight:1.3}}>{title}</p>
               {job.remote&&<span style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:"rgba(16,185,129,.15)",color:"#10B981",flexShrink:0}}>Remote</span>}
@@ -1438,37 +1460,147 @@ function JobsView({userId}){
           </button>
         </div>
         
-        {/* ⬡B:AWA.v3:Phase4:apply_buttons:20260315⬡ */}
-        {selectedJob.status!=="APPLIED"&&selectedJob.status!=="INTERVIEW_SCHEDULED"&&selectedJob.status!=="OFFER"&&selectedJob.status!=="ACCEPTED"&&(
-        <div style={{display:"flex",gap:6,marginBottom:8}}>
-          <button onClick={async()=>{
-            const method=selectedJob.url?"url":"manual";
+        {/* ⬡B:AWA.v4:Phase4:apply_preview_flow:20260319⬡ */}
+        {selectedJob.status!=="APPLIED"&&selectedJob.status!=="INTERVIEW_SCHEDULED"&&selectedJob.status!=="OFFER"&&selectedJob.status!=="ACCEPTED"&&selectedJob.status!=="DISMISSED"&&(
+        <div style={{marginBottom:8}}>
+          {!applyPreview?(
+          <button disabled={applyLoading} onClick={async()=>{
+            setApplyLoading(true);
             try{
               const assignee=(selectedJob.assignees||[])[0]||"brandon";
-              const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/apply`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,method})});
+              const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/apply-preview`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee})});
               const d=await r.json();
-              if(d.success){
-                setSelectedJob(prev=>({...prev,status:"APPLIED",applied_at:new Date().toISOString()}));
-                setJobs(prev=>prev.map(j=>j.id===selectedJob.id?{...j,status:"APPLIED"}:j));
-                setOutput(d.message);
-                if(method==="url"&&selectedJob.url)window.open(selectedJob.url,"_blank");
-              }else{setOutput("Apply failed: "+(d.error||"Unknown error"))}
-            }catch(e){setOutput("Apply error: "+e.message)}
-          }} style={{flex:1,padding:"10px 8px",borderRadius:8,border:"none",cursor:"pointer",background:"linear-gradient(135deg,rgba(16,185,129,.3),rgba(59,130,246,.3))",color:"#34D399",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-            <Send size={14}/>{selectedJob.url?"Apply (Open Link)":"Mark Applied"}
+              if(d.success){setApplyPreview(d)}else{setOutput("Preview failed: "+(d.error||"Unknown"))}
+            }catch(e){setOutput("Preview error: "+e.message)}
+            setApplyLoading(false);
+          }} style={{width:"100%",padding:"12px 8px",borderRadius:10,border:"none",cursor:"pointer",background:"linear-gradient(135deg,rgba(16,185,129,.3),rgba(59,130,246,.3))",color:"#34D399",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:applyLoading?.6:1}}>
+            <Send size={16}/>{applyLoading?"Preparing...":"Apply to This Job"}
           </button>
+          ):(
+          <div style={{padding:12,borderRadius:10,background:"rgba(16,185,129,.06)",border:"1px solid rgba(16,185,129,.15)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <span style={{color:"#34D399",fontSize:12,fontWeight:600}}>
+                {applyPreview.applicationType==="email"?"Email Application":applyPreview.applicationType==="idealist_form"?"Idealist Application":"External Application"}
+              </span>
+              <button onClick={()=>setApplyPreview(null)} style={{background:"none",border:"none",color:"rgba(255,255,255,.3)",cursor:"pointer",fontSize:18}}>x</button>
+            </div>
+            
+            {/* Download PDF + DOCX */}
+            <div style={{display:"flex",gap:6,marginBottom:8}}>
+              <button onClick={()=>{
+                if(applyPreview.pdfBase64){const blob=new Blob([Uint8Array.from(atob(applyPreview.pdfBase64),c=>c.charCodeAt(0))],{type:"application/pdf"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=applyPreview.pdfFilename||"application.pdf";a.click();URL.revokeObjectURL(url)}
+                else{setOutput("PDF not ready yet")}
+              }} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid rgba(16,185,129,.2)",cursor:"pointer",background:"rgba(16,185,129,.1)",color:"#10B981",fontSize:11,fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+                <Download size={12}/>Download PDF
+              </button>
+              <button onClick={async()=>{
+                try{
+                  const assignee=(selectedJob.assignees||[])[0]||"brandon";
+                  const r=await fetch(`${ABABASE}/api/awa/export/combined/preview`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobId:selectedJob.id,format:"docx",userId:assignee,includeReferences:true})});
+                  const d=await r.json();
+                  if(d.success&&d.base64){const blob=new Blob([Uint8Array.from(atob(d.base64),c=>c.charCodeAt(0))],{type:d.contentType});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=d.filename||"application.docx";a.click();URL.revokeObjectURL(url)}
+                }catch(e){setOutput("DOCX error: "+e.message)}
+              }} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid rgba(59,130,246,.2)",cursor:"pointer",background:"rgba(59,130,246,.1)",color:"#60A5FA",fontSize:11,fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+                <Download size={12}/>Download DOCX
+              </button>
+            </div>
+            
+            {/* Email application: show draft + mailto */}
+            {applyPreview.applicationType==="email"&&applyPreview.emailDraft&&(
+            <div style={{marginBottom:8}}>
+              <p style={{color:"rgba(255,255,255,.5)",fontSize:10,margin:"0 0 4px"}}>To: {applyPreview.emailDraft.to}</p>
+              <p style={{color:"rgba(255,255,255,.5)",fontSize:10,margin:"0 0 4px"}}>Subject: {applyPreview.emailDraft.subject}</p>
+              <div style={{maxHeight:100,overflowY:"auto",padding:8,borderRadius:6,background:"rgba(0,0,0,.3)",marginBottom:8}}>
+                <p style={{color:"rgba(255,255,255,.6)",fontSize:10,margin:0,whiteSpace:"pre-wrap"}}>{applyPreview.emailDraft.body?.substring(0,500)}{applyPreview.emailDraft.body?.length>500?"...":""}</p>
+              </div>
+              <button onClick={()=>{
+                if(applyPreview.mailtoLink)window.location.href=applyPreview.mailtoLink;
+              }} style={{width:"100%",padding:"10px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(16,185,129,.25)",color:"#34D399",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                <Mail size={14}/>Open in Email App (attach PDF manually)
+              </button>
+              <p style={{color:"rgba(255,255,255,.3)",fontSize:9,textAlign:"center",margin:"4px 0 0"}}>Download your PDF first, then attach it in your email app</p>
+            </div>
+            )}
+            
+            {/* URL/Idealist application: checklist */}
+            {(applyPreview.applicationType==="url"||applyPreview.applicationType==="idealist_form")&&(
+            <div style={{marginBottom:8}}>
+              {applyPreview.applicationType==="idealist_form"&&<p style={{color:"#8B5CF6",fontSize:10,fontWeight:600,margin:"0 0 6px"}}>Idealist Application Detected</p>}
+              {(applyPreview.checklist||[]).map((c,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0"}}>
+                  <span style={{color:c.done?"#10B981":"rgba(255,255,255,.3)",fontSize:12}}>{c.done?"✓":"○"}</span>
+                  <span style={{color:"rgba(255,255,255,.6)",fontSize:11}}>{c.item}</span>
+                </div>
+              ))}
+              <button onClick={()=>{if(selectedJob.url)window.open(selectedJob.url,"_blank")}} style={{width:"100%",padding:"10px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(59,130,246,.25)",color:"#60A5FA",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:8}}>
+                <ExternalLink size={14}/>Open Application Link
+              </button>
+            </div>
+            )}
+            
+            {/* References warning */}
+            {applyPreview.job?.requirements?.references&&(
+              <p style={{color:"#F59E0B",fontSize:10,margin:"0 0 8px"}}>This job requires references ({applyPreview.references?.length||0} loaded)</p>
+            )}
+            
+            {/* Confirm applied */}
+            <button onClick={async()=>{
+              try{
+                const assignee=(selectedJob.assignees||[])[0]||"brandon";
+                const method=applyPreview.applicationType||"manual";
+                const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/apply`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,method})});
+                const d=await r.json();
+                if(d.success){
+                  setSelectedJob(prev=>({...prev,status:"APPLIED",applied_at:new Date().toISOString()}));
+                  setJobs(prev=>prev.map(j=>j.id===selectedJob.id?{...j,status:"APPLIED"}:j));
+                  setApplyPreview(null);
+                  setOutput(d.message);
+                }
+              }catch(e){setOutput("Confirm error: "+e.message)}
+            }} style={{width:"100%",padding:"10px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(16,185,129,.3)",color:"#34D399",fontSize:12,fontWeight:600,marginTop:4}}>
+              I Applied - Mark as Submitted
+            </button>
+          </div>
+          )}
         </div>
         )}
         
-        {/* ⬡B:AWA.v3:Phase6:status_badge:20260315⬡ */}
+        {/* Not Interested button */}
+        {selectedJob.status!=="DISMISSED"&&selectedJob.status!=="ACCEPTED"&&(
+        <button onClick={async()=>{
+          try{
+            const assignee=(selectedJob.assignees||[])[0]||"brandon";
+            const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:"DISMISSED"})});
+            const d=await r.json();
+            if(d.success){
+              setSelectedJob(prev=>({...prev,status:"DISMISSED"}));
+              setJobs(prev=>prev.map(j=>j.id===selectedJob.id?{...j,status:"DISMISSED"}:j));
+            }
+          }catch(e){console.error("[AWA] Dismiss failed:",e)}
+        }} style={{width:"100%",padding:"6px",borderRadius:6,border:"1px solid rgba(239,68,68,.1)",cursor:"pointer",background:"transparent",color:"rgba(239,68,68,.5)",fontSize:10,marginBottom:8}}>
+          Not Interested
+        </button>
+        )}
+        
+        {/* ⬡B:AWA.v4:status_with_interview_form:20260319⬡ */}
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,padding:"8px 10px",borderRadius:8,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.05)"}}>
           <span style={{color:"rgba(255,255,255,.4)",fontSize:10}}>Status:</span>
           <span style={{padding:"3px 8px",borderRadius:6,fontSize:10,fontWeight:600,
             background:selectedJob.status==="APPLIED"?"rgba(16,185,129,.15)":selectedJob.status==="INTERVIEW_SCHEDULED"?"rgba(245,158,11,.15)":selectedJob.status==="OFFER"?"rgba(139,92,246,.15)":selectedJob.status==="ACCEPTED"?"rgba(16,185,129,.25)":selectedJob.status==="DISMISSED"?"rgba(239,68,68,.12)":"rgba(255,255,255,.08)",
             color:selectedJob.status==="APPLIED"?"#10B981":selectedJob.status==="INTERVIEW_SCHEDULED"?"#FBBF24":selectedJob.status==="OFFER"?"#A78BFA":selectedJob.status==="ACCEPTED"?"#34D399":selectedJob.status==="DISMISSED"?"rgba(239,68,68,.7)":"rgba(255,255,255,.5)"
-          }}>{selectedJob.status||"NEW"}</span>
+          }}>{(selectedJob.status||"NEW").replace(/_/g," ")}</span>
           <select onChange={async(e)=>{
             const newStatus=e.target.value;if(!newStatus)return;
+            // Show interview form instead of immediately updating
+            if(newStatus==="INTERVIEW_SCHEDULED"){
+              setInterviewForm({jobId:selectedJob.id,date:"",name:"",notes:""});
+              return;
+            }
+            // Show offer form
+            if(newStatus==="OFFER"){
+              setOfferForm({jobId:selectedJob.id,salary:"",deadline:"",details:""});
+              return;
+            }
             try{
               const assignee=(selectedJob.assignees||[])[0]||"brandon";
               const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:newStatus})});
@@ -1480,25 +1612,95 @@ function JobsView({userId}){
             }catch(e){console.error("[AWA] Status update failed:",e)}
           }} value="" style={{marginLeft:"auto",padding:"4px 6px",borderRadius:6,border:"1px solid rgba(255,255,255,.1)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.5)",fontSize:10,cursor:"pointer"}}>
             <option value="">Move to...</option>
-            {["NEW","SAVED","MATERIALS_READY","APPLIED","WAITING","INTERVIEW_SCHEDULED","INTERVIEWED","SECOND_INTERVIEW","OFFER","ACCEPTED","REJECTED","WITHDRAWN"].map(s=><option key={s} value={s}>{s.replace(/_/g," ")}</option>)}
+            {["NEW","SAVED","MATERIALS_READY","APPLIED","WAITING","INTERVIEW_SCHEDULED","INTERVIEWED","SECOND_INTERVIEW","OFFER","ACCEPTED","REJECTED","WITHDRAWN","DISMISSED"].map(s=><option key={s} value={s}>{s.replace(/_/g," ")}</option>)}
           </select>
         </div>
         
-        {/* ⬡B:AWA.v3:Phase6:interview_details:20260315⬡ */}
-        {(selectedJob.status==="INTERVIEW_SCHEDULED"||selectedJob.interview_date)&&(
+        {/* Interview scheduling form - appears when user selects INTERVIEW_SCHEDULED */}
+        {interviewForm&&interviewForm.jobId===selectedJob.id&&(
+        <div style={{padding:12,borderRadius:10,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.2)",marginBottom:8}}>
+          <p style={{color:"#FBBF24",fontSize:12,fontWeight:600,margin:"0 0 8px"}}>Schedule Interview</p>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <input type="datetime-local" value={interviewForm.date} onChange={e=>setInterviewForm(prev=>({...prev,date:e.target.value}))} style={{padding:"8px 10px",borderRadius:6,border:"1px solid rgba(245,158,11,.2)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}/>
+            <input placeholder="Interviewer name" value={interviewForm.name} onChange={e=>setInterviewForm(prev=>({...prev,name:e.target.value}))} style={{padding:"8px 10px",borderRadius:6,border:"1px solid rgba(255,255,255,.1)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}/>
+            <input placeholder="Notes (optional)" value={interviewForm.notes} onChange={e=>setInterviewForm(prev=>({...prev,notes:e.target.value}))} style={{padding:"8px 10px",borderRadius:6,border:"1px solid rgba(255,255,255,.1)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}/>
+          </div>
+          <div style={{display:"flex",gap:6,marginTop:8}}>
+            <button onClick={async()=>{
+              try{
+                const assignee=(selectedJob.assignees||[])[0]||"brandon";
+                const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:"INTERVIEW_SCHEDULED",interviewDate:interviewForm.date||null,interviewerName:interviewForm.name||null,notes:interviewForm.notes||null})});
+                const d=await r.json();
+                if(d.success){
+                  setSelectedJob(prev=>({...prev,status:"INTERVIEW_SCHEDULED",interview_date:interviewForm.date,interviewer_name:interviewForm.name,interview_notes:interviewForm.notes}));
+                  setJobs(prev=>prev.map(j=>j.id===selectedJob.id?{...j,status:"INTERVIEW_SCHEDULED"}:j));
+                  setInterviewForm(null);
+                  setOutput(d.message);
+                }
+              }catch(e){setOutput("Interview schedule error: "+e.message)}
+            }} style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(245,158,11,.25)",color:"#FBBF24",fontSize:12,fontWeight:600}}>
+              Confirm Interview
+            </button>
+            <button onClick={()=>setInterviewForm(null)} style={{padding:"10px 16px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",cursor:"pointer",background:"transparent",color:"rgba(255,255,255,.4)",fontSize:12}}>
+              Cancel
+            </button>
+          </div>
+        </div>
+        )}
+        
+        {/* Offer form - appears when user selects OFFER */}
+        {offerForm&&offerForm.jobId===selectedJob.id&&(
+        <div style={{padding:12,borderRadius:10,background:"rgba(139,92,246,.08)",border:"1px solid rgba(139,92,246,.2)",marginBottom:8}}>
+          <p style={{color:"#A78BFA",fontSize:12,fontWeight:600,margin:"0 0 8px"}}>Offer Details</p>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <input placeholder="Salary offered" value={offerForm.salary} onChange={e=>setOfferForm(prev=>({...prev,salary:e.target.value}))} style={{padding:"8px 10px",borderRadius:6,border:"1px solid rgba(139,92,246,.2)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}/>
+            <input type="date" value={offerForm.deadline} onChange={e=>setOfferForm(prev=>({...prev,deadline:e.target.value}))} placeholder="Response deadline" style={{padding:"8px 10px",borderRadius:6,border:"1px solid rgba(255,255,255,.1)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}/>
+            <input placeholder="Notes (benefits, details)" value={offerForm.details} onChange={e=>setOfferForm(prev=>({...prev,details:e.target.value}))} style={{padding:"8px 10px",borderRadius:6,border:"1px solid rgba(255,255,255,.1)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}/>
+          </div>
+          <div style={{display:"flex",gap:6,marginTop:8}}>
+            <button onClick={async()=>{
+              try{
+                const assignee=(selectedJob.assignees||[])[0]||"brandon";
+                const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:"OFFER",offerSalary:offerForm.salary||null,offerDeadline:offerForm.deadline||null,offerDetails:offerForm.details||null})});
+                const d=await r.json();
+                if(d.success){
+                  setSelectedJob(prev=>({...prev,status:"OFFER",offer_salary:offerForm.salary,offer_deadline:offerForm.deadline,offer_details:offerForm.details}));
+                  setJobs(prev=>prev.map(j=>j.id===selectedJob.id?{...j,status:"OFFER"}:j));
+                  setOfferForm(null);
+                  setOutput(d.message);
+                }
+              }catch(e){setOutput("Offer save error: "+e.message)}
+            }} style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(139,92,246,.25)",color:"#A78BFA",fontSize:12,fontWeight:600}}>
+              Save Offer
+            </button>
+            <button onClick={()=>setOfferForm(null)} style={{padding:"10px 16px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",cursor:"pointer",background:"transparent",color:"rgba(255,255,255,.4)",fontSize:12}}>
+              Cancel
+            </button>
+          </div>
+        </div>
+        )}
+        
+        {/* ⬡B:AWA.v4:interview_details_display:20260319⬡ */}
+        {!interviewForm&&(selectedJob.status==="INTERVIEW_SCHEDULED"||selectedJob.interview_date)&&(
         <div style={{padding:10,borderRadius:8,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.15)",marginBottom:8}}>
-          <p style={{color:"#FBBF24",fontSize:11,fontWeight:600,margin:"0 0 4px"}}>Interview Details</p>
-          {selectedJob.interview_date&&<p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"2px 0"}}>Date: {new Date(selectedJob.interview_date).toLocaleString()}</p>}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <p style={{color:"#FBBF24",fontSize:11,fontWeight:600,margin:0}}>Interview Details</p>
+            <button onClick={()=>setInterviewForm({jobId:selectedJob.id,date:selectedJob.interview_date||"",name:selectedJob.interviewer_name||"",notes:selectedJob.interview_notes||""})} style={{background:"none",border:"none",color:"rgba(245,158,11,.5)",cursor:"pointer",fontSize:10}}>Edit</button>
+          </div>
+          {selectedJob.interview_date&&<p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"4px 0 2px"}}>Date: {new Date(selectedJob.interview_date).toLocaleString()}</p>}
           {selectedJob.interviewer_name&&<p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"2px 0"}}>With: {selectedJob.interviewer_name}</p>}
           {selectedJob.interview_notes&&<p style={{color:"rgba(255,255,255,.5)",fontSize:10,margin:"4px 0 0"}}>{selectedJob.interview_notes}</p>}
         </div>
         )}
         
-        {/* ⬡B:AWA.v3:Phase6:offer_details:20260315⬡ */}
-        {selectedJob.status==="OFFER"&&(
+        {/* ⬡B:AWA.v4:offer_details_display:20260319⬡ */}
+        {!offerForm&&selectedJob.status==="OFFER"&&(
         <div style={{padding:10,borderRadius:8,background:"rgba(139,92,246,.08)",border:"1px solid rgba(139,92,246,.15)",marginBottom:8}}>
-          <p style={{color:"#A78BFA",fontSize:11,fontWeight:600,margin:"0 0 4px"}}>Offer Details</p>
-          {selectedJob.offer_salary&&<p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"2px 0"}}>Salary: {selectedJob.offer_salary}</p>}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <p style={{color:"#A78BFA",fontSize:11,fontWeight:600,margin:0}}>Offer Details</p>
+            <button onClick={()=>setOfferForm({jobId:selectedJob.id,salary:selectedJob.offer_salary||"",deadline:selectedJob.offer_deadline||"",details:selectedJob.offer_details||""})} style={{background:"none",border:"none",color:"rgba(139,92,246,.5)",cursor:"pointer",fontSize:10}}>Edit</button>
+          </div>
+          {selectedJob.offer_salary&&<p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"4px 0 2px"}}>Salary: {selectedJob.offer_salary}</p>}
           {selectedJob.offer_deadline&&<p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"2px 0"}}>Deadline: {new Date(selectedJob.offer_deadline).toLocaleDateString()}</p>}
           {selectedJob.offer_details&&<p style={{color:"rgba(255,255,255,.5)",fontSize:10,margin:"4px 0 0"}}>{selectedJob.offer_details}</p>}
         </div>
@@ -2712,9 +2914,6 @@ export default function MyABA(){
       
       {/* Approve Mode */}
       {mainTab==="approve"&&<ApproveView userId={user?.email||"brandon"}/>}
-      
-      {/* References Mode - ⬡B:MYABA.V2:refs_render:20260313⬡ */}
-      {mainTab==="refs"&&<ReferencesView userId={user?.email||"brandon"}/>}
     </div>
     <Sidebar open={sidebarOpen} convos={convos} activeId={activeId} onSelect={setActiveId} onCreate={()=>setNewChatModal(true)} onClose={()=>setSidebarOpen(false)} onDelete={deleteConv} onArchive={archiveConv} onShare={c=>setShareModal(c)} projects={projects} activeProject={activeProject} onSelectProject={setActiveProject} onCreateProject={()=>setNewChatModal(true)} onProjectDetail={p=>setProjectDetailModal(p)} user={user}/>
     <ShareModal open={!!shareModal} conversation={shareModal} onClose={()=>setShareModal(null)} onShare={shareConversation}/>
