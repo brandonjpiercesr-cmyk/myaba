@@ -2701,7 +2701,69 @@ export default function MyABA(){
 
   // v2.8.0: Save via direct Supabase endpoint
   // v2.15.0: Use email for userId to match HAM resolution
-  useEffect(()=>{if(user&&activeConv&&activeConv.messages.length>0)saveConversation(user.email||user.uid,activeConv).catch(()=>{})},[activeConv?.messages?.length]);
+  // v2.19.0: Added error logging instead of silent swallow
+  useEffect(()=>{
+    if(user&&activeConv&&activeConv.messages.length>0){
+      saveConversation(user.email||user.uid,activeConv).catch(e=>console.warn("[SAVE] Conversation save failed:",e));
+    }
+  },[activeConv?.messages?.length]);
+
+  // ⬡B:chat.persistence.v19:SAVE_ON_CLOSE:20260319⬡
+  // Save conversation when user leaves the app (tab switch, minimize, close)
+  const activeConvRef=useRef(null);
+  useEffect(()=>{activeConvRef.current=activeConv},[activeConv]);
+  
+  useEffect(()=>{
+    if(!user)return;
+    const userId=user.email||user.uid;
+    
+    // Save when tab becomes hidden (user switches apps or tabs)
+    const handleVisibility=()=>{
+      if(document.visibilityState==="hidden"&&activeConvRef.current&&activeConvRef.current.messages.length>0){
+        console.log("[SAVE] Saving on visibility change");
+        // Use sendBeacon for reliability on close, fall back to fetch
+        const payload=JSON.stringify({
+          id:activeConvRef.current.id,
+          userId,
+          title:activeConvRef.current.title,
+          messages:activeConvRef.current.messages,
+          shared:activeConvRef.current.shared,
+          projectId:activeConvRef.current.projectId
+        });
+        const sent=navigator.sendBeacon&&navigator.sendBeacon(
+          `${ABABASE}/api/conversations`,
+          new Blob([payload],{type:"application/json"})
+        );
+        if(!sent)saveConversation(userId,activeConvRef.current).catch(()=>{});
+      }
+    };
+    
+    // Save when browser is about to close
+    const handleBeforeUnload=()=>{
+      if(activeConvRef.current&&activeConvRef.current.messages.length>0){
+        console.log("[SAVE] Saving on beforeunload");
+        const payload=JSON.stringify({
+          id:activeConvRef.current.id,
+          userId,
+          title:activeConvRef.current.title,
+          messages:activeConvRef.current.messages,
+          shared:activeConvRef.current.shared,
+          projectId:activeConvRef.current.projectId
+        });
+        navigator.sendBeacon&&navigator.sendBeacon(
+          `${ABABASE}/api/conversations`,
+          new Blob([payload],{type:"application/json"})
+        );
+      }
+    };
+    
+    document.addEventListener("visibilitychange",handleVisibility);
+    window.addEventListener("beforeunload",handleBeforeUnload);
+    return()=>{
+      document.removeEventListener("visibilitychange",handleVisibility);
+      window.removeEventListener("beforeunload",handleBeforeUnload);
+    };
+  },[user]);
 
   // SPURT 5: Handle file selection
   const handleFileSelect=useCallback((e)=>{
