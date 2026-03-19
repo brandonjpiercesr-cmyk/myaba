@@ -2715,19 +2715,22 @@ export default function MyABA(){
     setAttachments(p=>p.filter(a=>a.id!==id));
   },[]);
 
+  // ⬡B:voice.chain.v4:FIXED_STALE_CLOSURES:20260319⬡
+  // Use refs to break the circular dependency between sendMessage and startListening
+  const sendMessageRef=useRef(null);
+  const startListeningRef=useRef(null);
+
   const sendMessage=useCallback(async(text,isVoice=false)=>{
     if(!text.trim()&&attachments.length===0)return;
-    // Include attachments in message
     const userMsg={id:`u-${Date.now()}`,role:"user",content:text.trim(),timestamp:Date.now(),isVoice,attachments:attachments.length>0?attachments.map(a=>({name:a.name,type:a.type,size:a.size})):undefined};
     addMsg(userMsg);setInput("");setAttachments([]);setIsTyping(true);setAbaState("thinking");
-    // v2.15.0: Use email as userId for proper HAM resolution
+    console.log("[VOICE] sendMessage called:",text.substring(0,50));
     const data=await airRequest("text",{message:text.trim(),conversationId:activeId,attachments:attachments.map(a=>({name:a.name,type:a.type}))},user?.email||user?.uid||"brandon");
     setIsTyping(false);
-    
-    // v2.15.0: Track response for admin panel
     setLastABAResponse(data);
     
     if(data.error){
+      console.error("[VOICE] AIR returned error:",data.errorMessage||data.error);
       showToast("Taking a moment to reconnect...","offline");
       setAbaState("idle");
       return;
@@ -2735,8 +2738,29 @@ export default function MyABA(){
     
     const abaMsg={id:`a-${Date.now()}`,role:"aba",timestamp:Date.now(),content:data.response||data.message||"",output:data.actions?.[0]?{type:data.actions[0].type,title:data.actions[0].title,subtitle:data.actions[0].subtitle,preview:data.actions[0].preview,actions:true}:undefined};
     addMsg(abaMsg);
-    if(voiceOut&&abaMsg.content){setAbaState("speaking");const url=await reachSynthesize(abaMsg.content);if(url){const a=new Audio(url);a.onended=()=>{setAbaState("idle");if(liveRef.current)startListening()};a.play().catch(()=>{setAbaState("idle");if(liveRef.current)startListening()})}else{setAbaState("idle");if(liveRef.current)startListening()}}else{setAbaState("idle");if(liveRef.current)startListening()}
+    console.log("[VOICE] ABA response:",abaMsg.content?.substring(0,80));
+    if(voiceOut&&abaMsg.content){
+      setAbaState("speaking");
+      console.log("[VOICE] Synthesizing response...");
+      const url=await reachSynthesize(abaMsg.content);
+      if(url){
+        console.log("[VOICE] Playing audio...");
+        const a=new Audio(url);
+        a.onended=()=>{setAbaState("idle");if(liveRef.current&&startListeningRef.current)startListeningRef.current()};
+        a.play().catch(err=>{console.error("[VOICE] Audio play error:",err);setAbaState("idle");if(liveRef.current&&startListeningRef.current)startListeningRef.current()});
+      }else{
+        console.warn("[VOICE] Synthesis returned no URL");
+        setAbaState("idle");
+        if(liveRef.current&&startListeningRef.current)startListeningRef.current();
+      }
+    }else{
+      setAbaState("idle");
+      if(liveRef.current&&startListeningRef.current)startListeningRef.current();
+    }
   },[activeId,user,voiceOut,addMsg,showToast,attachments]);
+
+  // Keep ref always pointing to latest sendMessage
+  useEffect(()=>{sendMessageRef.current=sendMessage},[sendMessage]);
 
   // SPURT 6: Speak any text (for replay button)
   const speakText=useCallback(async(text)=>{
@@ -2753,12 +2777,76 @@ export default function MyABA(){
   },[]);
 
   const startListening=useCallback(async()=>{
-    try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});setIsListening(true);setAbaState("listening");
-      const rec=new MediaRecorder(stream,{mimeType:"audio/webm"});const chunks=[];rec.ondataavailable=e=>chunks.push(e.data);
-      rec.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());setAbaState("thinking");setIsListening(false);const blob=new Blob(chunks,{type:"audio/webm"});const transcript=await reachTranscribe(blob);if(transcript)sendMessage(transcript,true);else{setAbaState("idle");if(liveRef.current)setTimeout(startListening,500)}};
-      recorderRef.current=rec;rec.start();if(voiceMode!=="push")setTimeout(()=>{if(rec.state==="recording")rec.stop()},15000);
-    }catch{setIsListening(false);setAbaState("idle");showToast("Could not access your microphone","warning")}
-  },[sendMessage,voiceMode,showToast]);
+    console.log("[VOICE] startListening called");
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      console.log("[VOICE] Mic access granted");
+      setIsListening(true);setAbaState("listening");
+      
+      // Detect supported mimeType instead of hardcoding
+      const mimeTypes=["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus","audio/mp4","audio/aac",""];
+      let mimeType="";
+      for(const mt of mimeTypes){
+        if(!mt||MediaRecorder.isTypeSupported(mt)){mimeType=mt;break}
+      }
+      console.log("[VOICE] Using mimeType:",mimeType||"(browser default)");
+      
+      const recOpts=mimeType?{mimeType}:undefined;
+      const rec=new MediaRecorder(stream,recOpts);
+      const chunks=[];
+      rec.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data)};
+      
+      rec.onstop=async()=>{
+        console.log("[VOICE] Recording stopped, chunks:",chunks.length);
+        stream.getTracks().forEach(t=>t.stop());
+        setAbaState("thinking");setIsListening(false);
+        
+        if(chunks.length===0){
+          console.warn("[VOICE] No audio chunks recorded");
+          setAbaState("idle");
+          showToast("No audio captured. Try again.","warning");
+          if(liveRef.current)setTimeout(()=>{if(startListeningRef.current)startListeningRef.current()},1000);
+          return;
+        }
+        
+        const blob=new Blob(chunks,{type:mimeType||"audio/webm"});
+        console.log("[VOICE] Blob size:",blob.size,"type:",blob.type);
+        
+        try{
+          const transcript=await reachTranscribe(blob);
+          console.log("[VOICE] Transcript:",transcript||"(empty)");
+          if(transcript&&transcript.trim()){
+            if(sendMessageRef.current)sendMessageRef.current(transcript,true);
+            else console.error("[VOICE] sendMessageRef is null!");
+          }else{
+            console.warn("[VOICE] Empty transcript from Deepgram");
+            setAbaState("idle");
+            if(liveRef.current)setTimeout(()=>{if(startListeningRef.current)startListeningRef.current()},500);
+          }
+        }catch(transcribeErr){
+          console.error("[VOICE] Transcription error:",transcribeErr);
+          setAbaState("idle");
+          showToast("Voice processing failed. Try again.","warning");
+        }
+      };
+      
+      rec.onerror=e=>{console.error("[VOICE] MediaRecorder error:",e.error)};
+      recorderRef.current=rec;
+      rec.start(1000); // Collect chunks every 1 second
+      console.log("[VOICE] Recording started");
+      
+      if(voiceMode!=="push")setTimeout(()=>{if(rec.state==="recording"){console.log("[VOICE] 15s timeout, stopping");rec.stop()}},15000);
+    }catch(err){
+      console.error("[VOICE] startListening error:",err.name,err.message);
+      setIsListening(false);setAbaState("idle");
+      if(err.name==="NotAllowedError")showToast("Microphone permission denied","warning");
+      else if(err.name==="NotSupportedError")showToast("Audio recording not supported on this browser","warning");
+      else showToast("Could not start voice: "+err.message,"warning");
+    }
+  },[voiceMode,showToast]);
+
+  // Keep ref always pointing to latest startListening
+  useEffect(()=>{startListeningRef.current=startListening},[startListening]);
 
   const stopListening=useCallback(()=>{if(recorderRef.current?.state==="recording")recorderRef.current.stop()},[]);
   const toggleLive=useCallback(()=>{if(liveActive){liveRef.current=false;setLiveActive(false);stopListening();setAbaState("idle")}else{liveRef.current=true;setLiveActive(true);startListening()}},[liveActive,startListening,stopListening]);
