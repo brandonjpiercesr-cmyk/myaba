@@ -1261,6 +1261,14 @@ function JobsView({userId}){
   const[applyLoading,setApplyLoading]=useState(false);
   const[interviewForm,setInterviewForm]=useState(null); // {jobId, date, name, notes}
   const[offerForm,setOfferForm]=useState(null); // {jobId, salary, deadline, details}
+  const[prepData,setPrepData]=useState(null); // interview prep package
+  const[prepLoading,setPrepLoading]=useState(false);
+  const[mockMode,setMockMode]=useState(false); // mock interview active
+  const[mockQuestion,setMockQuestion]=useState(null); // current question
+  const[mockAnswer,setMockAnswer]=useState(""); // user's typed answer
+  const[mockEval,setMockEval]=useState(null); // evaluation result
+  const[mockHistory,setMockHistory]=useState([]); // past questions
+  const[mockLoading,setMockLoading]=useState(false);
   
   // Team members for filter
   const TEAM_MEMBERS=[
@@ -1381,7 +1389,7 @@ function JobsView({userId}){
           const DISPLAY_NAMES={"brandon":"Brandon","eric":"Eric","bj":"BJ","cj":"CJ","vante":"Vante","dwayne":"Dwayne","gmg":"GMG"};
           const assigneeDisplay=DISPLAY_NAMES[assignee]||assignee;
           return(
-          <div key={job.id} onClick={()=>{setSelectedJob(job);setApplyPreview(null);setInterviewForm(null);setOfferForm(null);setShowRefs(false);}} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
+          <div key={job.id} onClick={()=>{setSelectedJob(job);setApplyPreview(null);setInterviewForm(null);setOfferForm(null);setShowRefs(false);setPrepData(null);setMockMode(false);setMockQuestion(null);setMockEval(null);}} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
               <p style={{color:"rgba(255,255,255,.9)",fontSize:13,fontWeight:600,margin:0,lineHeight:1.3}}>{title}</p>
               {job.remote&&<span style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:"rgba(16,185,129,.15)",color:"#10B981",flexShrink:0}}>Remote</span>}
@@ -1690,6 +1698,112 @@ function JobsView({userId}){
           {selectedJob.interview_date&&<p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"4px 0 2px"}}>Date: {new Date(selectedJob.interview_date).toLocaleString()}</p>}
           {selectedJob.interviewer_name&&<p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"2px 0"}}>With: {selectedJob.interviewer_name}</p>}
           {selectedJob.interview_notes&&<p style={{color:"rgba(255,255,255,.5)",fontSize:10,margin:"4px 0 0"}}>{selectedJob.interview_notes}</p>}
+        </div>
+        )}
+        
+        {/* ⬡B:AWA.v4:interview_prep_mock:20260319⬡ */}
+        {(selectedJob.status==="INTERVIEW_SCHEDULED"||selectedJob.status==="INTERVIEWED"||selectedJob.status==="SECOND_INTERVIEW")&&!mockMode&&(
+        <div style={{display:"flex",gap:6,marginBottom:8}}>
+          <button disabled={prepLoading} onClick={async()=>{
+            setPrepLoading(true);setPrepData(null);
+            try{
+              const assignee=(selectedJob.assignees||[])[0]||"brandon";
+              const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/interview-prep`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee})});
+              const d=await r.json();
+              if(d.success)setPrepData(d.prep);
+              else setOutput("Prep failed: "+(d.error||"Unknown"));
+            }catch(e){setOutput("Prep error: "+e.message)}
+            setPrepLoading(false);
+          }} style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(245,158,11,.2)",color:"#FBBF24",fontSize:11,fontWeight:600,opacity:prepLoading?.5:1}}>
+            {prepLoading?"Generating...":"Interview Prep"}
+          </button>
+          <button onClick={()=>{setMockMode(true);setMockQuestion(null);setMockAnswer("");setMockEval(null);setMockHistory([])}} style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(6,182,212,.2)",color:"#22D3EE",fontSize:11,fontWeight:600}}>
+            Practice Interview
+          </button>
+        </div>
+        )}
+        
+        {/* Interview Prep Results */}
+        {prepData&&!mockMode&&(
+        <div style={{padding:10,borderRadius:8,background:"rgba(245,158,11,.05)",border:"1px solid rgba(245,158,11,.1)",marginBottom:8,maxHeight:300,overflowY:"auto"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+            <span style={{color:"#FBBF24",fontSize:11,fontWeight:600}}>Interview Prep</span>
+            <button onClick={()=>setPrepData(null)} style={{background:"none",border:"none",color:"rgba(255,255,255,.3)",cursor:"pointer",fontSize:14}}>x</button>
+          </div>
+          {prepData.roleAnalysis&&<div style={{marginBottom:6}}><p style={{color:"rgba(255,255,255,.5)",fontSize:9,margin:"0 0 2px"}}>WHAT THEY WANT</p><p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:0}}>{prepData.roleAnalysis}</p></div>}
+          {prepData.talkingPoints&&<div style={{marginBottom:6}}><p style={{color:"rgba(255,255,255,.5)",fontSize:9,margin:"0 0 2px"}}>YOUR TALKING POINTS</p>{(Array.isArray(prepData.talkingPoints)?prepData.talkingPoints:[]).map((tp,i)=><p key={i} style={{color:"rgba(255,255,255,.6)",fontSize:10,margin:"2px 0"}}>• {tp}</p>)}</div>}
+          {prepData.commonQuestions&&<div style={{marginBottom:6}}><p style={{color:"rgba(255,255,255,.5)",fontSize:9,margin:"0 0 2px"}}>LIKELY QUESTIONS</p>{(Array.isArray(prepData.commonQuestions)?prepData.commonQuestions:[]).map((q,i)=><p key={i} style={{color:"rgba(255,255,255,.6)",fontSize:10,margin:"2px 0"}}>{i+1}. {q}</p>)}</div>}
+          {prepData.questionsToAsk&&<div><p style={{color:"rgba(255,255,255,.5)",fontSize:9,margin:"0 0 2px"}}>ASK THEM</p>{(Array.isArray(prepData.questionsToAsk)?prepData.questionsToAsk:[]).map((q,i)=><p key={i} style={{color:"#22D3EE",fontSize:10,margin:"2px 0"}}>• {q}</p>)}</div>}
+        </div>
+        )}
+        
+        {/* Mock Interview Mode */}
+        {mockMode&&(
+        <div style={{padding:12,borderRadius:10,background:"rgba(6,182,212,.06)",border:"1px solid rgba(6,182,212,.15)",marginBottom:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <span style={{color:"#22D3EE",fontSize:12,fontWeight:600}}>Mock Interview ({mockHistory.length} questions)</span>
+            <button onClick={()=>{setMockMode(false);setMockQuestion(null);setMockEval(null)}} style={{background:"none",border:"none",color:"rgba(255,255,255,.3)",cursor:"pointer",fontSize:14}}>x</button>
+          </div>
+          
+          {/* Get next question */}
+          {!mockQuestion&&!mockLoading&&(
+            <button onClick={async()=>{
+              setMockLoading(true);
+              try{
+                const assignee=(selectedJob.assignees||[])[0]||"brandon";
+                const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/mock-question`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,previousQuestions:mockHistory})});
+                const d=await r.json();
+                if(d.success)setMockQuestion(d);
+                else setOutput("Mock question failed: "+(d.error||"Unknown"));
+              }catch(e){setOutput("Mock error: "+e.message)}
+              setMockLoading(false);
+            }} style={{width:"100%",padding:"12px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(6,182,212,.2)",color:"#22D3EE",fontSize:12,fontWeight:600}}>
+              {mockHistory.length===0?"Start Mock Interview":"Next Question"}
+            </button>
+          )}
+          
+          {mockLoading&&<p style={{color:"rgba(6,182,212,.6)",fontSize:11,textAlign:"center"}}>Thinking of a question...</p>}
+          
+          {/* Show question + answer input */}
+          {mockQuestion&&!mockEval&&(
+          <div>
+            <div style={{padding:8,borderRadius:6,background:"rgba(0,0,0,.3)",marginBottom:8}}>
+              {mockQuestion.type&&<span style={{fontSize:9,color:"rgba(6,182,212,.6)",fontWeight:600,textTransform:"uppercase"}}>{mockQuestion.type} • {mockQuestion.difficulty}</span>}
+              <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:"4px 0 0",lineHeight:1.5}}>{mockQuestion.question}</p>
+              {mockQuestion.tip&&<p style={{color:"rgba(245,158,11,.6)",fontSize:9,margin:"6px 0 0",fontStyle:"italic"}}>Tip: {mockQuestion.tip}</p>}
+            </div>
+            <textarea value={mockAnswer} onChange={e=>setMockAnswer(e.target.value)} placeholder="Type your answer..." rows={4} style={{width:"100%",padding:10,borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12,resize:"vertical",boxSizing:"border-box"}}/>
+            <button disabled={!mockAnswer.trim()||mockLoading} onClick={async()=>{
+              setMockLoading(true);
+              try{
+                const assignee=(selectedJob.assignees||[])[0]||"brandon";
+                const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/mock-evaluate`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,question:mockQuestion.question,answer:mockAnswer})});
+                const d=await r.json();
+                if(d.success){setMockEval(d);setMockHistory(prev=>[...prev,mockQuestion.question])}
+                else setOutput("Eval failed: "+(d.error||"Unknown"));
+              }catch(e){setOutput("Eval error: "+e.message)}
+              setMockLoading(false);
+            }} style={{width:"100%",marginTop:6,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",background:mockAnswer.trim()?"rgba(6,182,212,.25)":"rgba(255,255,255,.05)",color:mockAnswer.trim()?"#22D3EE":"rgba(255,255,255,.3)",fontSize:12,fontWeight:600}}>
+              {mockLoading?"Evaluating...":"Submit Answer"}
+            </button>
+          </div>
+          )}
+          
+          {/* Show evaluation */}
+          {mockEval&&(
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <span style={{fontSize:20,fontWeight:700,color:mockEval.score>=7?"#10B981":mockEval.score>=5?"#FBBF24":"#EF4444"}}>{mockEval.score}/10</span>
+              {mockEval.encouragement&&<p style={{color:"rgba(255,255,255,.6)",fontSize:11,margin:0,flex:1}}>{mockEval.encouragement}</p>}
+            </div>
+            {mockEval.strengths&&<div style={{marginBottom:4}}><p style={{color:"#10B981",fontSize:9,margin:"0 0 2px",fontWeight:600}}>STRENGTHS</p>{mockEval.strengths.map((s,i)=><p key={i} style={{color:"rgba(255,255,255,.6)",fontSize:10,margin:"1px 0"}}>+ {s}</p>)}</div>}
+            {mockEval.improvements&&<div style={{marginBottom:4}}><p style={{color:"#F59E0B",fontSize:9,margin:"0 0 2px",fontWeight:600}}>IMPROVE</p>{mockEval.improvements.map((s,i)=><p key={i} style={{color:"rgba(255,255,255,.6)",fontSize:10,margin:"1px 0"}}>- {s}</p>)}</div>}
+            {mockEval.betterAnswer&&<div style={{padding:8,borderRadius:6,background:"rgba(16,185,129,.06)",border:"1px solid rgba(16,185,129,.1)",marginBottom:6}}><p style={{color:"rgba(255,255,255,.4)",fontSize:9,margin:"0 0 3px"}}>STRONGER VERSION</p><p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:0,lineHeight:1.5}}>{mockEval.betterAnswer}</p></div>}
+            <button onClick={()=>{setMockQuestion(null);setMockAnswer("");setMockEval(null)}} style={{width:"100%",padding:"10px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(6,182,212,.2)",color:"#22D3EE",fontSize:12,fontWeight:600,marginTop:4}}>
+              Next Question
+            </button>
+          </div>
+          )}
         </div>
         )}
         
