@@ -302,14 +302,69 @@ async function airAddProjectFile(userId, projectId, file) {
   } catch { return { error: true }; }
 }
 
-// SPURT 5: Upload attachment to chat
-async function uploadAttachment(file) {
-  const formData = new FormData();
-  formData.append("file", file);
+// ⬡B:MYABA:REAL_FILE_UPLOAD:v2.20:20260319⬡
+// Read file as base64 and upload to Supabase Storage via backend
+async function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.split(',')[1]; // Remove data:...;base64, prefix
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadAttachment(file, userId, conversationId) {
   try {
-    const res = await fetch(`${ABABASE}/api/attachments/upload`, { method: "POST", body: formData });
-    return res.ok ? await res.json() : null;
-  } catch { return null; }
+    console.log(`[UPLOAD] Reading ${file.name} (${file.type}, ${file.size} bytes)`);
+    const base64 = await fileToBase64(file);
+    console.log(`[UPLOAD] Uploading ${file.name} to backend...`);
+    const res = await fetch(`${ABABASE}/api/attachments/upload`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: file.name,
+        contentType: file.type || 'application/octet-stream',
+        base64,
+        userId: userId || 'brandon',
+        conversationId: conversationId || null
+      })
+    });
+    if (!res.ok) {
+      console.error(`[UPLOAD] Backend returned ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    console.log(`[UPLOAD] Success:`, data.file?.filename, data.file?.url?.substring(0, 60));
+    return data.file || null;
+  } catch (e) {
+    console.error('[UPLOAD] Error:', e);
+    return null;
+  }
+}
+
+async function uploadAttachmentsBatch(files, userId, conversationId) {
+  try {
+    const fileData = [];
+    for (const file of files) {
+      const base64 = await fileToBase64(file);
+      fileData.push({ filename: file.name, contentType: file.type || 'application/octet-stream', base64 });
+    }
+    console.log(`[UPLOAD] Batch uploading ${fileData.length} files...`);
+    const res = await fetch(`${ABABASE}/api/attachments/upload-batch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ files: fileData, userId: userId || 'brandon', conversationId })
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.files || []).filter(f => f.success);
+  } catch (e) {
+    console.error('[UPLOAD] Batch error:', e);
+    return [];
+  }
 }
 
 async function reachTranscribe(audioBlob) {
@@ -841,12 +896,42 @@ function OutputCard({output}){const[exp,setExp]=useState(false);const icons={ema
 // BUBBLE
 // ═══════════════════════════════════════════════════════════════════════════
 function Bubble({msg,userPhoto,onSpeak}){const isU=msg.role==="user";const time=msg.timestamp?new Date(msg.timestamp).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):"";
+  const isImg=t=>(t||"").startsWith("image/");
   return(<div style={{display:"flex",justifyContent:isU?"flex-end":"flex-start",padding:"4px 0",gap:10,alignItems:"flex-end"}}>
     {!isU&&<div style={{width:28,height:28,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 2px 8px rgba(139,92,246,.3)"}}><svg width="14" height="14" viewBox="0 0 100 100"><text x="50" y="72" textAnchor="middle" fill="white" fontSize="65" fontWeight="700" fontFamily="SF Pro Display,system-ui">A</text></svg></div>}
     <div style={{maxWidth:"80%"}}><div style={{padding:"12px 16px",borderRadius:isU?"20px 20px 6px 20px":"20px 20px 20px 6px",background:isU?"linear-gradient(135deg,rgba(139,92,246,.35),rgba(99,102,241,.3))":"rgba(255,255,255,.08)",backdropFilter:"blur(12px)",border:`1px solid ${isU?"rgba(139,92,246,.3)":"rgba(255,255,255,.1)"}`,boxShadow:isU?"0 4px 16px rgba(139,92,246,.15)":"inset 0 1px 1px rgba(255,255,255,.08), 0 4px 12px rgba(0,0,0,.15)"}}>{msg.output?<OutputCard output={msg.output}/>:<div>{renderMd(msg.content)}</div>}
+      {/* ⬡B:MYABA:FILE_ATTACHMENTS_DISPLAY:20260319⬡ */}
+      {msg.attachments&&msg.attachments.length>0&&(
+      <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>
+        {msg.attachments.map((att,i)=>(
+          att.url?(
+            isImg(att.type)?(
+              <a key={i} href={att.url} target="_blank" rel="noopener noreferrer" style={{display:"block",borderRadius:8,overflow:"hidden",maxWidth:280}}>
+                <img src={att.url} alt={att.name} style={{width:"100%",maxHeight:200,objectFit:"cover",borderRadius:8,display:"block"}} onError={e=>{e.target.style.display="none"}}/>
+                <span style={{fontSize:9,color:"rgba(255,255,255,.3)",marginTop:2,display:"block"}}>{att.name}</span>
+              </a>
+            ):(
+              <a key={i} href={att.url} target="_blank" rel="noopener noreferrer" download={att.name} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:8,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.08)",textDecoration:"none",cursor:"pointer"}}>
+                <FileText size={16} style={{color:"rgba(139,92,246,.7)",flexShrink:0}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{color:"rgba(255,255,255,.8)",fontSize:11,fontWeight:500,margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{att.name}</p>
+                  <p style={{color:"rgba(255,255,255,.3)",fontSize:9,margin:0}}>{att.type?.split("/")[1]?.toUpperCase()||"FILE"} · {att.size?Math.round(att.size/1024)+"KB":""}</p>
+                </div>
+                <Download size={12} style={{color:"rgba(255,255,255,.3)",flexShrink:0}}/>
+              </a>
+            )
+          ):(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:6,background:"rgba(255,255,255,.04)"}}>
+              <File size={12} style={{color:"rgba(255,255,255,.3)"}}/>
+              <span style={{color:"rgba(255,255,255,.5)",fontSize:10}}>{att.name} ({att.size?Math.round(att.size/1024)+"KB":""})</span>
+            </div>
+          )
+        ))}
+      </div>
+      )}
       {!isU&&msg.content&&onSpeak&&<button onClick={()=>onSpeak(msg.content)} style={{marginTop:10,display:"flex",alignItems:"center",gap:5,padding:"6px 10px",borderRadius:10,border:"1px solid rgba(139,92,246,.2)",background:"rgba(139,92,246,.08)",color:"rgba(139,92,246,.8)",cursor:"pointer",fontSize:11,fontWeight:500,transition:"all .2s"}}><Volume2 size={12}/>Play</button>}
     </div>
-      {time&&<div style={{fontSize:10,color:"rgba(255,255,255,.25)",marginTop:4,textAlign:isU?"right":"left",padding:"0 4px"}}>{time}{msg.isVoice&&" · voice"}{msg.attachments&&` · ${msg.attachments.length} file${msg.attachments.length>1?"s":""}`}</div>}</div>
+      {time&&<div style={{fontSize:10,color:"rgba(255,255,255,.25)",marginTop:4,textAlign:isU?"right":"left",padding:"0 4px"}}>{time}{msg.isVoice&&" · voice"}{msg.attachments&&msg.attachments.length>0&&` · ${msg.attachments.length} file${msg.attachments.length>1?"s":""}`}</div>}</div>
     {isU&&<div style={{width:28,height:28,borderRadius:99,overflow:"hidden",flexShrink:0,background:"linear-gradient(135deg,rgba(139,92,246,.4),rgba(99,102,241,.3))",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(139,92,246,.2)"}}>{userPhoto?<img src={userPhoto} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<User size={13} style={{color:"rgba(255,255,255,.7)"}}/>}</div>}
   </div>)}
 
@@ -2898,10 +2983,41 @@ export default function MyABA(){
 
   const sendMessage=useCallback(async(text,isVoice=false)=>{
     if(!text.trim()&&attachments.length===0)return;
-    const userMsg={id:`u-${Date.now()}`,role:"user",content:text.trim(),timestamp:Date.now(),isVoice,attachments:attachments.length>0?attachments.map(a=>({name:a.name,type:a.type,size:a.size})):undefined};
+    
+    // Upload files FIRST if any
+    let uploadedFiles=[];
+    if(attachments.length>0&&!isVoice){
+      setAbaState("thinking");
+      showToast(`Uploading ${attachments.length} file${attachments.length>1?"s":""}...`,"info");
+      const filesToUpload=attachments.map(a=>a.file).filter(Boolean);
+      if(filesToUpload.length>0){
+        if(filesToUpload.length===1){
+          const result=await uploadAttachment(filesToUpload[0],user?.email||"brandon",activeId);
+          if(result)uploadedFiles=[result];
+        }else{
+          uploadedFiles=await uploadAttachmentsBatch(filesToUpload,user?.email||"brandon",activeId);
+        }
+      }
+      if(uploadedFiles.length===0&&attachments.length>0){
+        showToast("File upload failed. Sending message without files.","warning");
+      }
+    }
+    
+    // Build message with uploaded file info
+    const attachmentInfo=uploadedFiles.length>0?uploadedFiles.map(f=>({name:f.filename,type:f.contentType,size:f.size,url:f.url,storagePath:f.storagePath})):attachments.length>0?attachments.map(a=>({name:a.name,type:a.type,size:a.size})):undefined;
+    
+    const userMsg={id:`u-${Date.now()}`,role:"user",content:text.trim(),timestamp:Date.now(),isVoice,attachments:attachmentInfo};
     addMsg(userMsg);setInput("");setAttachments([]);setIsTyping(true);setAbaState("thinking");
-    console.log("[VOICE] sendMessage called:",text.substring(0,50));
-    const data=await airRequest("text",{message:text.trim(),conversationId:activeId,attachments:attachments.map(a=>({name:a.name,type:a.type}))},user?.email||user?.uid||"brandon");
+    console.log("[MSG] sendMessage called:",text.substring(0,50),uploadedFiles.length?"with "+uploadedFiles.length+" files":"");
+    
+    // Build message text with file context for AIR
+    let messageForAIR=text.trim();
+    if(uploadedFiles.length>0){
+      const fileList=uploadedFiles.map(f=>`[Attached: ${f.filename} (${f.contentType}, ${Math.round(f.size/1024)}KB)]`).join("\n");
+      messageForAIR=`${text.trim()}\n\n${fileList}`;
+    }
+    
+    const data=await airRequest("text",{message:messageForAIR,conversationId:activeId,attachments:attachmentInfo},user?.email||user?.uid||"brandon");
     setIsTyping(false);
     setLastABAResponse(data);
     
@@ -3101,7 +3217,7 @@ export default function MyABA(){
       
       <div style={{flexShrink:voiceMode==="talk"?undefined:0,flex:voiceMode==="talk"?1:undefined,padding:voiceMode==="talk"?"0":"6px 0 14px",display:"flex",flexDirection:"column"}}>
         {/* Hidden file input */}
-        <input type="file" ref={fileInputRef} multiple accept="image/*,.pdf,.doc,.docx,.txt" onChange={handleFileSelect} style={{display:"none"}}/>
+        <input type="file" ref={fileInputRef} multiple accept="*/*" onChange={handleFileSelect} style={{display:"none"}}/>
         
         {/* Attachments preview - only show in chat mode */}
         {voiceMode==="chat"&&attachments.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:8,padding:"0 4px"}}>
