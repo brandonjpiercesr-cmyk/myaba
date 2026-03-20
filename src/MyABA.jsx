@@ -404,9 +404,35 @@ async function reachPresence(userId) {
 async function airNameChat(messages, userId) {
   try {
     const recent = messages.filter(m => m.role === "user").slice(-5).map(m => m.content).join(" | ");
-    const data = await airRequest("name_chat", { message: recent, conversationMessages: recent }, userId);
-    return data.response || null;
-  } catch { return null; }
+    console.log("[CHAT] Naming chat from:", recent.substring(0, 50));
+    
+    // Race: AIR response vs 8 second timeout with local fallback
+    const airPromise = airRequest("name_chat", { message: recent, conversationMessages: recent }, userId);
+    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 8000));
+    
+    const data = await Promise.race([airPromise, timeoutPromise]);
+    
+    if (data && data.response) {
+      console.log("[CHAT] AIR named chat:", data.response);
+      return data.response;
+    }
+    
+    // Fallback: extract first meaningful words from first user message
+    const firstMsg = messages.find(m => m.role === "user");
+    if (firstMsg && firstMsg.content) {
+      const words = firstMsg.content.trim().split(/\s+/).slice(0, 6).join(" ");
+      const name = words.length > 30 ? words.substring(0, 30) + "..." : words;
+      console.log("[CHAT] Local fallback name:", name);
+      return name;
+    }
+    return null;
+  } catch (e) { 
+    console.error("[CHAT] Name error:", e);
+    // Same local fallback
+    const firstMsg = messages.find(m => m.role === "user");
+    if (firstMsg) return firstMsg.content.trim().split(/\s+/).slice(0, 6).join(" ");
+    return null; 
+  }
 }
 
 // v1.2.0: JARVIS-style greeting from AGENT DAWN (Daily Automated Wisdom Notifier)
@@ -936,6 +962,58 @@ function Bubble({msg,userPhoto,onSpeak}){const isU=msg.role==="user";const time=
   </div>)}
 
 function Typing(){return(<div style={{display:"flex",justifyContent:"flex-start",padding:"3px 0",gap:8,alignItems:"flex-end"}}><div style={{width:26,height:26,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><svg width="14" height="14" viewBox="0 0 100 100"><text x="50" y="72" textAnchor="middle" fill="white" fontSize="65" fontWeight="700" fontFamily="SF Pro Display,system-ui">A</text></svg></div><div style={{padding:"12px 18px",borderRadius:"18px 18px 18px 4px",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.08)",display:"flex",gap:5,alignItems:"center"}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:99,background:"rgba(139,92,246,.6)",animation:`mp 1.4s ease-in-out ${i*.2}s infinite`}}/>)}</div></div>)}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ELEVENLABS CONVERSATIONAL AI - Talk to ABA
+// ⬡B:MYABA:ELEVENLABS_VOICE:20260320⬡
+// Same agent + webhook as VARA phone calls. WebRTC-based, not MediaRecorder.
+// ═══════════════════════════════════════════════════════════════════════════
+function ElevenLabsVoice(){
+  const containerRef=useRef(null);
+  const[loaded,setLoaded]=useState(false);
+  const[error,setError]=useState(null);
+  
+  useEffect(()=>{
+    // Load ElevenLabs widget script from CDN
+    if(document.querySelector('script[src*="elevenlabs/convai-widget"]')){{setLoaded(true);return}}
+    const script=document.createElement('script');
+    script.src='https://unpkg.com/@elevenlabs/convai-widget-embed@latest';
+    script.async=true;
+    script.onload=()=>{console.log('[VOICE] ElevenLabs widget loaded');setLoaded(true)};
+    script.onerror=(e)=>{console.error('[VOICE] ElevenLabs widget failed to load:',e);setError('Voice widget failed to load')};
+    document.head.appendChild(script);
+  },[]);
+  
+  useEffect(()=>{
+    if(!loaded||!containerRef.current)return;
+    // Clear any previous widget
+    containerRef.current.innerHTML='';
+    // Create the ElevenLabs Conversational AI custom element
+    const widget=document.createElement('elevenlabs-convai');
+    widget.setAttribute('agent-id','agent_0601khe2q0gben08ws34bzf7a0sa');
+    // Style overrides to match ABA theme
+    widget.style.cssText='--elevenlabs-convai-widget-width:100%;--elevenlabs-convai-widget-height:100%;width:100%;height:100%;';
+    containerRef.current.appendChild(widget);
+    console.log('[VOICE] ElevenLabs widget mounted with ABA agent');
+    return()=>{if(containerRef.current)containerRef.current.innerHTML=''};
+  },[loaded]);
+  
+  if(error)return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+      <p style={{color:"rgba(239,68,68,.7)",fontSize:13}}>{error}</p>
+      <button onClick={()=>window.location.reload()} style={{padding:"8px 16px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.05)",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:12}}>Retry</button>
+    </div>
+  );
+  
+  if(!loaded)return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+      <div style={{width:50,height:50,borderRadius:"50%",border:"3px solid rgba(139,92,246,.2)",borderTopColor:"rgba(139,92,246,.8)",animation:"spin 1s linear infinite"}}/>
+      <p style={{color:"rgba(255,255,255,.5)",fontSize:12}}>Loading voice...</p>
+    </div>
+  );
+  
+  return <div ref={containerRef} style={{width:"100%",flex:1,display:"flex",alignItems:"center",justifyContent:"center",minHeight:300}}/>;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // VOICE MODE SELECTOR
@@ -3446,46 +3524,20 @@ export default function MyABA(){
           <button onClick={()=>sendMessage(input)} disabled={!input.trim()&&attachments.length===0} style={{width:48,height:48,borderRadius:99,border:"none",cursor:(input.trim()||attachments.length>0)?"pointer":"default",background:(input.trim()||attachments.length>0)?"rgba(139,92,246,.4)":"rgba(255,255,255,.04)",color:(input.trim()||attachments.length>0)?"white":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:(input.trim()||attachments.length>0)?"0 0 16px rgba(139,92,246,.25)":"none"}}><Send size={18}/></button>
         </div>}
         
-        {/* v2.15.0: Talk to ABA - Full Screen Mode (not overlay) */}
+        {/* ⬡B:MYABA:TALK_TO_ABA:ELEVENLABS_WIDGET:20260320⬡ */}
+        {/* Uses same ElevenLabs Conversational AI as VARA phone calls */}
         {voiceMode==="talk"&&<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,position:"relative"}}>
           {/* Back to Chat button */}
-          <button onClick={()=>{setVoiceMode("chat");if(liveActive){liveRef.current=false;setLiveActive(false);stopListening();setAbaState("idle")}}} style={{position:"absolute",top:0,left:0,display:"flex",alignItems:"center",gap:6,padding:"8px 14px",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:12,fontWeight:500}}>
+          <button onClick={()=>{setVoiceMode("chat")}} style={{position:"absolute",top:0,left:0,display:"flex",alignItems:"center",gap:6,padding:"8px 14px",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:12,fontWeight:500,zIndex:10}}>
             <MessageSquare size={14}/>Back to Chat
           </button>
           
-          {/* Pulsing rings */}
-          <div style={{position:"absolute",width:200,height:200,borderRadius:"50%",border:"1px solid rgba(139,92,246,.1)",animation:liveActive?"pulse 2s ease-out infinite":"none",opacity:.5}}/>
-          <div style={{position:"absolute",width:280,height:280,borderRadius:"50%",border:"1px solid rgba(139,92,246,.08)",animation:liveActive?"pulse 2s ease-out .5s infinite":"none",opacity:.3}}/>
-          <div style={{position:"absolute",width:360,height:360,borderRadius:"50%",border:"1px solid rgba(139,92,246,.05)",animation:liveActive?"pulse 2s ease-out 1s infinite":"none",opacity:.2}}/>
+          {/* ElevenLabs Conversational AI Widget */}
+          <ElevenLabsVoice/>
           
-          {/* Central orb */}
-          <button onClick={toggleLive} style={{width:160,height:160,borderRadius:"50%",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,border:"none",background:liveActive?"radial-gradient(circle at 30% 30%, rgba(239,68,68,.4), rgba(139,92,246,.3))":"radial-gradient(circle at 30% 30%, rgba(139,92,246,.4), rgba(99,102,241,.3))",color:"white",boxShadow:liveActive?"0 0 80px rgba(239,68,68,.5), inset 0 0 40px rgba(255,255,255,.1)":"0 0 80px rgba(139,92,246,.5), inset 0 0 40px rgba(255,255,255,.1)",animation:liveActive?"breathe 1.5s ease-in-out infinite":"breathe 3s ease-in-out infinite",backdropFilter:"blur(8px)",zIndex:5}}>
-            {abaState==="speaking"?<Volume2 size={44}/>:abaState==="thinking"?<div style={{animation:"spin 1s linear infinite"}}><Sparkles size={44}/></div>:isListening?<MicOff size={44}/>:<Mic size={44}/>}
-            <span style={{fontSize:14,fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>{liveActive?(abaState==="speaking"?"Speaking":abaState==="thinking"?"Thinking":isListening?"Listening":"Ready"):"Tap to Start"}</span>
-          </button>
-          
-          {/* Status indicator */}
-          <div style={{position:"absolute",bottom:120,display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
-            <p style={{color:"rgba(255,255,255,.5)",fontSize:14,textAlign:"center",maxWidth:300,margin:0}}>
-              {liveActive?"Speak naturally. Tap orb to end conversation.":"Tap the orb above to start talking with ABA."}
-            </p>
-            {liveActive&&<div style={{display:"flex",alignItems:"center",gap:6}}>
-              <div style={{width:8,height:8,borderRadius:"50%",background:"rgba(239,68,68,.9)",animation:"mb 1s ease infinite"}}/>
-              <span style={{color:"rgba(239,68,68,.8)",fontSize:12,fontWeight:600}}>LIVE</span>
-            </div>}
-          </div>
-          
-          {/* Recent ABA response card */}
-          {messages.length>0&&messages[messages.length-1].role==="aba"&&<div style={{position:"absolute",bottom:20,left:20,right:20,padding:"14px 18px",background:"rgba(0,0,0,.5)",backdropFilter:"blur(16px)",borderRadius:18,border:"1px solid rgba(139,92,246,.15)"}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-              <Sparkles size={12} style={{color:"rgba(139,92,246,.8)"}}/>
-              <span style={{color:"rgba(139,92,246,.7)",fontSize:10,fontWeight:600}}>ABA's Response</span>
-            </div>
-            <p style={{color:"rgba(255,255,255,.8)",fontSize:13,margin:0,lineHeight:1.5,maxHeight:80,overflow:"hidden"}}>{messages[messages.length-1].content.substring(0,200)}{messages[messages.length-1].content.length>200?"...":""}</p>
-            {voiceOut&&<button onClick={()=>speakText(messages[messages.length-1].content)} style={{marginTop:8,display:"flex",alignItems:"center",gap:6,padding:"6px 12px",background:"rgba(139,92,246,.15)",border:"1px solid rgba(139,92,246,.2)",borderRadius:10,color:"rgba(139,92,246,.9)",cursor:"pointer",fontSize:11,fontWeight:500}}>
-              <Volume2 size={12}/>Replay
-            </button>}
-          </div>}
+          <p style={{color:"rgba(255,255,255,.4)",fontSize:12,textAlign:"center",position:"absolute",bottom:40,left:20,right:20}}>
+            Powered by the same voice engine as ABA phone calls.
+          </p>
         </div>}
       </div>
       </>}
