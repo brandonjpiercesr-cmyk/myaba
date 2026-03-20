@@ -1042,6 +1042,9 @@ function ApproveView({userId,onAction}){
   const[swipeDir,setSwipeDir]=useState(null);
   const[touchStart,setTouchStart]=useState(null);
   const[touchDelta,setTouchDelta]=useState(0);
+  const[velocityData,setVelocityData]=useState(null);
+  const[velocityLoading,setVelocityLoading]=useState(false);
+  const[showVelocity,setShowVelocity]=useState(false);
   
   // Fetch pending approvals from v2 endpoint
   useEffect(()=>{
@@ -1109,6 +1112,40 @@ function ApproveView({userId,onAction}){
       <CheckCircle size={56} style={{color:"rgba(16,185,129,.6)"}}/>
       <p style={{color:"rgba(255,255,255,.7)",fontSize:16,fontWeight:600}}>All caught up!</p>
       <p style={{color:"rgba(255,255,255,.4)",fontSize:13,textAlign:"center"}}>No pending decisions right now</p>
+      <button disabled={velocityLoading} onClick={async()=>{
+        setVelocityLoading(true);
+        try{
+          const r=await fetch(`https://abacia-services.onrender.com/api/awa/decisions/analysis?userId=${encodeURIComponent(userId)}`);
+          const d=await r.json();if(d.success)setVelocityData(d);
+        }catch(e){console.error("[VELOCITY]",e)}
+        setVelocityLoading(false);setShowVelocity(true);
+      }} style={{padding:"10px 20px",borderRadius:10,border:"1px solid rgba(139,92,246,.2)",background:"rgba(139,92,246,.08)",color:"rgba(139,92,246,.8)",cursor:"pointer",fontSize:12,fontWeight:500}}>
+        {velocityLoading?"Analyzing...":"View Decision Patterns"}
+      </button>
+      {showVelocity&&velocityData&&(
+      <div style={{width:"100%",maxWidth:360,padding:14,borderRadius:12,background:"rgba(139,92,246,.06)",border:"1px solid rgba(139,92,246,.1)"}}>
+        <p style={{color:"rgba(139,92,246,.8)",fontSize:12,fontWeight:600,margin:"0 0 8px"}}>Decision Velocity</p>
+        <div style={{display:"flex",gap:12,marginBottom:8}}>
+          <div style={{flex:1,textAlign:"center"}}><p style={{color:"rgba(255,255,255,.8)",fontSize:20,fontWeight:700,margin:0}}>{velocityData.decisions}</p><p style={{color:"rgba(255,255,255,.3)",fontSize:9,margin:0}}>decisions</p></div>
+          <div style={{flex:1,textAlign:"center"}}><p style={{color:"rgba(255,255,255,.8)",fontSize:20,fontWeight:700,margin:0}}>{velocityData.avgResponseMins}m</p><p style={{color:"rgba(255,255,255,.3)",fontSize:9,margin:0}}>avg time</p></div>
+          <div style={{flex:1,textAlign:"center"}}><p style={{color:"rgba(255,255,255,.8)",fontSize:20,fontWeight:700,margin:0}}>{velocityData.approvalRate}%</p><p style={{color:"rgba(255,255,255,.3)",fontSize:9,margin:0}}>approval rate</p></div>
+        </div>
+        {velocityData.autoApprovalCandidates&&velocityData.autoApprovalCandidates.length>0&&(
+          <div style={{marginTop:8,padding:8,borderRadius:8,background:"rgba(16,185,129,.08)",border:"1px solid rgba(16,185,129,.15)"}}>
+            <p style={{color:"#10B981",fontSize:10,fontWeight:600,margin:"0 0 4px"}}>AUTO-APPROVAL CANDIDATES</p>
+            {velocityData.autoApprovalCandidates.map((c,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
+                <span style={{color:"rgba(255,255,255,.6)",fontSize:11}}>{c.type} ({c.approvalRate}% in {c.avgResponseMins}m)</span>
+                <button onClick={async()=>{
+                  try{await fetch("https://abacia-services.onrender.com/api/awa/decisions/auto-approve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,type:c.type,enabled:true})})}catch{}
+                }} style={{padding:"3px 8px",borderRadius:4,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.1)",color:"#10B981",cursor:"pointer",fontSize:9,fontWeight:600}}>Enable</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {velocityData.message&&<p style={{color:"rgba(255,255,255,.4)",fontSize:10,margin:"8px 0 0",textAlign:"center"}}>{velocityData.message}</p>}
+      </div>
+      )}
     </div>);
   }
   
@@ -2779,6 +2816,9 @@ export default function MyABA(){
   const[snapInput,setSnapInput]=useState("");
   const[snapLoading,setSnapLoading]=useState(false);
   const[snapMigrate,setSnapMigrate]=useState(false);
+  // ⬡B:clipboard.history:STATE:20260320⬡
+  const[clipboardOpen,setClipboardOpen]=useState(false);
+  const[clipboardItems,setClipboardItems]=useState(()=>{try{return JSON.parse(localStorage.getItem("myaba_clipboard")||"[]")}catch{return[]}});
   // v2.16.0: Projects now load from backend
   const[projectsLoading,setProjectsLoading]=useState(false);
   const scrollRef=useRef(null);const recorderRef=useRef(null);const liveRef=useRef(false);
@@ -2790,6 +2830,25 @@ export default function MyABA(){
     window.addEventListener("online",handleOnline);
     window.addEventListener("offline",handleOffline);
     return()=>{window.removeEventListener("online",handleOnline);window.removeEventListener("offline",handleOffline)};
+  },[]);
+
+  // ⬡B:clipboard.history:LISTENER:20260320⬡
+  useEffect(()=>{
+    const handleCopy=async()=>{
+      try{
+        const text=await navigator.clipboard.readText();
+        if(text&&text.trim()){
+          setClipboardItems(prev=>{
+            const deduped=prev.filter(c=>c.text!==text.trim());
+            const updated=[{id:`clip_${Date.now()}`,text:text.trim(),copiedAt:new Date().toISOString()},...deduped].slice(0,50);
+            try{localStorage.setItem("myaba_clipboard",JSON.stringify(updated))}catch{}
+            return updated;
+          });
+        }
+      }catch{/* clipboard read permission denied — no-op */}
+    };
+    document.addEventListener("copy",handleCopy);
+    return()=>document.removeEventListener("copy",handleCopy);
   },[]);
 
   // v2.16.1: Save settings to localStorage AND backend
@@ -3458,6 +3517,54 @@ export default function MyABA(){
     <Queue open={queueOpen} onToggle={()=>setQueueOpen(!queueOpen)} items={proactiveItems}/>
     <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} voiceOut={voiceOut} setVoiceOut={setVoiceOut} user={user} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
     {/* ⬡B:snap.quick_question:FAB_AND_PANEL:20260317⬡ */}
+    {/* ⬡B:clipboard.history:FAB:20260320⬡ Clipboard History Button */}
+    {!clipboardOpen&&!snapOpen&&mainTab==="chat"&&<button onClick={()=>setClipboardOpen(true)} style={{
+      position:"fixed",bottom:"calc(24px + env(safe-area-inset-bottom, 0px))",left:24,width:44,height:44,borderRadius:99,
+      background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.1)",cursor:"pointer",
+      display:"flex",alignItems:"center",justifyContent:"center",
+      boxShadow:"0 2px 12px rgba(0,0,0,.3)",zIndex:998,backdropFilter:"blur(8px)"
+    }}>
+      <Copy size={18} style={{color:"rgba(255,255,255,.5)"}}/>
+    </button>}
+    
+    {/* Clipboard History Panel */}
+    {clipboardOpen&&<div style={{
+      position:"fixed",bottom:0,left:0,right:0,maxHeight:"50vh",
+      background:"rgba(10,10,15,.98)",borderTop:"1px solid rgba(255,255,255,.15)",
+      borderRadius:"20px 20px 0 0",zIndex:999,display:"flex",flexDirection:"column",
+      backdropFilter:"blur(20px)",animation:"slideUp .3s ease",
+      paddingBottom:"env(safe-area-inset-bottom, 0px)"
+    }}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <Copy size={16} style={{color:"rgba(255,255,255,.5)"}}/>
+          <span style={{color:"rgba(255,255,255,.8)",fontSize:14,fontWeight:600}}>Clipboard History</span>
+          <span style={{color:"rgba(255,255,255,.3)",fontSize:10}}>{clipboardItems.length} items</span>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          {clipboardItems.length>0&&<button onClick={()=>{setClipboardItems([]);try{localStorage.removeItem("myaba_clipboard")}catch{}}} style={{padding:"4px 10px",borderRadius:6,border:"1px solid rgba(239,68,68,.15)",background:"transparent",color:"rgba(239,68,68,.6)",cursor:"pointer",fontSize:10}}>Clear All</button>}
+          <button onClick={()=>setClipboardOpen(false)} style={{background:"none",border:"none",color:"rgba(255,255,255,.4)",cursor:"pointer",fontSize:20}}>x</button>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"8px 14px"}}>
+        {clipboardItems.length===0&&<p style={{color:"rgba(255,255,255,.3)",textAlign:"center",padding:30,fontSize:12}}>Copy text anywhere and it will appear here</p>}
+        {clipboardItems.map(c=>(
+          <div key={c.id} style={{padding:"10px 12px",borderRadius:8,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.05)",marginBottom:4,cursor:"pointer"}} onClick={async()=>{
+            try{await navigator.clipboard.writeText(c.text);showToast("Copied!","info")}catch{}
+          }}>
+            <p style={{color:"rgba(255,255,255,.7)",fontSize:12,margin:0,lineHeight:1.4,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical"}}>{c.text}</p>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
+              <span style={{color:"rgba(255,255,255,.2)",fontSize:9}}>{new Date(c.copiedAt).toLocaleString()}</span>
+              <div style={{display:"flex",gap:4}}>
+                <button onClick={e=>{e.stopPropagation();setInput(prev=>prev+c.text)}} style={{padding:"2px 8px",borderRadius:4,border:"1px solid rgba(139,92,246,.15)",background:"rgba(139,92,246,.06)",color:"rgba(139,92,246,.7)",cursor:"pointer",fontSize:9}}>Paste to Chat</button>
+                <button onClick={e=>{e.stopPropagation();setClipboardItems(prev=>{const updated=prev.filter(i=>i.id!==c.id);try{localStorage.setItem("myaba_clipboard",JSON.stringify(updated))}catch{};return updated})}} style={{padding:"2px 6px",borderRadius:4,border:"1px solid rgba(239,68,68,.1)",background:"transparent",color:"rgba(239,68,68,.4)",cursor:"pointer",fontSize:9}}>x</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>}
+    
     {/* SNAP Quick Question - Floating Action Button */}
     {!snapOpen&&mainTab==="chat"&&<button onClick={()=>{setSnapOpen(true);setSnapMigrate(false)}} style={{
       position:"fixed",bottom:"calc(24px + env(safe-area-inset-bottom, 0px))",right:24,width:56,height:56,borderRadius:99,
