@@ -1180,13 +1180,89 @@ function FirstLoginTour({user,onComplete}){
 // VOICE MODE SELECTOR
 // ═══════════════════════════════════════════════════════════════════════════
 // SPURT 2: Talk to ABA (renamed from Live)
-function VoiceMode({mode,setMode}){const modes=[{k:"chat",i:MessageSquare,l:"Chat with ABA"},{k:"talk",i:Radio,l:"Talk to ABA"}];
-  return(<div style={{display:"flex",gap:4,padding:6,background:"rgba(0,0,0,.3)",borderRadius:14}}>{modes.map(m=>{const a=mode===m.k;const I=m.i;return(<button key={m.k} onClick={()=>setMode(m.k)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"8px 10px",borderRadius:10,border:"none",cursor:"pointer",background:a?"rgba(139,92,246,.25)":"transparent",color:a?"rgba(139,92,246,.95)":"rgba(255,255,255,.35)",fontSize:11,fontWeight:a?600:400,transition:"all .2s",minHeight:44}}><I size={14}/>{m.l}</button>)})}</div>)}
+function VoiceMode({mode,setMode}){const modes=[{k:"chat",i:MessageSquare,l:"Chat"},{k:"talk",i:Radio,l:"Talk"}];
+  return(<div style={{display:"flex",gap:3,padding:4,background:"rgba(0,0,0,.25)",borderRadius:10}}>{modes.map(m=>{const a=mode===m.k;const I=m.i;return(<button key={m.k} onClick={()=>setMode(m.k)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5,padding:"6px 8px",borderRadius:8,border:"none",cursor:"pointer",background:a?"rgba(139,92,246,.25)":"transparent",color:a?"rgba(139,92,246,.95)":"rgba(255,255,255,.35)",fontSize:11,fontWeight:a?600:400,transition:"all .2s",minHeight:36}}><I size={13}/>{m.l}</button>)})}</div>)}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // F5: MAIN TAB SWITCHER - Chat | Briefing | Jobs | Approve | References
 // ⬡B:MYABA.V2:tabs:20260313⬡ Added References tab
 // ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// EMAIL VIEW - Real Nylas inbox
+// ⬡B:MYABA:EMAIL_VIEW:20260321⬡
+// Calls backend which calls Nylas. 90% backend, 10% frontend.
+// ═══════════════════════════════════════════════════════════════════════════
+function EmailView({userId}){
+  const ABABASE="https://abacia-services.onrender.com";
+  const[emails,setEmails]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[selectedEmail,setSelectedEmail]=useState(null);
+  const[folder,setFolder]=useState("inbox"); // inbox | sent
+
+  const loadEmails=async(f)=>{
+    setLoading(true);setSelectedEmail(null);
+    try{
+      const r=await fetch(`${ABABASE}/api/email/${f}?userId=${encodeURIComponent(userId)}&limit=20`);
+      if(r.ok){const d=await r.json();setEmails(d.emails||d.messages||d.data||[])}
+      else setEmails([]);
+    }catch(e){console.error("[EMAIL]",e);setEmails([])}
+    setLoading(false);
+  };
+
+  useEffect(()=>{loadEmails(folder)},[folder]);
+
+  if(loading)return <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:40,height:40,borderRadius:"50%",border:"3px solid rgba(139,92,246,.2)",borderTopColor:"rgba(139,92,246,.8)",animation:"spin 1s linear infinite"}}/></div>;
+
+  return(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    {/* Folder toggle */}
+    <div style={{display:"flex",gap:4,padding:"4px 0",flexShrink:0}}>
+      {["inbox","sent"].map(f=>(
+        <button key={f} onClick={()=>{setFolder(f);loadEmails(f)}} style={{flex:1,padding:"8px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:folder===f?600:400,background:folder===f?"rgba(139,92,246,.2)":"rgba(255,255,255,.04)",color:folder===f?"rgba(139,92,246,.95)":"rgba(255,255,255,.4)",textTransform:"capitalize"}}>{f}</button>
+      ))}
+      <button onClick={()=>loadEmails(folder)} style={{padding:"8px 12px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.4)",fontSize:12}}><RefreshCw size={14}/></button>
+    </div>
+
+    {/* Selected email detail */}
+    {selectedEmail&&<div style={{flex:1,overflowY:"auto",padding:8}}>
+      <button onClick={()=>setSelectedEmail(null)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:11,marginBottom:8}}><ChevronRight size={12} style={{transform:"rotate(180deg)"}}/>Back</button>
+      <div style={{padding:14,borderRadius:14,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)"}}>
+        <p style={{color:"rgba(255,255,255,.9)",fontSize:14,fontWeight:600,margin:"0 0 4px"}}>{selectedEmail.subject||"(no subject)"}</p>
+        <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"0 0 2px"}}>From: {selectedEmail.from?.[0]?.name||selectedEmail.from?.[0]?.email||"Unknown"}</p>
+        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"0 0 12px"}}>{selectedEmail.date?new Date(selectedEmail.date*1000).toLocaleString():""}</p>
+        <div style={{color:"rgba(255,255,255,.7)",fontSize:12,lineHeight:1.6}} dangerouslySetInnerHTML={{__html:selectedEmail.body||selectedEmail.snippet||"No content"}}/>
+      </div>
+    </div>}
+
+    {/* Email list */}
+    {!selectedEmail&&<div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:2,padding:"4px 0"}}>
+      {emails.length===0&&<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,padding:20}}>
+        <Mail size={36} style={{color:"rgba(139,92,246,.3)"}}/>
+        <p style={{color:"rgba(255,255,255,.4)",fontSize:13,textAlign:"center"}}>{folder==="inbox"?"No emails found. Connect your email in Settings.":"No sent emails."}</p>
+      </div>}
+      {emails.map((em,i)=>{
+        const from=em.from?.[0]?.name||em.from?.[0]?.email||"Unknown";
+        const unread=em.unread!==false;
+        return(
+        <div key={em.id||i} onClick={()=>setSelectedEmail(em)} style={{padding:"12px 10px",borderRadius:10,background:unread?"rgba(139,92,246,.06)":"rgba(255,255,255,.02)",border:`1px solid ${unread?"rgba(139,92,246,.12)":"rgba(255,255,255,.04)"}`,cursor:"pointer",display:"flex",gap:10,alignItems:"flex-start"}}>
+          <div style={{width:32,height:32,borderRadius:99,background:"linear-gradient(135deg,rgba(139,92,246,.3),rgba(99,102,241,.2))",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <span style={{color:"white",fontSize:13,fontWeight:600}}>{from.charAt(0).toUpperCase()}</span>
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
+              <span style={{color:unread?"rgba(255,255,255,.9)":"rgba(255,255,255,.6)",fontSize:12,fontWeight:unread?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"60%"}}>{from}</span>
+              <span style={{color:"rgba(255,255,255,.25)",fontSize:9,flexShrink:0}}>{em.date?new Date(em.date*1000).toLocaleDateString():""}</span>
+            </div>
+            <p style={{color:unread?"rgba(255,255,255,.7)":"rgba(255,255,255,.45)",fontSize:11,fontWeight:unread?500:400,margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{em.subject||"(no subject)"}</p>
+            <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"2px 0 0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{em.snippet||""}</p>
+          </div>
+          {unread&&<div style={{width:8,height:8,borderRadius:99,background:"#8B5CF6",flexShrink:0,marginTop:4}}/>}
+        </div>
+        );
+      })}
+    </div>}
+  </div>);
+}
+
 function MainTabSwitcher({tab,setTab}){
   const tabs=[
     {k:"chat",i:MessageSquare,l:"Chat"},
@@ -1194,6 +1270,7 @@ function MainTabSwitcher({tab,setTab}){
     {k:"jobs",i:Briefcase,l:"Jobs"},
     {k:"pipeline",i:Activity,l:"Pipeline"},
     {k:"memos",i:Mail,l:"Memos"},
+    {k:"email",i:Mail,l:"Email"},
     {k:"approve",i:CheckCircle,l:"Approve"}
   ];
   return(<div style={{display:"flex",gap:2,padding:4,background:"rgba(0,0,0,.4)",borderRadius:12,marginBottom:8}}>
@@ -3667,8 +3744,7 @@ export default function MyABA(){
 
   return(<div style={{width:"100%",height:`${viewportHeight}px`,position:"relative",overflow:"hidden",fontFamily:"'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:"#08080d",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)"}}>
     <style>{`@keyframes mp{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}@keyframes mf{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes mb{0%,100%{opacity:.6}50%{opacity:1}}@keyframes ml{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 12px rgba(239,68,68,0)}}@keyframes kenBurns{0%{transform:scale(1) translate(0,0)}25%{transform:scale(1.08) translate(-1%,-1%)}50%{transform:scale(1.12) translate(1%,0)}75%{transform:scale(1.06) translate(-0.5%,1%)}100%{transform:scale(1) translate(0,0)}}@keyframes pulse{0%{transform:scale(1);opacity:1}100%{transform:scale(1.5);opacity:0}}@keyframes breathe{0%,100%{transform:scale(1);box-shadow:0 0 40px rgba(139,92,246,.3)}50%{transform:scale(1.05);box-shadow:0 0 60px rgba(139,92,246,.5)}}@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(139,92,246,.15);border-radius:99px}`}</style>
-    <div style={{position:"absolute",inset:"-10%",zIndex:0,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center",transition:"background-image 1s",animation:"kenBurns 30s ease-in-out infinite",willChange:"transform",WebkitBackfaceVisibility:"hidden"}}/>
-    <div style={{position:"absolute",inset:0,zIndex:0,background:"rgba(0,0,0,.55)",backdropFilter:"saturate(.7) brightness(.5)"}}/>
+    <div style={{position:"absolute",inset:"-10%",zIndex:0,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.4) saturate(.7)",animation:"kenBurns 30s ease-in-out infinite",willChange:"transform",WebkitBackfaceVisibility:"hidden"}}/>
     <div style={{position:"absolute",inset:0,zIndex:1,background:"radial-gradient(ellipse at center,rgba(0,0,0,0) 0%,rgba(0,0,0,.55) 100%)"}}/>
     <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",height:"100%",maxWidth:480,margin:"0 auto",padding:"0 14px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 2px 4px",flexShrink:0}}>
@@ -3704,7 +3780,7 @@ export default function MyABA(){
       
       {/* Hide chat elements when in Talk mode */}
       {voiceMode!=="talk"&&<>
-      <div style={{flexShrink:0,display:"flex",justifyContent:"center",padding:"2px 0",transition:"all .5s"}}><Blob state={abaState} size={messages.length<=1?140:70}/></div>
+      <div style={{flexShrink:0,display:"flex",justifyContent:"center",padding:"2px 0",transition:"all .5s"}}><Blob state={abaState} size={messages.length<=1?100:50}/></div>
       <div ref={scrollRef} style={{flex:1,overflowY:"auto",padding:"4px 2px",display:"flex",flexDirection:"column",gap:2,maskImage:"linear-gradient(transparent 0%,black 2%,black 96%,transparent 100%)",WebkitMaskImage:"linear-gradient(transparent 0%,black 2%,black 96%,transparent 100%)"}}>
         {messages.map(msg=><div key={msg.id} style={{animation:"mf .3s ease"}}><Bubble msg={msg} userPhoto={user?.photoURL} onSpeak={speakText}/></div>)}
         {isTyping&&<Typing/>}
@@ -3759,6 +3835,9 @@ export default function MyABA(){
       
       {/* Memos Mode - ⬡B:MYABA:memos_tab:20260319⬡ */}
       {mainTab==="memos"&&<MemosView userId={user?.email||"brandon"}/>}
+      
+      {/* Email Mode - ⬡B:MYABA:email_tab:20260321⬡ */}
+      {mainTab==="email"&&<EmailView userId={user?.email||"brandon"}/>}
       
       {/* Approve Mode */}
       {mainTab==="approve"&&<ApproveView userId={user?.email||"brandon"}/>}
