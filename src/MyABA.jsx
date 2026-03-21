@@ -1941,6 +1941,8 @@ function JobsView({userId}){
   const[mockEval,setMockEval]=useState(null); // evaluation result
   const[mockHistory,setMockHistory]=useState([]); // past questions
   const[mockLoading,setMockLoading]=useState(false);
+  const[unmatchedJobs,setUnmatchedJobs]=useState([]);
+  const[assigningJob,setAssigningJob]=useState(null); // job being assigned
   
   // Team members for filter
   const TEAM_MEMBERS=[
@@ -1978,6 +1980,28 @@ function JobsView({userId}){
   },[]);
   
   // Filter by team, status, AND text
+  // ⬡B:MYABA:UNMATCHED_REVIEW:20260321⬡
+  useEffect(()=>{
+    if(statusFilter==="unmatched"){
+      (async()=>{
+        try{
+          const r=await fetch(`${ABABASE}/api/awa/jobs/unmatched`);
+          const d=await r.json();
+          if(d.success)setUnmatchedJobs(d.jobs||[]);
+        }catch(e){console.error("[AWA] Unmatched fetch:",e)}
+      })();
+    }
+  },[statusFilter]);
+  
+  const assignJobTo=async(jobId,assignTo)=>{
+    setAssigningJob(jobId);
+    try{
+      await fetch(`${ABABASE}/api/awa/jobs/${jobId}/assign`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({assignTo,userId})});
+      setUnmatchedJobs(prev=>prev.filter(j=>j.id!==jobId));
+    }catch(e){console.error("[AWA] Assign failed:",e)}
+    setAssigningJob(null);
+  };
+  
   const filtered=jobs.filter(j=>{
     // Status filter
     if(statusFilter==="active"){
@@ -2025,9 +2049,9 @@ function JobsView({userId}){
   }
   
   return(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-    {/* Status filter: Active | My Applications | All */}
+    {/* Status filter: Active | My Applications | All | Unmatched (admin only) */}
     <div style={{display:"flex",gap:4,marginBottom:6}}>
-      {[{k:"active",l:"Active Jobs"},{k:"applied",l:"My Applications"},{k:"all",l:"All"}].map(sf=>(
+      {[{k:"active",l:"Active Jobs"},{k:"applied",l:"My Applications"},{k:"all",l:"All"},...(["brandon","brandonjpiercesr","eric","ericreeselane"].includes(defaultHam)?[{k:"unmatched",l:"Review"}]:[])].map(sf=>(
         <button key={sf.k} onClick={()=>{setStatusFilter(sf.k);setSelectedJob(null);}} style={{
           flex:1,padding:"8px 6px",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:statusFilter===sf.k?600:400,
           background:statusFilter===sf.k?"rgba(139,92,246,.2)":"rgba(255,255,255,.04)",
@@ -2049,8 +2073,26 @@ function JobsView({userId}){
     
     {/* Search */}
     
-    {/* Split view */}
-    <div style={{flex:1,display:"flex",gap:8,overflow:"hidden"}}>
+    {/* Unmatched Review Queue - Brandon/Eric only */}
+    {statusFilter==="unmatched"&&<div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
+      <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"0 0 8px"}}>{unmatchedJobs.length} jobs need manual assignment. Tap a name to assign.</p>
+      {unmatchedJobs.map(j=>(
+        <div key={j.id} style={{padding:"12px 14px",borderRadius:12,background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.15)"}}>
+          <p style={{color:"rgba(255,255,255,.85)",fontSize:13,fontWeight:600,margin:"0 0 2px"}}>{(j.job_title||j.title||"?").substring(0,60)}</p>
+          <p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:"0 0 8px"}}>{j.organization||""} {j.location?`· ${j.location}`:""}</p>
+          <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+            {[{id:"brandon",name:"Brandon",c:"#8B5CF6"},{id:"eric",name:"Eric",c:"#3B82F6"},{id:"bj",name:"BJ",c:"#10B981"},{id:"cj",name:"CJ",c:"#F59E0B"},{id:"vante",name:"Vante",c:"#F97316"},{id:"dwayne",name:"Dwayne",c:"#EC4899"}].map(t=>(
+              <button key={t.id} disabled={assigningJob===j.id} onClick={()=>assignJobTo(j.id,t.id)} style={{padding:"5px 12px",borderRadius:8,border:`1px solid ${t.c}30`,background:`${t.c}15`,color:t.c,cursor:"pointer",fontSize:11,fontWeight:500}}>{t.name}</button>
+            ))}
+            <button onClick={()=>assignJobTo(j.id,"DISMISSED")} style={{padding:"5px 12px",borderRadius:8,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.08)",color:"rgba(239,68,68,.6)",cursor:"pointer",fontSize:11,marginLeft:"auto"}}>Dismiss</button>
+          </div>
+        </div>
+      ))}
+      {unmatchedJobs.length===0&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}><p style={{color:"rgba(255,255,255,.3)",fontSize:13}}>No unmatched jobs right now</p></div>}
+    </div>}
+    
+    {/* Split view - hidden during unmatched review */}
+    {statusFilter!=="unmatched"&&<div style={{flex:1,display:"flex",gap:8,overflow:"hidden"}}>
       {/* Job list */}
       <div style={{flex:selectedJob?1:2,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
         {filtered.length===0&&<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,padding:20}}>
@@ -2544,7 +2586,7 @@ function JobsView({userId}){
           <pre style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:0,whiteSpace:"pre-wrap",lineHeight:1.5}}>{output}</pre>
         </div>}
       </div>}
-    </div>
+    </div>}
     
     {/* Stats footer */}
     <div style={{padding:"8px 0 0",borderTop:"1px solid rgba(255,255,255,.05)",marginTop:8}}>
