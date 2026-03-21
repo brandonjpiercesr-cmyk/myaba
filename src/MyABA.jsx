@@ -72,6 +72,22 @@ function isOnline() { return navigator.onLine; }
 const HAM_EMAILS = ['brandonjpiercesr@gmail.com', 'brandon@globalmajoritygroup.com'];
 function isHAM(email) { return HAM_EMAILS.includes(email?.toLowerCase()); }
 
+// ⬡B:MYABA:FIX:image_vision:20260321⬡
+// Convert image File to base64 for Anthropic vision API
+async function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      const base64 = dataUrl.split(',')[1]; // strip data:image/jpeg;base64, prefix
+      resolve({ data: base64, media_type: file.type || 'image/jpeg' });
+    };
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
 async function airRequest(type, payload = {}, userId = "brandon", maxRetries = 3) {
   if (!isOnline()) {
     return { response: null, offline: true, queued: true };
@@ -83,7 +99,9 @@ async function airRequest(type, payload = {}, userId = "brandon", maxRetries = 3
   let lastError;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // ⬡B:MYABA:ABABASE_WIRED:v2.15.0:20260310⬡
+      // ⬡B:MYABA:ABABASE_WIRED:v2.16.0:20260321⬡
+      // FIX 1: Send conversationHistory so ABA has context between messages
+      // FIX 2: Send email field separately for HAM identity crosswalk
       const res = await fetch(`${ABABASE}/api/air/process`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -92,7 +110,11 @@ async function airRequest(type, payload = {}, userId = "brandon", maxRetries = 3
           type: type || "text",
           user_id: userId,  // Backend expects user_id
           userId,           // Also send as userId for compatibility
-          channel: "myaba", 
+          email: userId.includes("@") ? userId : undefined, // HAM crosswalk
+          channel: "myaba",
+          conversationId: payload.conversationId,
+          conversationHistory: payload.conversationHistory || [],
+          images: payload.images || [],  // ⬡B:MYABA:FIX:image_vision:20260321⬡
           context: { ...payload, timestamp: Date.now() } 
         }),
       });
@@ -3697,6 +3719,10 @@ export default function MyABA(){
     // Build message with uploaded file info
     const attachmentInfo=uploadedFiles.length>0?uploadedFiles.map(f=>({name:f.filename,type:f.contentType,size:f.size,url:f.url,storagePath:f.storagePath})):attachments.length>0?attachments.map(a=>({name:a.name,type:a.type,size:a.size})):undefined;
     
+    // ⬡B:MYABA:FIX:image_vision:20260321⬡
+    // Capture image File refs BEFORE clearing attachments state
+    const imageFiles=attachments.map(a=>a.file).filter(f=>f&&IMAGE_TYPES.includes(f.type));
+    
     const userMsg={id:`u-${Date.now()}`,role:"user",content:text.trim(),timestamp:Date.now(),isVoice,attachments:attachmentInfo};
     addMsg(userMsg);setInput("");setAttachments([]);setIsTyping(true);setAbaState("thinking");
     console.log("[MSG] sendMessage called:",text.substring(0,50),uploadedFiles.length?"with "+uploadedFiles.length+" files":"");
@@ -3708,7 +3734,19 @@ export default function MyABA(){
       messageForAIR=`${text.trim()}\n\n${fileList}`;
     }
     
-    const data=await airRequest("text",{message:messageForAIR,conversationId:activeId,attachments:attachmentInfo},user?.email||user?.uid||"brandon");
+    // ⬡B:MYABA:FIX:conversation_history:20260321⬡
+    // Build conversation history from current messages so ABA has context between turns.
+    // Last 20 messages max to keep payload reasonable. Map role 'aba' to 'assistant' for Anthropic API.
+    const recentHistory=messages.slice(-20).map(m=>({role:m.role==="aba"?"assistant":"user",content:m.content||""})).filter(m=>m.content);
+    
+    // ⬡B:MYABA:FIX:image_vision:20260321⬡
+    // Convert image attachments to base64 for Anthropic vision API
+    let imagePayloads=[];
+    for(const file of imageFiles){
+      try{const b64=await fileToBase64(file);imagePayloads.push(b64)}catch(e){console.error("[IMG] base64 conversion failed:",e)}
+    }
+    if(imagePayloads.length>0)console.log("[IMG] Sending",imagePayloads.length,"image(s) to AIR vision");
+    const data=await airRequest("text",{message:messageForAIR,conversationId:activeId,conversationHistory:recentHistory,images:imagePayloads,attachments:attachmentInfo},user?.email||user?.uid||"brandon");
     setIsTyping(false);
     setLastABAResponse(data);
     
