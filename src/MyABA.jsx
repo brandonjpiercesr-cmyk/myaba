@@ -1305,12 +1305,12 @@ function ApproveView({userId,onAction}){
     if(!currentItem)return;
     setSwipeDir(direction);
     
-    // Execute action via v2 endpoint
-    const decision=direction==="right"?"approve":"decline";
+    // Execute action via v2 endpoint — field must be 'action' not 'decision'
+    const action=direction==="right"?"approve":"reject";
     fetch(`https://abacia-services.onrender.com/api/myaba/approvals/${currentItem.id}`,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({decision,userId})
+      body:JSON.stringify({action,userId})
     }).catch(e=>console.error('[APPROVE] Action failed:',e));
     
     // Animate out then advance
@@ -1761,11 +1761,15 @@ function ReferencesView({userId}){
 // AWA JOBS VIEW - Apply With ABA job listings
 // ═══════════════════════════════════════════════════════════════════════════
 function JobsView({userId}){
+  // Map email to ham_id for default filter
+  const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselane@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
+  const defaultHam=hamMap[(userId||"").toLowerCase()]||(userId||"").split("@")[0]||"all";
+  
   const[jobs,setJobs]=useState([]);
   const[loading,setLoading]=useState(true);
   const[selectedJob,setSelectedJob]=useState(null);
   const[filter,setFilter]=useState("");
-  const[teamFilter,setTeamFilter]=useState("all");
+  const[teamFilter,setTeamFilter]=useState(defaultHam);
   const[statusFilter,setStatusFilter]=useState("active"); // active | applied | all
   const[generating,setGenerating]=useState(null);
   const[output,setOutput]=useState(null);
@@ -3252,12 +3256,28 @@ export default function MyABA(){
   const addMsg=useCallback(async(msg)=>{
     // Update local state immediately for responsiveness
     setConvos(p=>p.map(c=>c.id===activeId?{...c,messages:[...c.messages,msg],updatedAt:Date.now()}:c));
-    // Sync to backend
-    if(activeId&&!String(activeId).startsWith('conv-')){
-      // Only sync if it's a backend ID (not local fallback)
-      airAddMessage(activeId,msg.role,msg.content).catch(()=>{});
+    // ⬡B:FIX:chat_persistence:always_save:20260321⬡
+    // Always sync to backend. If conv- prefix (local fallback), create it on backend first then save.
+    if(activeId){
+      let backendId=activeId;
+      if(String(activeId).startsWith('conv-')){
+        // Retry creating on backend
+        try{
+          const userId=user?.email||"brandon";
+          const activeConvLocal=convos.find(c=>c.id===activeId);
+          const result=await airCreateConversation(userId,activeConvLocal?.title||"New Chat",activeConvLocal?.projectId,activeConvLocal?.shared||false);
+          if(result.success&&result.conversation){
+            backendId=result.conversation.id;
+            // Swap local ID for backend ID
+            setConvos(p=>p.map(c=>c.id===activeId?{...c,id:backendId}:c));
+            setActiveId(backendId);
+            console.log("[CHAT] Promoted local conv to backend:",backendId);
+          }
+        }catch(e){console.error("[CHAT] Backend create retry failed:",e)}
+      }
+      airAddMessage(backendId,msg.role,msg.content).catch(e=>console.error("[CHAT] Save message failed:",e));
     }
-  },[activeId]);
+  },[activeId,user,convos]);
 
   // v2.16.0: Delete via backend
   const deleteConv=useCallback(async(id)=>{
