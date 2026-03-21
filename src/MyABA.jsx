@@ -1187,9 +1187,12 @@ function EmailView({userId}){
   const[loading,setLoading]=useState(true);
   const[selectedEmail,setSelectedEmail]=useState(null);
   const[folder,setFolder]=useState("inbox"); // inbox | sent
+  const[replyText,setReplyText]=useState("");
+  const[replying,setReplying]=useState(false);
+  const[replyOpen,setReplyOpen]=useState(false);
 
   const loadEmails=async(f)=>{
-    setLoading(true);setSelectedEmail(null);
+    setLoading(true);setSelectedEmail(null);setReplyOpen(false);
     try{
       const r=await fetch(`${ABABASE}/api/email/${f}?userId=${encodeURIComponent(userId)}&limit=20`);
       if(r.ok){const d=await r.json();setEmails(d.emails||d.messages||d.data||[])}
@@ -1197,28 +1200,57 @@ function EmailView({userId}){
     }catch(e){console.error("[EMAIL]",e);setEmails([])}
     setLoading(false);
   };
+  
+  const sendReply=async()=>{
+    if(!replyText.trim()||!selectedEmail)return;
+    setReplying(true);
+    try{
+      const toEmail=selectedEmail.from?.[0]?.email||(typeof selectedEmail.from==='string'?selectedEmail.from:null);
+      await fetch(`${ABABASE}/api/email/reply`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,messageId:selectedEmail.id,body:replyText,to:toEmail})});
+      setReplyText("");setReplyOpen(false);alert("Reply sent!");
+    }catch(e){alert("Reply failed: "+e.message)}
+    setReplying(false);
+  };
+
+  // Resolve ham_id for connect link
+  const hamId=(userId||"").split("@")[0].toLowerCase();
+  const hamMap={"brandonjpiercesr":"brandon","ericreeselane":"eric","bryanjpiercejr":"bj","cj.d.moore32":"cj","shields.devante":"vante","dmurrayjr34":"dwayne","raquelembritton":"raquel"};
+  const connectHamId=hamMap[hamId]||hamId;
 
   useEffect(()=>{loadEmails(folder)},[folder]);
 
   if(loading)return <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:40,height:40,borderRadius:"50%",border:"3px solid rgba(139,92,246,.2)",borderTopColor:"rgba(139,92,246,.8)",animation:"spin 1s linear infinite"}}/></div>;
 
   return(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-    {/* Folder toggle */}
+    {/* Folder toggle + connect */}
     <div style={{display:"flex",gap:4,padding:"4px 0",flexShrink:0}}>
       {["inbox","sent"].map(f=>(
         <button key={f} onClick={()=>{setFolder(f);loadEmails(f)}} style={{flex:1,padding:"8px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:folder===f?600:400,background:folder===f?"rgba(139,92,246,.2)":"rgba(255,255,255,.04)",color:folder===f?"rgba(139,92,246,.95)":"rgba(255,255,255,.4)",textTransform:"capitalize"}}>{f}</button>
       ))}
       <button onClick={()=>loadEmails(folder)} style={{padding:"8px 12px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.4)",fontSize:12}}><RefreshCw size={14}/></button>
+      <a href={`${ABABASE}/api/nylas/connect?ham_id=${connectHamId}`} target="_blank" rel="noopener noreferrer" style={{padding:"8px 12px",borderRadius:8,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.08)",color:"#34D399",cursor:"pointer",fontSize:12,fontWeight:600,textDecoration:"none",display:"flex",alignItems:"center"}}><Plus size={14}/></a>
     </div>
 
     {/* Selected email detail */}
     {selectedEmail&&<div style={{flex:1,overflowY:"auto",padding:8}}>
-      <button onClick={()=>setSelectedEmail(null)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:11,marginBottom:8}}><ChevronRight size={12} style={{transform:"rotate(180deg)"}}/>Back</button>
+      <button onClick={()=>{setSelectedEmail(null);setReplyOpen(false)}} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:11,marginBottom:8}}><ChevronRight size={12} style={{transform:"rotate(180deg)"}}/>Back</button>
       <div style={{padding:14,borderRadius:14,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)"}}>
         <p style={{color:"rgba(255,255,255,.9)",fontSize:14,fontWeight:600,margin:"0 0 4px"}}>{selectedEmail.subject||"(no subject)"}</p>
         <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"0 0 2px"}}>From: {selectedEmail.fromName||selectedEmail.from?.[0]?.name||selectedEmail.from?.[0]?.email||(typeof selectedEmail.from==='string'?selectedEmail.from:"Unknown")}</p>
         <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"0 0 12px"}}>{selectedEmail.date?new Date(selectedEmail.date*1000).toLocaleString():""}</p>
         <div style={{color:"rgba(255,255,255,.7)",fontSize:12,lineHeight:1.6}} dangerouslySetInnerHTML={{__html:selectedEmail.body||selectedEmail.snippet||"No content"}}/>
+        
+        {/* Reply section */}
+        <div style={{marginTop:16,borderTop:"1px solid rgba(255,255,255,.06)",paddingTop:12}}>
+          {!replyOpen?<button onClick={()=>setReplyOpen(true)} style={{padding:"8px 16px",borderRadius:10,border:"1px solid rgba(139,92,246,.2)",background:"rgba(139,92,246,.08)",color:"rgba(139,92,246,.8)",cursor:"pointer",fontSize:12,fontWeight:500}}>Reply</button>:(
+          <div>
+            <textarea value={replyText} onChange={e=>setReplyText(e.target.value)} rows={3} placeholder="Type your reply..." style={{width:"100%",padding:10,borderRadius:10,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.8)",fontSize:12,resize:"vertical",outline:"none",boxSizing:"border-box",fontFamily:"inherit",marginBottom:8}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>{setReplyOpen(false);setReplyText("")}} style={{padding:"8px 14px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"rgba(255,255,255,.4)",cursor:"pointer",fontSize:11}}>Cancel</button>
+              <button disabled={replying||!replyText.trim()} onClick={sendReply} style={{padding:"8px 14px",borderRadius:8,border:"none",background:replyText.trim()?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)",color:replyText.trim()?"rgba(139,92,246,.95)":"rgba(255,255,255,.3)",cursor:"pointer",fontSize:11,fontWeight:600}}>{replying?"Sending...":"Send Reply"}</button>
+            </div>
+          </div>)}
+        </div>
       </div>
     </div>}
 
@@ -3272,6 +3304,7 @@ export default function MyABA(){
   const[online,setOnline]=useState(navigator.onLine);
   // v2.15.0: Admin mode for HAM users
   const[adminPanelOpen,setAdminPanelOpen]=useState(false);
+  const[bugReportOpen,setBugReportOpen]=useState(false);
   const[commandCenterOpen,setCommandCenterOpen]=useState(false);
   const[lastABAResponse,setLastABAResponse]=useState(null);
   // ⬡B:snap.quick_question:STATE:20260317⬡
@@ -3905,6 +3938,8 @@ export default function MyABA(){
           <span style={{color:"rgba(255,255,255,.2)",fontSize:10}}>{abaState!=="idle"?(abaState==="thinking"?"thinking...":abaState==="speaking"?"speaking...":"listening..."):""}</span>
         </div>
         <div style={{display:"flex",gap:4}}>
+          {/* ⬡B:PRE_ALPHA:REPORT_BUG_BUTTON:20260321⬡ */}
+          <button onClick={()=>setBugReportOpen(true)} style={{background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.15)",color:"rgba(239,68,68,.7)",borderRadius:10,padding:"6px 10px",cursor:"pointer",fontSize:10,fontWeight:600,display:"flex",alignItems:"center",gap:4}}>Report Bug</button>
           {/* v2.15.0: Admin button for HAM users */}
           {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{background:lastABAResponse?"rgba(34,197,94,.15)":"rgba(255,255,255,.04)",border:`1px solid ${lastABAResponse?"rgba(34,197,94,.2)":"rgba(255,255,255,.06)"}`,color:lastABAResponse?"rgba(34,197,94,.85)":"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} title="Admin Mode"><Activity size={15}/></button>}
           <button onClick={()=>setVoiceOut(!voiceOut)} style={{background:voiceOut?"rgba(139,92,246,.15)":"rgba(255,255,255,.04)",border:`1px solid ${voiceOut?"rgba(139,92,246,.2)":"rgba(255,255,255,.06)"}`,color:voiceOut?"rgba(139,92,246,.85)":"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={15}/>:<VolumeX size={15}/>}</button>
@@ -4112,5 +4147,27 @@ export default function MyABA(){
     <ConnectionStatus online={online}/>
     {/* v2.15.0: Admin Panel for HAM users */}
     {isHAM(user?.email)&&<AdminPanel open={adminPanelOpen} onClose={()=>setAdminPanelOpen(false)} lastResponse={lastABAResponse}/>}
+    
+    {/* ⬡B:PRE_ALPHA:BUG_REPORT_MODAL:20260321⬡ */}
+    {bugReportOpen&&<div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setBugReportOpen(false)}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:380,background:"rgba(15,12,30,.98)",border:"1px solid rgba(239,68,68,.2)",borderRadius:20,padding:20}}>
+        <p style={{color:"rgba(255,255,255,.9)",fontSize:16,fontWeight:600,margin:"0 0 4px"}}>Report a Bug</p>
+        <p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:"0 0 16px"}}>Tell us what happened. Be as specific as you can.</p>
+        <textarea id="bugDesc" rows={4} placeholder="What went wrong? What were you trying to do?" style={{width:"100%",padding:12,borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.8)",fontSize:13,resize:"vertical",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+        <div style={{display:"flex",gap:8,marginTop:12}}>
+          <button onClick={()=>setBugReportOpen(false)} style={{flex:1,padding:12,borderRadius:10,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:13}}>Cancel</button>
+          <button onClick={async()=>{
+            const desc=document.getElementById("bugDesc")?.value;
+            if(!desc?.trim())return;
+            try{
+              const r=await fetch("https://abacia-services.onrender.com/api/bugs/report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({description:desc,userId:user?.email,app:"myaba",page:mainTab})});
+              const d=await r.json();
+              setBugReportOpen(false);
+              alert(d.message||"Bug reported. Thanks!");
+            }catch(e){alert("Failed to submit: "+e.message)}
+          }} style={{flex:1,padding:12,borderRadius:10,border:"none",background:"rgba(239,68,68,.2)",color:"#EF4444",cursor:"pointer",fontSize:13,fontWeight:600}}>Submit Bug</button>
+        </div>
+      </div>
+    </div>}
     {toast&&<Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)}/>}
   </div>)}
