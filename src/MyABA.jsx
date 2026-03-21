@@ -404,34 +404,16 @@ async function reachPresence(userId) {
 
 async function airNameChat(messages, userId) {
   try {
-    const recent = messages.filter(m => m.role === "user").slice(-5).map(m => m.content).join(" | ");
-    console.log("[CHAT] Naming chat from:", recent.substring(0, 50));
+    const firstUserMsg = messages.find(m => m.role === "user");
+    if (!firstUserMsg) return null;
     
-    // Race: AIR response vs 8 second timeout with local fallback
-    const airPromise = airRequest("name_chat", { message: recent, conversationMessages: recent }, userId);
-    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 8000));
-    
-    const data = await Promise.race([airPromise, timeoutPromise]);
-    
-    if (data && data.response) {
-      console.log("[CHAT] AIR named chat:", data.response);
-      return data.response;
-    }
-    
-    // Fallback: extract first meaningful words from first user message
-    const firstMsg = messages.find(m => m.role === "user");
-    if (firstMsg && firstMsg.content) {
-      const words = firstMsg.content.trim().split(/\s+/).slice(0, 6).join(" ");
-      const name = words.length > 30 ? words.substring(0, 30) + "..." : words;
-      console.log("[CHAT] Local fallback name:", name);
-      return name;
-    }
-    return null;
+    // Immediate: use first 6 words of first user message
+    const words = firstUserMsg.content.trim().split(/\s+/).slice(0, 6).join(" ");
+    const localName = words.length > 35 ? words.substring(0, 35) + "..." : words;
+    console.log("[CHAT] Named chat:", localName);
+    return localName;
   } catch (e) { 
     console.error("[CHAT] Name error:", e);
-    // Same local fallback
-    const firstMsg = messages.find(m => m.role === "user");
-    if (firstMsg) return firstMsg.content.trim().split(/\s+/).slice(0, 6).join(" ");
     return null; 
   }
 }
@@ -1337,6 +1319,9 @@ function BriefingView({data,loading,onRefresh}){
     
     {/* Upcoming - Calendar events */}
     <Section title="Upcoming" icon={Calendar} items={data.upcoming} emptyText="No upcoming events" color="#3B82F6"/>
+    
+    {/* News */}
+    {data.news&&data.news.length>0&&<Section title="News" icon={Zap} items={data.news} emptyText="" color="#F59E0B"/>}
     
     {/* Refresh button */}
     <div style={{display:"flex",justifyContent:"center",paddingTop:8}}>
@@ -3457,9 +3442,15 @@ export default function MyABA(){
 
   useEffect(()=>{
     if(!activeConv||activeConv.autoNamed||!user)return;
-    if(activeConv.messages.length>=5){
+    if(activeConv.messages.length>=2){
       airNameChat(activeConv.messages,user.email||user.uid).then(name=>{
-        if(name)setConvos(p=>p.map(c=>c.id===activeId?{...c,title:name,autoNamed:true}:c));
+        if(name){
+          setConvos(p=>p.map(c=>c.id===activeId?{...c,title:name,autoNamed:true}:c));
+          // Sync title to backend
+          if(activeId&&!String(activeId).startsWith('conv-')){
+            fetch(`${ABABASE}/api/conversations/${activeId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:name})}).catch(()=>{});
+          }
+        }
       });
     }
   },[messages.length,activeId]);
