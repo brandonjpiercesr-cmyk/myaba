@@ -1027,12 +1027,14 @@ function TalkToABA({userId}){
   };
   
   const processAudio=async(blob)=>{
-    // Step 1: Transcribe
+    // Step 1: Transcribe - send raw audio bytes (backend expects Buffer, not FormData)
     setPhase("thinking");setStatusText("Transcribing...");
     try{
-      const formData=new FormData();
-      formData.append("audio",blob,"recording.webm");
-      const txRes=await fetch(`${ABABASE}/api/voice/transcribe`,{method:"POST",body:formData});
+      const txRes=await fetch(`${ABABASE}/api/voice/transcribe`,{
+        method:"POST",
+        headers:{"Content-Type":blob.type||"audio/webm"},
+        body:blob
+      });
       if(!txRes.ok)throw new Error(`Transcribe HTTP ${txRes.status}`);
       const txData=await txRes.json();
       const transcript=txData.transcript||txData.text||"";
