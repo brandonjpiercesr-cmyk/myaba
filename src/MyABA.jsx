@@ -41,6 +41,7 @@ import {
   MapPin, ExternalLink, Building, Download, ChevronDown
 } from "lucide-react";
 import { auth, signInGoogle, signOutUser } from "./firebase.js";
+import { useConversation } from "@elevenlabs/react";
 import { onAuthStateChanged } from "firebase/auth";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -968,175 +969,103 @@ function Typing(){return(<div style={{display:"flex",justifyContent:"flex-start"
 // ⬡B:MYABA:ELEVENLABS_VOICE:20260320⬡
 // Same agent + webhook as VARA phone calls. WebRTC-based, not MediaRecorder.
 // ═══════════════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════════════
-// TALK TO ABA - Self-contained voice conversation
-// ⬡B:MYABA:TALK_TO_ABA:NATIVE:20260321⬡
-// No external widgets. MediaRecorder → Deepgram STT → AIR → ElevenLabs TTS.
-// Same backend endpoints that already work. Full status feedback.
+// TALK TO ABA - ElevenLabs Conversational AI via useConversation hook
+// ⬡B:MYABA:TALK_TO_ABA:ELEVENLABS_SDK:20260321⬡
+// Same agent as VARA phone calls. WebRTC audio. Full custom UI. No widget.
 // ═══════════════════════════════════════════════════════════════════════════
 function TalkToABA({userId}){
-  const ABABASE="https://abacia-services.onrender.com";
-  const[phase,setPhase]=useState("idle"); // idle | listening | thinking | speaking | error
+  const[orbState,setOrbState]=useState("idle"); // idle | connecting | listening | thinking | speaking | error
   const[statusText,setStatusText]=useState("Tap the orb to start talking");
-  const[lastResponse,setLastResponse]=useState("");
-  const recRef=useRef(null);
-  const audioRef=useRef(null);
-  const chunksRef=useRef([]);
-  
-  // Detect supported mimeType
-  const getMime=()=>{
-    for(const m of["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus","audio/mp4","audio/aac"]){
-      if(MediaRecorder.isTypeSupported(m))return m;
+  const[lastMsg,setLastMsg]=useState("");
+  const[errorMsg,setErrorMsg]=useState("");
+  const thinkTimerRef=useRef(null);
+
+  const conversation=useConversation({
+    onConnect:()=>{setOrbState("listening");setStatusText("Listening...");setErrorMsg("")},
+    onDisconnect:()=>{setOrbState("idle");setStatusText("Tap the orb to start talking")},
+    onError:(msg)=>{console.error("[TALK] ElevenLabs error:",msg);setOrbState("error");setErrorMsg(String(msg));setStatusText("Error. Tap to retry.")},
+    onMessage:({message,source})=>{
+      if(source==="user"){setOrbState("thinking");setStatusText("ABA is thinking...");setLastMsg("")}
+      if(source==="ai")setLastMsg(prev=>prev+message)
+    },
+    onModeChange:({mode})=>{
+      clearTimeout(thinkTimerRef.current);
+      if(mode==="speaking"){setOrbState("speaking");setStatusText("ABA is speaking...")}
+      else{thinkTimerRef.current=setTimeout(()=>{setOrbState("listening");setStatusText("Listening...")},200)}
+    },
+    onStatusChange:({status})=>{
+      if(status==="connecting"){setOrbState("connecting");setStatusText("Connecting...")}
+      if(status==="disconnected"){setOrbState("idle");setStatusText("Tap the orb to start talking")}
     }
-    return "";
-  };
-  
-  const stopAudio=()=>{if(audioRef.current){audioRef.current.pause();audioRef.current=null}};
-  
-  const startListening=async()=>{
-    stopAudio();
-    if(phase==="listening"){
-      // Stop recording and process
-      if(recRef.current&&recRef.current.state==="recording"){recRef.current.stop()}
+  });
+
+  const handleTap=useCallback(async()=>{
+    if(orbState==="error"){setOrbState("idle");setStatusText("Tap the orb to start talking");setErrorMsg("");return}
+    if(conversation.status==="connected"){
+      await conversation.endSession();
       return;
     }
-    
-    setPhase("listening");setStatusText("Listening... tap orb when done");
-    chunksRef.current=[];
-    
     try{
-      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-      const mime=getMime();
-      console.log("[TALK] Recording with mimeType:",mime||"default");
-      const rec=new MediaRecorder(stream,mime?{mimeType:mime}:{});
-      recRef.current=rec;
-      
-      rec.ondataavailable=(e)=>{if(e.data.size>0)chunksRef.current.push(e.data)};
-      rec.onstop=async()=>{
-        stream.getTracks().forEach(t=>t.stop());
-        const blob=new Blob(chunksRef.current,{type:rec.mimeType||"audio/webm"});
-        console.log("[TALK] Recorded blob:",blob.size,"bytes,",blob.type);
-        if(blob.size<1000){setPhase("idle");setStatusText("Too short. Tap and speak, then tap again.");return}
-        await processAudio(blob);
-      };
-      rec.start(500);
+      setOrbState("connecting");setStatusText("Requesting microphone...");
+      await navigator.mediaDevices.getUserMedia({audio:true});
+      setStatusText("Connecting to ABA...");
+      await conversation.startSession({
+        agentId:"agent_0601khe2q0gben08ws34bzf7a0sa",
+        connectionType:"webrtc"
+      });
     }catch(err){
-      console.error("[TALK] Mic error:",err);
-      setPhase("error");setStatusText("Mic access denied. Check your browser settings.");
+      console.error("[TALK] Start failed:",err);
+      setOrbState("error");
+      setErrorMsg(err.message||"Failed to connect");
+      setStatusText(err.name==="NotAllowedError"?"Microphone access denied. Check browser settings.":"Connection failed. Tap to retry.");
     }
-  };
-  
-  const processAudio=async(blob)=>{
-    // Step 1: Convert blob to base64 (reliable on all browsers including iOS Safari)
-    setPhase("thinking");setStatusText("Transcribing...");
-    try{
-      const base64=await new Promise((resolve,reject)=>{
-        const reader=new FileReader();
-        reader.onload=()=>{const b64=reader.result.split(",")[1];resolve(b64)};
-        reader.onerror=()=>reject(new Error("Failed to read audio"));
-        reader.readAsDataURL(blob);
-      });
-      console.log("[TALK] Audio base64 length:",base64.length,"type:",blob.type);
-      
-      const txRes=await fetch(`${ABABASE}/api/voice/transcribe-b64`,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({audio_base64:base64,content_type:blob.type||"audio/mp4",source:"myaba_talk"})
-      });
-      if(!txRes.ok){const errText=await txRes.text();throw new Error(`Transcribe HTTP ${txRes.status}: ${errText.substring(0,100)}`)}
-      const txData=await txRes.json();
-      const transcript=txData.transcript||txData.text||"";
-      console.log("[TALK] Transcript:",transcript);
-      if(!transcript.trim()){setPhase("idle");setStatusText("Didn't catch that. Tap and try again.");return}
-      
-      setStatusText(`You said: "${transcript.substring(0,40)}${transcript.length>40?"...":""}"`);
-      
-      // Step 2: Send to AIR
-      setStatusText("ABA is thinking...");
-      const airRes=await fetch(`${ABABASE}/api/air/process`,{
-        method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({message:transcript,user_id:userId||"brandon",channel:"myaba_voice"})
-      });
-      if(!airRes.ok)throw new Error(`AIR HTTP ${airRes.status}`);
-      const airData=await airRes.json();
-      const response=airData.response||airData.message||airData.text||"I heard you but couldn't form a response.";
-      console.log("[TALK] AIR response:",response.substring(0,80));
-      setLastResponse(response);
-      
-      // Step 3: Speak response
-      setPhase("speaking");setStatusText("ABA is speaking...");
-      const ttsRes=await fetch(`${ABABASE}/api/voice/synthesize`,{
-        method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({text:response,voiceId:"AIFDUhRnM6s61433WMNu"})
-      });
-      if(!ttsRes.ok)throw new Error(`TTS HTTP ${ttsRes.status}`);
-      const ttsData=await ttsRes.json();
-      
-      if(ttsData.url){
-        const audio=new Audio(ttsData.url);
-        audioRef.current=audio;
-        audio.onended=()=>{setPhase("idle");setStatusText("Tap the orb to talk again")};
-        audio.onerror=()=>{setPhase("idle");setStatusText("Audio playback failed. Tap to try again.")};
-        await audio.play();
-      }else{
-        setPhase("idle");setStatusText("Response ready (no audio). Tap to talk again.");
-      }
-    }catch(err){
-      console.error("[TALK] Error:",err);
-      setPhase("error");setStatusText(`Error: ${err.message}. Tap to retry.`);
-    }
-  };
-  
-  const handleTap=()=>{
-    if(phase==="error"){setPhase("idle");setStatusText("Tap the orb to start talking");return}
-    if(phase==="speaking"){stopAudio();setPhase("idle");setStatusText("Tap the orb to talk again");return}
-    if(phase==="thinking")return; // Can't interrupt thinking
-    startListening();
-  };
-  
-  const colors={idle:"139,92,246",listening:"239,68,68",thinking:"245,158,11",speaking:"16,185,129",error:"239,68,68"};
-  const c=colors[phase]||colors.idle;
-  const icons={idle:Mic,listening:MicOff,thinking:Sparkles,speaking:Volume2,error:AlertTriangle};
-  const Icon=icons[phase]||Mic;
-  
+  },[conversation,orbState]);
+
+  const colors={idle:"139,92,246",connecting:"245,158,11",listening:"139,92,246",thinking:"245,158,11",speaking:"16,185,129",error:"239,68,68"};
+  const c=colors[orbState]||colors.idle;
+  const icons={idle:Mic,connecting:Sparkles,listening:Mic,thinking:Sparkles,speaking:Volume2,error:AlertTriangle};
+  const Icon=icons[orbState]||Mic;
+  const labels={idle:"TAP TO TALK",connecting:"CONNECTING",listening:"LISTENING",thinking:"THINKING",speaking:"SPEAKING",error:"ERROR"};
+  const isActive=orbState!=="idle"&&orbState!=="error";
+
   return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,position:"relative"}}>
       {/* Pulsing rings */}
-      <div style={{position:"absolute",width:220,height:220,borderRadius:"50%",border:`1px solid rgba(${c},.12)`,animation:phase!=="idle"?"pulse 2s ease-out infinite":"none",opacity:.5,pointerEvents:"none"}}/>
-      <div style={{position:"absolute",width:300,height:300,borderRadius:"50%",border:`1px solid rgba(${c},.08)`,animation:phase!=="idle"?"pulse 2s ease-out .5s infinite":"none",opacity:.3,pointerEvents:"none"}}/>
-      <div style={{position:"absolute",width:380,height:380,borderRadius:"50%",border:`1px solid rgba(${c},.05)`,animation:phase!=="idle"?"pulse 2s ease-out 1s infinite":"none",opacity:.2,pointerEvents:"none"}}/>
-      
-      {/* Main orb - tap to interact */}
-      <button onClick={handleTap} disabled={phase==="thinking"} style={{
-        width:160,height:160,borderRadius:"50%",border:"none",cursor:phase==="thinking"?"wait":"pointer",
+      <div style={{position:"absolute",width:220,height:220,borderRadius:"50%",border:`1px solid rgba(${c},.12)`,animation:isActive?"pulse 2s ease-out infinite":"none",opacity:.5,pointerEvents:"none"}}/>
+      <div style={{position:"absolute",width:300,height:300,borderRadius:"50%",border:`1px solid rgba(${c},.08)`,animation:isActive?"pulse 2s ease-out .5s infinite":"none",opacity:.3,pointerEvents:"none"}}/>
+      <div style={{position:"absolute",width:380,height:380,borderRadius:"50%",border:`1px solid rgba(${c},.05)`,animation:isActive?"pulse 2s ease-out 1s infinite":"none",opacity:.2,pointerEvents:"none"}}/>
+
+      {/* Main orb */}
+      <button onClick={handleTap} style={{
+        width:160,height:160,borderRadius:"50%",border:"none",cursor:"pointer",
         background:`radial-gradient(circle at 30% 30%, rgba(${c},.5), rgba(${c},.25))`,
         boxShadow:`0 0 80px rgba(${c},.4), inset 0 0 40px rgba(255,255,255,.1)`,
         display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,color:"white",
-        animation:phase==="listening"?"breathe 1s ease-in-out infinite":phase==="speaking"?"breathe 1.5s ease-in-out infinite":"breathe 3s ease-in-out infinite",
+        animation:orbState==="listening"?"breathe 1s ease-in-out infinite":orbState==="speaking"?"breathe 1.5s ease-in-out infinite":"breathe 3s ease-in-out infinite",
         transition:"all .3s"
       }}>
-        {phase==="thinking"?<div style={{animation:"spin 1s linear infinite"}}><Sparkles size={44}/></div>:<Icon size={44}/>}
-        <span style={{fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>
-          {phase==="idle"?"TAP TO TALK":phase==="listening"?"TAP TO SEND":phase==="thinking"?"THINKING":phase==="speaking"?"SPEAKING":"ERROR"}
-        </span>
+        {orbState==="thinking"||orbState==="connecting"?<div style={{animation:"spin 1s linear infinite"}}><Sparkles size={44}/></div>:<Icon size={44}/>}
+        <span style={{fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>{labels[orbState]}</span>
       </button>
-      
+
       {/* Status */}
       <div style={{position:"absolute",bottom:80,display:"flex",flexDirection:"column",alignItems:"center",gap:8,maxWidth:300}}>
         <p style={{color:`rgba(${c},.8)`,fontSize:13,textAlign:"center",margin:0,fontWeight:500}}>{statusText}</p>
-        {phase==="listening"&&<div style={{display:"flex",alignItems:"center",gap:6}}>
-          <div style={{width:8,height:8,borderRadius:"50%",background:"rgba(239,68,68,.9)",animation:"mb 1s ease infinite"}}/>
-          <span style={{color:"rgba(239,68,68,.8)",fontSize:11,fontWeight:600}}>RECORDING</span>
+        {orbState==="listening"&&<div style={{display:"flex",alignItems:"center",gap:6}}>
+          <div style={{width:8,height:8,borderRadius:"50%",background:"rgba(139,92,246,.9)",animation:"mb 1s ease infinite"}}/>
+          <span style={{color:"rgba(139,92,246,.8)",fontSize:11,fontWeight:600}}>LIVE</span>
         </div>}
+        {conversation.status==="connected"&&<button onClick={()=>conversation.endSession()} style={{padding:"6px 16px",borderRadius:8,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.08)",color:"rgba(239,68,68,.7)",cursor:"pointer",fontSize:11,fontWeight:500}}>End Conversation</button>}
+        {errorMsg&&<p style={{color:"rgba(239,68,68,.6)",fontSize:11,textAlign:"center",margin:0}}>{errorMsg}</p>}
       </div>
-      
-      {/* Last response card */}
-      {lastResponse&&phase==="idle"&&<div style={{position:"absolute",bottom:20,left:16,right:16,padding:"12px 16px",background:"rgba(0,0,0,.5)",backdropFilter:"blur(12px)",borderRadius:16,border:"1px solid rgba(139,92,246,.15)"}}>
+
+      {/* Last response */}
+      {lastMsg&&orbState==="idle"&&<div style={{position:"absolute",bottom:20,left:16,right:16,padding:"12px 16px",background:"rgba(0,0,0,.5)",backdropFilter:"blur(12px)",borderRadius:16,border:"1px solid rgba(139,92,246,.15)"}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
           <Sparkles size={10} style={{color:"rgba(139,92,246,.7)"}}/>
           <span style={{color:"rgba(139,92,246,.6)",fontSize:9,fontWeight:600}}>ABA SAID</span>
         </div>
-        <p style={{color:"rgba(255,255,255,.7)",fontSize:12,margin:0,lineHeight:1.4,maxHeight:60,overflow:"hidden"}}>{lastResponse.substring(0,180)}{lastResponse.length>180?"...":""}</p>
+        <p style={{color:"rgba(255,255,255,.7)",fontSize:12,margin:0,lineHeight:1.4,maxHeight:60,overflow:"hidden"}}>{lastMsg.substring(0,180)}{lastMsg.length>180?"...":""}</p>
       </div>}
     </div>
   );
