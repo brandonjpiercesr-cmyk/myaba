@@ -67,10 +67,8 @@ const ABABASE = "https://abacia-services.onrender.com";
 // v1.2.0: Check online status
 function isOnline() { return navigator.onLine; }
 
-// v2.15.0: AIR with retry + offline awareness + proper userId handling
-// HAM users: brandonjpiercesr@gmail.com, brandon@globalmajoritygroup.com
-const HAM_EMAILS = ['brandonjpiercesr@gmail.com', 'brandon@globalmajoritygroup.com'];
-function isHAM(email) { return HAM_EMAILS.includes(email?.toLowerCase()); }
+// Admin access now resolved from backend via GET /api/ham/resolve → currentHam.is_admin
+// No hardcoded email lists. Trust level checked server-side.
 
 async function airRequest(type, payload = {}, userId = "brandon", maxRetries = 3) {
   if (!isOnline()) {
@@ -1073,7 +1071,7 @@ function TalkToABA({userId}){
 // ⬡B:MYABA:FIRST_LOGIN_TOUR:20260320⬡
 // Shows on first login. ABA speaks + highlights each tab. Skip anytime.
 // ═══════════════════════════════════════════════════════════════════════════
-function FirstLoginTour({user,onComplete}){
+function FirstLoginTour({user,onComplete,currentHam,appConfig}){
   const[step,setStep]=useState(0);
   const[speaking,setSpeaking]=useState(false);
   const audioRef=useRef(null);
@@ -1081,13 +1079,16 @@ function FirstLoginTour({user,onComplete}){
   const firstName=(user?.displayName||user?.email||"").split(/[\s@]/)[0]||"friend";
 
   const STEPS=[
-    {tab:"welcome",title:"Welcome to ABA",body:`Hey ${firstName}. I'm ABA, your life assistant. Let me show you around real quick. This will take about 60 seconds. Tap Next to continue or Skip anytime.`,voice:`Hey ${firstName}. I'm ABA, your life assistant. Let me show you around. This will take about 60 seconds.`},
-    {tab:"chat",title:"Chat",body:"This is Chat. Talk to me about anything here. Ask questions, give me tasks, or just have a conversation. I remember our history and learn your preferences over time.",voice:"This is Chat. Talk to me about anything. I remember our conversations and learn your preferences."},
-    {tab:"briefing",title:"Briefing",body:"This is your Briefing. Every morning I'll summarize what happened overnight, what's pending, and what's on your calendar. Your personal morning report.",voice:"Briefing is your morning report. I'll tell you what happened, what needs attention, and what's coming up."},
-    {tab:"jobs",title:"Jobs",body:"This is Jobs. Your job matches live here with cover letters and resumes ready for each one. Tap a job to apply. I'll walk you through the whole process and prep you for interviews.",voice:"Jobs has your matched roles with cover letters and resumes ready. Tap any job to apply. I'll prep you for interviews too."},
-    {tab:"memos",title:"Memos",body:"This is Memos. Send messages to Brandon and the team through me. Think of it like internal DMs. You'll see a welcome message waiting for you.",voice:"Memos is how you message the team through me. Check your inbox, there's a welcome message from Brandon."},
-    {tab:"email",title:"Connect Your Email",body:"One more thing. To get the most out of ABA, connect your email. This lets me send emails on your behalf, check your inbox, and manage your calendar. Tap the button below to connect with Google.",voice:"One more thing. Connect your email so I can help you with emails and calendar. Tap Connect Email below.",action:"connect_email"},
-    {tab:"done",title:"You're all set",body:`That's the basics, ${firstName}. Explore each tab and talk to me whenever you need anything. I'm always here.`,voice:`That's the basics. Explore each tab and talk to me whenever you need anything. I'm always here, ${firstName}.`}
+    {tab:"welcome",title:"Welcome to ABA",body:`Hey ${firstName}. I'm ABA, your life assistant. Let me show you around real quick. This will take about 90 seconds. Tap Next to continue or Skip anytime.`,voice:`Hey ${firstName}. I'm ABA, your life assistant. Let me show you around. This will take about 90 seconds.`},
+    {tab:"chat",title:"Chat",body:"This is Chat. Talk to me about anything here. Ask questions, give me tasks, or just have a conversation. You can also tap Talk to have a voice conversation with me.",voice:"This is Chat. Talk to me about anything. You can type or tap Talk to speak with me directly."},
+    {tab:"briefing",title:"Briefing",body:"This is your Briefing. Every morning I'll summarize your emails, calendar events, news, job updates, and reminders. Your personal morning report from ABA.",voice:"Briefing is your morning report. I'll show you emails, calendar, news, jobs, and reminders."},
+    {tab:"jobs",title:"Jobs",body:"This is Jobs. Your matched positions live here with cover letters and resumes ready. Tap a job to see materials, download PDFs, or apply. I'll prep you for interviews too.",voice:"Jobs has your matched roles with cover letters and resumes ready. Tap any job to apply or prep for interviews."},
+    {tab:"pipeline",title:"Pipeline",body:"This is your Pipeline. Track where each job stands from New to Offer. Tap any stage to see the jobs in it.",voice:"Pipeline tracks where each job stands. From new matches all the way to offers."},
+    {tab:"memos",title:"Memos",body:"This is Memos. Send messages to the team through me. Think of it like internal messaging. Check your inbox for a welcome message.",voice:"Memos is how you message the team. Check your inbox for a welcome message."},
+    {tab:"email",title:"Email",body:"This is Email. Once you connect your account, you can read, reply to, and manage your emails right here inside ABA.",voice:"Email lets you read and reply to your emails right inside the app."},
+    {tab:"email",title:"Connect Your Email",body:"To get the most out of ABA, connect your email. This lets me check your inbox, manage your calendar, and send emails on your behalf. Tap the button below to connect with Google.",voice:"Connect your email so I can help with your inbox and calendar. Tap Connect Email below.",action:"connect_email"},
+    {tab:"done",title:"One more thing",body:`See the Report Bug button in the top right? If anything breaks or feels off, tap it and tell me what happened. This is pre-alpha so your feedback is everything.`,voice:"See the Report Bug button at the top? If anything breaks, tap it and tell me what happened. Your feedback makes me better."},
+    {tab:"done",title:"You're all set",body:`That's the tour, ${firstName}. Explore each tab and talk to me whenever you need anything. I'm always here.`,voice:`That's the tour. Explore and talk to me whenever you need anything. I'm always here, ${firstName}.`}
   ];
 
   const currentStep=STEPS[step];
@@ -1101,7 +1102,7 @@ function FirstLoginTour({user,onComplete}){
       try{
         const res=await fetch("https://abacia-services.onrender.com/api/voice/synthesize",{
           method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({text:currentStep.voice,voiceId:"6aDn1KB0hjpdcocrUkmq"})
+          body:JSON.stringify({text:currentStep.voice,voiceId:appConfig?.voice?.tour_voice_id||"6aDn1KB0hjpdcocrUkmq"})
         });
         if(res.ok&&!cancelled){
           const data=await res.json();
@@ -1129,7 +1130,7 @@ function FirstLoginTour({user,onComplete}){
     onComplete();
   };
 
-  const tabColors={welcome:"#8B5CF6",chat:"#8B5CF6",briefing:"#F59E0B",jobs:"#10B981",memos:"#3B82F6",done:"#8B5CF6"};
+  const tabColors={welcome:"#8B5CF6",chat:"#8B5CF6",briefing:"#F59E0B",jobs:"#10B981",pipeline:"#3B82F6",memos:"#6366F1",email:"#34D399",done:"#8B5CF6"};
   const color=tabColors[currentStep.tab]||"#8B5CF6";
 
   return(
@@ -1152,10 +1153,9 @@ function FirstLoginTour({user,onComplete}){
         <p style={{color:"rgba(255,255,255,.8)",fontSize:14,lineHeight:1.6,margin:0}}>{currentStep.body}</p>
         {currentStep.action==="connect_email"&&(
           <button onClick={()=>{
-            const email=(user?.email||"").toLowerCase();
-            const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselane@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
-            const hamId=hamMap[email]||email.split("@")[0];
-            window.open(`https://abacia-services.onrender.com/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
+            const hamId=currentHam?.hamId||(user?.email||"").split("@")[0];
+            const connectBase=appConfig?.nylas?.connect_base||"https://abacia-services.onrender.com/api/nylas/connect";
+            window.open(`${connectBase}?ham_id=${encodeURIComponent(hamId)}`,"_blank");
           }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#10B981,#059669)",color:"white",cursor:"pointer",fontSize:14,fontWeight:600,marginTop:16,boxShadow:"0 4px 20px rgba(16,185,129,.3)"}}>
             <Mail size={18}/>Connect Email with Google
           </button>
@@ -1189,7 +1189,7 @@ function VoiceMode({mode,setMode}){const modes=[{k:"chat",i:MessageSquare,l:"Cha
 // ⬡B:MYABA:EMAIL_VIEW:20260321⬡
 // Calls backend which calls Nylas. 90% backend, 10% frontend.
 // ═══════════════════════════════════════════════════════════════════════════
-function EmailView({userId}){
+function EmailView({userId,currentHam}){
   const ABABASE="https://abacia-services.onrender.com";
   const[emails,setEmails]=useState([]);
   const[loading,setLoading]=useState(true);
@@ -1220,10 +1220,8 @@ function EmailView({userId}){
     setReplying(false);
   };
 
-  // Resolve ham_id for connect link
-  const hamId=(userId||"").split("@")[0].toLowerCase();
-  const hamMap={"brandonjpiercesr":"brandon","ericreeselane":"eric","bryanjpiercejr":"bj","cj.d.moore32":"cj","shields.devante":"vante","dmurrayjr34":"dwayne","raquelembritton":"raquel"};
-  const connectHamId=hamMap[hamId]||hamId;
+  // Use backend-resolved hamId for connect link — no hardcoded map
+  const connectHamId=currentHam?.hamId||(userId||"").split("@")[0];
 
   useEffect(()=>{loadEmails(folder)},[folder]);
 
@@ -1342,15 +1340,10 @@ function BriefingSetup({userId,onRefresh}){
     const interests=[...selected.map(id=>INTEREST_OPTIONS.find(o=>o.id===id)?.label||id)];
     if(custom.trim())interests.push(...custom.split(",").map(s=>s.trim()).filter(Boolean));
     try{
-      await fetch(`${ABABASE}/api/air/process`,{
+      // Save via backend endpoint — NOT direct Supabase write
+      await fetch(`${ABABASE}/api/preferences/save`,{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({message:`Save my news interests for DAWN briefings: ${interests.join(", ")}`,user_id:userId,channel:"myaba"})
-      });
-      // Also save directly to brain as HAM preference
-      await fetch(`https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory`,{
-        method:"POST",
-        headers:{"apikey":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw","Content-Type":"application/json","Prefer":"return=minimal"},
-        body:JSON.stringify({source:`ham.preferences.${(userId||"").split("@")[0]}`,memory_type:"ham_preferences",content:JSON.stringify({news_interests:interests,updated:new Date().toISOString()}),importance:7,tags:["preferences","news",userId]})
+        body:JSON.stringify({userId,preferences:{news_interests:interests}})
       });
     }catch(e){console.error("[BRIEFING] Save prefs error:",e)}
     setSaving(false);setDone(true);
@@ -1649,7 +1642,7 @@ function ApproveView({userId,onAction}){
 // MEMOS VIEW - Internal HAM-to-HAM messaging
 // ⬡B:MYABA.V2:memos:20260319⬡
 // ═══════════════════════════════════════════════════════════════════════════
-function MemosView({userId}){
+function MemosView({userId,teamMembers}){
   const[memos,setMemos]=useState([]);
   const[loading,setLoading]=useState(true);
   const[view,setView]=useState("inbox"); // inbox | sent | thread
@@ -1659,14 +1652,9 @@ function MemosView({userId}){
   const[composeForm,setComposeForm]=useState({to:"",subject:"",body:"",priority:"normal"});
   const[sending,setSending]=useState(false);
 
-  const TEAM=[
-    {id:"brandon",name:"Brandon",email:"brandonjpiercesr@gmail.com"},
-    {id:"eric",name:"Eric",email:"eric@globalmajoritygroup.com"},
-    {id:"bj",name:"BJ",email:"bj@globalmajoritygroup.com"},
-    {id:"cj",name:"CJ",email:"cj@globalmajoritygroup.com"},
-    {id:"vante",name:"Vante",email:"vante@globalmajoritygroup.com"},
-    {id:"dwayne",name:"Dwayne",email:"dwayne@globalmajoritygroup.com"}
-  ].filter(t=>t.id!==userId&&t.id!==(userId||"").split("@")[0]);
+  // Team from backend — no hardcoded list
+  const hamId=(userId||"").split("@")[0].toLowerCase();
+  const TEAM=(teamMembers||[]).filter(t=>t.id!==hamId).map(t=>({id:t.id,name:t.name,email:t.email}));
 
   const loadMemos=async(type)=>{
     setLoading(true);
@@ -1720,7 +1708,7 @@ function MemosView({userId}){
     }catch(e){console.error("[MEMOS] react error:",e)}
   };
 
-  const TEAM_COLORS={brandon:"#8B5CF6",eric:"#3B82F6",bj:"#10B981",cj:"#F59E0B",vante:"#F97316",dwayne:"#EC4899",raquel:"#A78BFA"};
+  const TEAM_COLORS={};for(const m of(teamMembers||[])){TEAM_COLORS[m.id]=m.color;TEAM_COLORS[m.name?.toLowerCase()]=m.color;}
   
   const renderMemo=(m)=>{
     const senderName=m.from===userId?"You":m.fromName||m.from;
@@ -1961,10 +1949,9 @@ function ReferencesView({userId}){
 // ═══════════════════════════════════════════════════════════════════════════
 // AWA JOBS VIEW - Apply With ABA job listings
 // ═══════════════════════════════════════════════════════════════════════════
-function JobsView({userId}){
-  // Map email to ham_id for default filter
-  const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselane@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
-  const defaultHam=hamMap[(userId||"").toLowerCase()]||(userId||"").split("@")[0]||"all";
+function JobsView({userId,teamMembers,currentHam}){
+  // Use backend-resolved hamId for default filter — no hardcoded map
+  const defaultHam=currentHam?.hamId||(userId||"").split("@")[0]||"all";
   
   const[jobs,setJobs]=useState([]);
   const[loading,setLoading]=useState(true);
@@ -1991,20 +1978,12 @@ function JobsView({userId}){
   const[unmatchedJobs,setUnmatchedJobs]=useState([]);
   const[assigningJob,setAssigningJob]=useState(null); // job being assigned
   
-  // Team members for filter
-  const TEAM_MEMBERS=[
-    {id:"all",name:"All",color:"#6B7280"},
-    {id:"brandon",name:"Brandon",color:"#8B5CF6"},
-    {id:"eric",name:"Eric",color:"#3B82F6"},
-    {id:"bj",name:"BJ",color:"#10B981"},
-    {id:"cj",name:"CJ",color:"#F59E0B"},
-    {id:"vante",name:"Vante",color:"#F97316"},
-    {id:"dwayne",name:"Dwayne",color:"#EC4899"},
-    {id:"gmg",name:"GMG",color:"#6B7280"}
-  ];
+  // Team members from backend — no hardcoded list
+  const TEAM_MEMBERS=[{id:"all",name:"All",color:"#6B7280"},...(teamMembers||[]).map(m=>({id:m.id,name:m.name,color:m.color||"#6B7280"}))];
   
-  // Team colors for job cards
-  const TEAM_COLORS={"Brandon":"#8B5CF6","Eric":"#3B82F6","BJ":"#10B981","CJ":"#F59E0B","Vante":"#F97316","Dwayne":"#EC4899","GMG":"#6B7280"};
+  // Team colors from backend
+  const TEAM_COLORS={};
+  for(const m of (teamMembers||[])){TEAM_COLORS[m.name]=m.color;TEAM_COLORS[m.id]=m.color;}
   
   useEffect(()=>{
     (async()=>{
@@ -2098,7 +2077,7 @@ function JobsView({userId}){
   return(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
     {/* Status filter: Active | My Applications | All | Unmatched (admin only) */}
     <div style={{display:"flex",gap:4,marginBottom:6}}>
-      {[{k:"active",l:"Active Jobs"},{k:"applied",l:"My Applications"},{k:"all",l:"All"},...(["brandon","brandonjpiercesr","eric","ericreeselane"].includes(defaultHam)?[{k:"unmatched",l:"Review"}]:[])].map(sf=>(
+      {[{k:"active",l:"Active Jobs"},{k:"applied",l:"My Applications"},{k:"all",l:"All"},...(currentHam?.can_review_unmatched?[{k:"unmatched",l:"Review"}]:[])].map(sf=>(
         <button key={sf.k} onClick={()=>{setStatusFilter(sf.k);setSelectedJob(null);}} style={{
           flex:1,padding:"8px 6px",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:statusFilter===sf.k?600:400,
           background:statusFilter===sf.k?"rgba(139,92,246,.2)":"rgba(255,255,255,.04)",
@@ -2151,7 +2130,7 @@ function JobsView({userId}){
           const title=job.job_title||job.title||"Untitled";
           const company=job.organization||job.company||"Unknown";
           const assignee=(job.assignees||[])[0]||job.assignee||"Unassigned";
-          const DISPLAY_NAMES={"brandon":"Brandon","eric":"Eric","bj":"BJ","cj":"CJ","vante":"Vante","dwayne":"Dwayne","gmg":"GMG"};
+          const DISPLAY_NAMES={};for(const m of(teamMembers||[])){DISPLAY_NAMES[m.id]=m.name}
           const assigneeDisplay=DISPLAY_NAMES[assignee]||assignee;
           return(
           <div key={job.id} onClick={()=>{setSelectedJob(job);setApplyPreview(null);setInterviewForm(null);setOfferForm(null);setShowRefs(false);setPrepData(null);setMockMode(false);setMockQuestion(null);setMockEval(null);}} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
@@ -3095,7 +3074,7 @@ function Queue({open,onToggle,items}){
 // ═══════════════════════════════════════════════════════════════════════════
 // F7: SETTINGS DRAWER - Full settings panel
 // ═══════════════════════════════════════════════════════════════════════════
-function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,user}){
+function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,user,currentHam}){
   const[notifyBriefing,setNotifyBriefing]=useState(()=>{try{return localStorage.getItem("myaba_notifyBriefing")!=="false"}catch{return true}});
   const[notifyUrgent,setNotifyUrgent]=useState(()=>{try{return localStorage.getItem("myaba_notifyUrgent")!=="false"}catch{return true}});
   const[autoSpeak,setAutoSpeak]=useState(()=>{try{return localStorage.getItem("myaba_autoSpeak")==="true"}catch{return false}});
@@ -3247,10 +3226,7 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
       
       {/* ⬡B:MYABA:CONNECT_EMAIL:20260320⬡ */}
       <button onClick={()=>{
-        // Map email to ham_id for Nylas OAuth
-        const email=(user?.email||"").toLowerCase();
-        const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselane@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
-        const hamId=hamMap[email]||email.split("@")[0];
+        const hamId=currentHam?.hamId||(user?.email||"").split("@")[0];
         window.open(`https://abacia-services.onrender.com/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
       }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px 16px",borderRadius:14,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.06)",color:"rgba(16,185,129,.8)",cursor:"pointer",fontSize:14,fontWeight:600,marginBottom:8}}>
         <Mail size={18}/>Connect Email
@@ -3281,6 +3257,10 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
 export default function MyABA(){
   const[user,setUser]=useState(null);const[authLoading,setAuthLoading]=useState(true);
   const[convos,setConvos]=useState([]);const[activeId,setActiveId]=useState(null);
+  // ⬡B:90_10_FIX:dynamic_team_config:20260321⬡ Loaded from backend, not hardcoded
+  const[teamMembers,setTeamMembers]=useState([]);
+  const[currentHam,setCurrentHam]=useState(null);
+  const[appConfig,setAppConfig]=useState(null);
   const activeConv=convos.find(c=>c.id===activeId);const messages=activeConv?.messages||[];
   const[input,setInput]=useState("");const[abaState,setAbaState]=useState("idle");
   const[attachments,setAttachments]=useState([]); // SPURT 5: files attached to message
@@ -3464,6 +3444,18 @@ export default function MyABA(){
   },[]);
 
   useEffect(()=>{const unsub=onAuthStateChanged(auth,(u)=>{setUser(u);setAuthLoading(false)});return()=>unsub()},[]);
+  
+  // ⬡B:90_10_FIX:init_from_backend:20260321⬡ Load team + config from backend on auth
+  useEffect(()=>{
+    if(!user)return;
+    const email=user.email||user.uid;
+    // Load team members
+    fetch(`${ABABASE}/api/team`).then(r=>r.json()).then(d=>{if(d.success)setTeamMembers(d.members)}).catch(()=>{});
+    // Resolve current user's HAM profile
+    fetch(`${ABABASE}/api/ham/resolve?email=${encodeURIComponent(email)}`).then(r=>r.json()).then(d=>{if(d.success)setCurrentHam(d)}).catch(()=>{});
+    // Load app config (voice IDs, agent IDs)
+    fetch(`${ABABASE}/api/config/app`).then(r=>r.json()).then(d=>{if(d.success)setAppConfig(d)}).catch(()=>{});
+  },[user]);
   useEffect(()=>{if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight},[messages,isTyping]);
 
   const showToast=useCallback((message,type="info")=>{setToast({message,type})},[]);
@@ -3929,7 +3921,7 @@ export default function MyABA(){
   const bgUrl=BG[bg]?.u||BG.pinkSmoke.u;
 
   // Show tour on first login
-  if(!tourComplete)return <FirstLoginTour user={user} onComplete={()=>{try{localStorage.setItem("myaba_tour_complete","true")}catch{};window.location.reload()}}/>;
+  if(!tourComplete)return <FirstLoginTour user={user} currentHam={currentHam} appConfig={appConfig} onComplete={()=>{try{localStorage.setItem("myaba_tour_complete","true")}catch{};window.location.reload()}}/>;
 
   return(<div style={{width:"100%",height:`${viewportHeight}px`,position:"relative",overflow:"hidden",fontFamily:"'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:"#08080d",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)"}}>
     <style>{`@keyframes mp{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}@keyframes mf{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes mb{0%,100%{opacity:.6}50%{opacity:1}}@keyframes ml{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 12px rgba(239,68,68,0)}}@keyframes kenBurns{0%{transform:scale(1) translate(0,0)}25%{transform:scale(1.08) translate(-1%,-1%)}50%{transform:scale(1.12) translate(1%,0)}75%{transform:scale(1.06) translate(-0.5%,1%)}100%{transform:scale(1) translate(0,0)}}@keyframes pulse{0%{transform:scale(1);opacity:1}100%{transform:scale(1.5);opacity:0}}@keyframes breathe{0%,100%{transform:scale(1);box-shadow:0 0 40px rgba(139,92,246,.3)}50%{transform:scale(1.05);box-shadow:0 0 60px rgba(139,92,246,.5)}}@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(139,92,246,.15);border-radius:99px}`}</style>
@@ -3948,8 +3940,8 @@ export default function MyABA(){
         <div style={{display:"flex",gap:4}}>
           {/* ⬡B:PRE_ALPHA:REPORT_BUG_BUTTON:20260321⬡ */}
           <button onClick={()=>setBugReportOpen(true)} style={{background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.15)",color:"rgba(239,68,68,.7)",borderRadius:10,padding:"6px 10px",cursor:"pointer",fontSize:10,fontWeight:600,display:"flex",alignItems:"center",gap:4}}>Report Bug</button>
-          {/* v2.15.0: Admin button for HAM users */}
-          {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{background:lastABAResponse?"rgba(34,197,94,.15)":"rgba(255,255,255,.04)",border:`1px solid ${lastABAResponse?"rgba(34,197,94,.2)":"rgba(255,255,255,.06)"}`,color:lastABAResponse?"rgba(34,197,94,.85)":"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} title="Admin Mode"><Activity size={15}/></button>}
+          {/* Admin button - trust_level from backend, not hardcoded email list */}
+          {currentHam?.is_admin&&<button onClick={()=>setAdminPanelOpen(true)} style={{background:lastABAResponse?"rgba(34,197,94,.15)":"rgba(255,255,255,.04)",border:`1px solid ${lastABAResponse?"rgba(34,197,94,.2)":"rgba(255,255,255,.06)"}`,color:lastABAResponse?"rgba(34,197,94,.85)":"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} title="Admin Mode"><Activity size={15}/></button>}
           <button onClick={()=>setVoiceOut(!voiceOut)} style={{background:voiceOut?"rgba(139,92,246,.15)":"rgba(255,255,255,.04)",border:`1px solid ${voiceOut?"rgba(139,92,246,.2)":"rgba(255,255,255,.06)"}`,color:voiceOut?"rgba(139,92,246,.85)":"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={15}/>:<VolumeX size={15}/>}</button>
           <button onClick={()=>setSettingsOpen(true)} style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)",color:"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><Settings size={15}/></button>
         </div>
@@ -4020,16 +4012,16 @@ export default function MyABA(){
       }}/>}
       
       {/* Jobs Mode - AWA Integration */}
-      {mainTab==="jobs"&&<JobsView userId={user?.email||"brandon"}/>}
+      {mainTab==="jobs"&&<JobsView userId={user?.email||"brandon"} teamMembers={teamMembers} currentHam={currentHam}/>}
       
       {/* Pipeline Mode - Kanban ⬡B:AWA.v3:Phase6:pipeline_tab:20260315⬡ */}
       {mainTab==="pipeline"&&<PipelineView userId={user?.email||"brandon"}/>}
       
       {/* Memos Mode - ⬡B:MYABA:memos_tab:20260319⬡ */}
-      {mainTab==="memos"&&<MemosView userId={user?.email||"brandon"}/>}
+      {mainTab==="memos"&&<MemosView userId={user?.email||"brandon"} teamMembers={teamMembers}/>}
       
       {/* Email Mode - ⬡B:MYABA:email_tab:20260321⬡ */}
-      {mainTab==="email"&&<EmailView userId={user?.email||"brandon"}/>}
+      {mainTab==="email"&&<EmailView userId={user?.email||"brandon"} currentHam={currentHam}/>}
       
       {/* Approve Mode */}
       {mainTab==="approve"&&<ApproveView userId={user?.email||"brandon"}/>}
@@ -4039,7 +4031,7 @@ export default function MyABA(){
     <NewChatModal open={newChatModal} onClose={()=>setNewChatModal(false)} onCreate={(shared,projectId,projectName)=>{if(projectName){const pId=createProject(projectName);createConv(shared,pId)}else{createConv(shared,projectId)}}} projects={projects} onCreateProject={createProject}/>
     <ProjectDetailModal open={!!projectDetailModal} project={projectDetailModal} onClose={()=>setProjectDetailModal(null)} onRename={renameProject} onDelete={deleteProject} onAddFile={addFileToProject} onRemoveFile={removeFileFromProject}/>
     <Queue open={queueOpen} onToggle={()=>setQueueOpen(!queueOpen)} items={proactiveItems}/>
-    <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} voiceOut={voiceOut} setVoiceOut={setVoiceOut} user={user} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
+    <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} voiceOut={voiceOut} setVoiceOut={setVoiceOut} user={user} currentHam={currentHam} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
     {/* ⬡B:snap.quick_question:FAB_AND_PANEL:20260317⬡ */}
     {/* ⬡B:clipboard.history:FAB:20260320⬡ Clipboard History Button */}
     {!clipboardOpen&&!snapOpen&&mainTab==="chat"&&<button onClick={()=>setClipboardOpen(true)} style={{
@@ -4155,7 +4147,7 @@ export default function MyABA(){
     </div>}
     <ConnectionStatus online={online}/>
     {/* v2.15.0: Admin Panel for HAM users */}
-    {isHAM(user?.email)&&<AdminPanel open={adminPanelOpen} onClose={()=>setAdminPanelOpen(false)} lastResponse={lastABAResponse}/>}
+    {currentHam?.is_admin&&<AdminPanel open={adminPanelOpen} onClose={()=>setAdminPanelOpen(false)} lastResponse={lastABAResponse}/>}
     
     {/* ⬡B:PRE_ALPHA:BUG_REPORT_MODAL:20260321⬡ */}
     {bugReportOpen&&<div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setBugReportOpen(false)}>
