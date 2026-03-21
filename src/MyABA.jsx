@@ -925,7 +925,7 @@ function OutputCard({output}){const[exp,setExp]=useState(false);const icons={ema
 function Bubble({msg,userPhoto,onSpeak}){const isU=msg.role==="user";const time=msg.timestamp?new Date(msg.timestamp).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):"";
   const isImg=t=>(t||"").startsWith("image/");
   return(<div style={{display:"flex",justifyContent:isU?"flex-end":"flex-start",padding:"4px 0",gap:10,alignItems:"flex-end"}}>
-    {!isU&&<div style={{width:28,height:28,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 2px 8px rgba(139,92,246,.3)"}}><svg width="14" height="14" viewBox="0 0 100 100"><text x="50" y="72" textAnchor="middle" fill="white" fontSize="65" fontWeight="700" fontFamily="SF Pro Display,system-ui">A</text></svg></div>}
+    {!isU&&<div style={{width:28,height:28,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 2px 8px rgba(139,92,246,.3)"}}><Sparkles size={14} style={{color:"white"}}/></div>}
     <div style={{maxWidth:"80%"}}><div style={{padding:"12px 16px",borderRadius:isU?"20px 20px 6px 20px":"20px 20px 20px 6px",background:isU?"linear-gradient(135deg,rgba(139,92,246,.35),rgba(99,102,241,.3))":"rgba(255,255,255,.08)",backdropFilter:"blur(12px)",border:`1px solid ${isU?"rgba(139,92,246,.3)":"rgba(255,255,255,.1)"}`,boxShadow:isU?"0 4px 16px rgba(139,92,246,.15)":"inset 0 1px 1px rgba(255,255,255,.08), 0 4px 12px rgba(0,0,0,.15)"}}>{msg.output?<OutputCard output={msg.output}/>:<div>{renderMd(msg.content)}</div>}
       {/* ⬡B:MYABA:FILE_ATTACHMENTS_DISPLAY:20260319⬡ */}
       {msg.attachments&&msg.attachments.length>0&&(
@@ -962,7 +962,7 @@ function Bubble({msg,userPhoto,onSpeak}){const isU=msg.role==="user";const time=
     {isU&&<div style={{width:28,height:28,borderRadius:99,overflow:"hidden",flexShrink:0,background:"linear-gradient(135deg,rgba(139,92,246,.4),rgba(99,102,241,.3))",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(139,92,246,.2)"}}>{userPhoto?<img src={userPhoto} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<User size={13} style={{color:"rgba(255,255,255,.7)"}}/>}</div>}
   </div>)}
 
-function Typing(){return(<div style={{display:"flex",justifyContent:"flex-start",padding:"3px 0",gap:8,alignItems:"flex-end"}}><div style={{width:26,height:26,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><svg width="14" height="14" viewBox="0 0 100 100"><text x="50" y="72" textAnchor="middle" fill="white" fontSize="65" fontWeight="700" fontFamily="SF Pro Display,system-ui">A</text></svg></div><div style={{padding:"12px 18px",borderRadius:"18px 18px 18px 4px",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.08)",display:"flex",gap:5,alignItems:"center"}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:99,background:"rgba(139,92,246,.6)",animation:`mp 1.4s ease-in-out ${i*.2}s infinite`}}/>)}</div></div>)}
+function Typing(){return(<div style={{display:"flex",justifyContent:"flex-start",padding:"3px 0",gap:8,alignItems:"flex-end"}}><div style={{width:26,height:26,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Sparkles size={12} style={{color:"white"}}/></div><div style={{padding:"12px 18px",borderRadius:"18px 18px 18px 4px",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.08)",display:"flex",gap:5,alignItems:"center"}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:99,background:"rgba(139,92,246,.6)",animation:`mp 1.4s ease-in-out ${i*.2}s infinite`}}/>)}</div></div>)}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ELEVENLABS CONVERSATIONAL AI - Talk to ABA
@@ -2442,34 +2442,32 @@ function PipelineView({userId}){
       <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{activeCount} active</span>
     </div>
 
-    {/* Kanban columns */}
-    <div style={{display:"flex",gap:6,flex:1,overflowX:"auto",paddingBottom:8}}>
+    {/* Vertical stacked rows - mobile friendly */}
+    <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:4,paddingBottom:8}}>
       {COLUMNS.map(col=>{
         const colJobs=jobs.filter(j=>j.status===col.key);
         const isExpanded=expandedCol===col.key;
         return(
-        <div key={col.key} onClick={()=>setExpandedCol(isExpanded?null:col.key)} style={{minWidth:isExpanded?200:80,flex:isExpanded?2:0,background:"rgba(255,255,255,.02)",borderRadius:10,border:`1px solid ${colJobs.length>0?col.color+"30":"rgba(255,255,255,.05)"}`,padding:8,cursor:"pointer",transition:"all .3s",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-          <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:6}}>
-            <span style={{fontSize:12}}>{col.icon}</span>
-            <span style={{color:col.color,fontSize:10,fontWeight:600}}>{col.label}</span>
-            <span style={{marginLeft:"auto",background:`${col.color}20`,color:col.color,fontSize:10,fontWeight:700,padding:"1px 5px",borderRadius:8,minWidth:16,textAlign:"center"}}>{colJobs.length}</span>
+        <div key={col.key} onClick={()=>setExpandedCol(isExpanded?null:col.key)} style={{background:"rgba(255,255,255,.02)",borderRadius:12,border:`1px solid ${colJobs.length>0?col.color+"30":"rgba(255,255,255,.05)"}`,padding:"10px 14px",cursor:"pointer",transition:"all .2s"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:14}}>{col.icon}</span>
+            <span style={{color:col.color,fontSize:12,fontWeight:600,flex:1}}>{col.label}</span>
+            <span style={{background:`${col.color}20`,color:col.color,fontSize:12,fontWeight:700,padding:"2px 10px",borderRadius:10,minWidth:24,textAlign:"center"}}>{colJobs.length}</span>
+            <ChevronRight size={14} style={{color:"rgba(255,255,255,.2)",transform:isExpanded?"rotate(90deg)":"none",transition:"transform .2s"}}/>
           </div>
-          {isExpanded&&<div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
+          {isExpanded&&colJobs.length>0&&<div style={{marginTop:8,display:"flex",flexDirection:"column",gap:4}}>
             {colJobs.map(job=>(
-              <div key={job.id} style={{padding:8,borderRadius:8,background:"rgba(0,0,0,.3)",border:"1px solid rgba(255,255,255,.05)"}}>
-                <p style={{color:"rgba(255,255,255,.85)",fontSize:11,fontWeight:500,margin:0,lineHeight:1.3}}>{(job.job_title||job.title||"").substring(0,40)}</p>
-                <p style={{color:"rgba(255,255,255,.4)",fontSize:10,margin:"2px 0 0"}}>{(job.organization||"").substring(0,30)}</p>
-                {job.interview_date&&<p style={{color:"#FBBF24",fontSize:9,margin:"3px 0 0"}}>Interview: {new Date(job.interview_date).toLocaleDateString()}</p>}
-                {job.offer_salary&&<p style={{color:"#A78BFA",fontSize:9,margin:"3px 0 0"}}>Offer: {job.offer_salary}</p>}
-                <div style={{display:"flex",gap:4,marginTop:4}}>
-                  {(job.assignees||[]).map(a=><span key={a} style={{fontSize:8,padding:"1px 4px",borderRadius:3,background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.4)"}}>{a}</span>)}
-                </div>
+              <div key={job.id} style={{padding:10,borderRadius:8,background:"rgba(0,0,0,.3)",border:"1px solid rgba(255,255,255,.05)"}}>
+                <p style={{color:"rgba(255,255,255,.85)",fontSize:12,fontWeight:500,margin:0,lineHeight:1.3}}>{(job.job_title||job.title||"").substring(0,60)}</p>
+                <p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:"2px 0 0"}}>{(job.organization||"").substring(0,40)}</p>
+                {job.interview_date&&<p style={{color:"#FBBF24",fontSize:10,margin:"3px 0 0"}}>Interview: {new Date(job.interview_date).toLocaleDateString()}</p>}
               </div>
             ))}
-            {colJobs.length===0&&<p style={{color:"rgba(255,255,255,.2)",fontSize:10,textAlign:"center",padding:12}}>Empty</p>}
           </div>}
+          {isExpanded&&colJobs.length===0&&<p style={{color:"rgba(255,255,255,.2)",fontSize:11,margin:"6px 0 0",fontStyle:"italic"}}>No jobs in this stage</p>}
         </div>
-      )})}
+        );
+      })}
     </div>
 
     {/* Alerts summary */}
@@ -2835,8 +2833,8 @@ function ProjectDetailModal({ open, onClose, project, onRename, onDelete, onAddF
 
 function Queue({open,onToggle,items}){
   const iconMap={briefing:Bell,email:Mail,meeting:Calendar,deadline:AlertTriangle,followup:Clock};const pColors={critical:"#EF4444",high:"#F59E0B",medium:"#3B82F6",low:"#6B7280"};
-  if(!open)return(<button onClick={onToggle} style={{position:"fixed",bottom:160,right:14,width:48,height:48,borderRadius:99,background:items.length>0?"linear-gradient(135deg,#8B5CF6,#3B82F6)":"rgba(255,255,255,.08)",border:"none",boxShadow:"0 4px 20px rgba(0,0,0,.3)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",zIndex:50,minWidth:48,minHeight:48}}><Bell size={20}/>{items.length>0&&<div style={{position:"absolute",top:-2,right:-2,width:20,height:20,borderRadius:99,background:"#EF4444",color:"#fff",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center"}}>{items.length}</div>}</button>);
-  return(<div style={{position:"fixed",bottom:160,right:14,width:340,maxHeight:420,background:"rgba(12,10,24,.97)",backdropFilter:"blur(20px)",borderRadius:16,border:"1px solid rgba(139,92,246,.25)",boxShadow:"0 20px 40px rgba(0,0,0,.4)",overflow:"hidden",zIndex:50,display:"flex",flexDirection:"column"}}>
+  if(!open)return(<button onClick={onToggle} style={{position:"fixed",bottom:"calc(90px + env(safe-area-inset-bottom, 0px))",right:14,width:44,height:44,borderRadius:99,background:items.length>0?"linear-gradient(135deg,#8B5CF6,#3B82F6)":"rgba(255,255,255,.08)",border:"none",boxShadow:"0 4px 20px rgba(0,0,0,.3)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",zIndex:50,minWidth:44,minHeight:44}}><Bell size={18}/>{items.length>0&&<div style={{position:"absolute",top:-2,right:-2,width:18,height:18,borderRadius:99,background:"#EF4444",color:"#fff",fontSize:10,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center"}}>{items.length}</div>}</button>);
+  return(<div style={{position:"fixed",bottom:"calc(90px + env(safe-area-inset-bottom, 0px))",right:14,width:340,maxWidth:"calc(100vw - 28px)",maxHeight:380,background:"rgba(12,10,24,.97)",backdropFilter:"blur(20px)",borderRadius:16,border:"1px solid rgba(139,92,246,.25)",boxShadow:"0 20px 40px rgba(0,0,0,.4)",overflow:"hidden",zIndex:50,display:"flex",flexDirection:"column"}}>
     <div style={{padding:"12px 16px",borderBottom:"1px solid rgba(139,92,246,.15)",display:"flex",alignItems:"center",justifyContent:"space-between",background:"linear-gradient(135deg,rgba(139,92,246,.08),rgba(59,130,246,.04))"}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}><Bell size={16} style={{color:"#8B5CF6"}}/><span style={{color:"white",fontWeight:600,fontSize:14}}>What ABA Cooked</span><span style={{background:"rgba(139,92,246,.25)",padding:"1px 8px",borderRadius:10,fontSize:11,color:"#C4B5FD"}}>{items.length}</span></div>
       <button onClick={onToggle} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.4)",minWidth:44,minHeight:44,display:"flex",alignItems:"center",justifyContent:"center"}}><X size={16}/></button>
