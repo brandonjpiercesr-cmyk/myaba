@@ -1050,6 +1050,100 @@ function ElevenLabsVoice(){
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// FIRST LOGIN TOUR - Voice + Tooltip guided walkthrough
+// ⬡B:MYABA:FIRST_LOGIN_TOUR:20260320⬡
+// Shows on first login. ABA speaks + highlights each tab. Skip anytime.
+// ═══════════════════════════════════════════════════════════════════════════
+function FirstLoginTour({user,onComplete}){
+  const[step,setStep]=useState(0);
+  const[speaking,setSpeaking]=useState(false);
+  const audioRef=useRef(null);
+
+  const firstName=(user?.displayName||user?.email||"").split(/[\s@]/)[0]||"friend";
+
+  const STEPS=[
+    {tab:"welcome",title:"Welcome to ABA",body:`Hey ${firstName}. I'm ABA, your life assistant. Let me show you around real quick. This will take about 60 seconds. Tap Next to continue or Skip anytime.`,voice:`Hey ${firstName}. I'm ABA, your life assistant. Let me show you around. This will take about 60 seconds.`},
+    {tab:"chat",title:"Chat",body:"This is Chat. Talk to me about anything here. Ask questions, give me tasks, or just have a conversation. I remember our history and learn your preferences over time.",voice:"This is Chat. Talk to me about anything. I remember our conversations and learn your preferences."},
+    {tab:"briefing",title:"Briefing",body:"This is your Briefing. Every morning I'll summarize what happened overnight, what's pending, and what's on your calendar. Your personal morning report.",voice:"Briefing is your morning report. I'll tell you what happened, what needs attention, and what's coming up."},
+    {tab:"jobs",title:"Jobs",body:"This is Jobs. Your job matches live here with cover letters and resumes ready for each one. Tap a job to apply. I'll walk you through the whole process and prep you for interviews.",voice:"Jobs has your matched roles with cover letters and resumes ready. Tap any job to apply. I'll prep you for interviews too."},
+    {tab:"memos",title:"Memos",body:"This is Memos. Send messages to Brandon and the team through me. Think of it like internal DMs. You'll see a welcome message waiting for you.",voice:"Memos is how you message the team through me. Check your inbox, there's a welcome message from Brandon."},
+    {tab:"done",title:"You're all set",body:`That's the basics, ${firstName}. Explore each tab and talk to me whenever you need anything. I'm always here.`,voice:`That's the basics. Explore each tab and talk to me whenever you need anything. I'm always here, ${firstName}.`}
+  ];
+
+  const currentStep=STEPS[step];
+
+  // Speak each step
+  useEffect(()=>{
+    if(!currentStep?.voice)return;
+    let cancelled=false;
+    (async()=>{
+      setSpeaking(true);
+      try{
+        const res=await fetch("https://abacia-services.onrender.com/api/voice/synthesize",{
+          method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({text:currentStep.voice,voiceId:"6aDn1KB0hjpdcocrUkmq"})
+        });
+        if(res.ok&&!cancelled){
+          const data=await res.json();
+          if(data.url){
+            const audio=new Audio(data.url);
+            audioRef.current=audio;
+            audio.onended=()=>setSpeaking(false);
+            audio.play().catch(()=>setSpeaking(false));
+          }else setSpeaking(false);
+        }else setSpeaking(false);
+      }catch{setSpeaking(false)}
+    })();
+    return()=>{cancelled=true;if(audioRef.current){audioRef.current.pause();audioRef.current=null}};
+  },[step]);
+
+  const next=()=>{
+    if(audioRef.current){audioRef.current.pause();audioRef.current=null}
+    if(step>=STEPS.length-1){finish()}
+    else setStep(s=>s+1);
+  };
+
+  const finish=()=>{
+    if(audioRef.current){audioRef.current.pause();audioRef.current=null}
+    try{localStorage.setItem("myaba_tour_complete","true")}catch{}
+    onComplete();
+  };
+
+  const tabColors={welcome:"#8B5CF6",chat:"#8B5CF6",briefing:"#F59E0B",jobs:"#10B981",memos:"#3B82F6",done:"#8B5CF6"};
+  const color=tabColors[currentStep.tab]||"#8B5CF6";
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"rgba(8,8,13,.95)",backdropFilter:"blur(20px)",padding:20}}>
+      {/* ABA orb */}
+      <div style={{width:100,height:100,borderRadius:"50%",background:`radial-gradient(circle at 30% 30%, ${color}66, ${color}33)`,boxShadow:`0 0 60px ${color}44`,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:24,animation:speaking?"breathe 1.5s ease-in-out infinite":"breathe 3s ease-in-out infinite"}}>
+        {speaking?<Volume2 size={36} style={{color:"white"}}/>:<Sparkles size={36} style={{color:"white"}}/>}
+      </div>
+
+      {/* Step indicator */}
+      <div style={{display:"flex",gap:6,marginBottom:16}}>
+        {STEPS.map((_,i)=>(
+          <div key={i} style={{width:i===step?24:8,height:8,borderRadius:99,background:i===step?color:i<step?`${color}80`:"rgba(255,255,255,.1)",transition:"all .3s"}}/>
+        ))}
+      </div>
+
+      {/* Card */}
+      <div style={{maxWidth:340,width:"100%",padding:"24px 20px",borderRadius:20,background:"rgba(255,255,255,.04)",border:`1px solid ${color}30`,backdropFilter:"blur(12px)"}}>
+        <p style={{color,fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",margin:"0 0 8px"}}>{currentStep.title}</p>
+        <p style={{color:"rgba(255,255,255,.8)",fontSize:14,lineHeight:1.6,margin:0}}>{currentStep.body}</p>
+      </div>
+
+      {/* Buttons */}
+      <div style={{display:"flex",gap:12,marginTop:20,width:"100%",maxWidth:340}}>
+        <button onClick={finish} style={{flex:0,padding:"12px 20px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"rgba(255,255,255,.4)",cursor:"pointer",fontSize:13}}>Skip</button>
+        <button onClick={next} style={{flex:1,padding:"12px 20px",borderRadius:12,border:"none",background:`linear-gradient(135deg, ${color}, ${color}cc)`,color:"white",cursor:"pointer",fontSize:14,fontWeight:600,boxShadow:`0 4px 20px ${color}44`}}>
+          {step>=STEPS.length-1?"Let's Go":"Next"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // VOICE MODE SELECTOR
 // ═══════════════════════════════════════════════════════════════════════════
 // SPURT 2: Talk to ABA (renamed from Live)
@@ -1768,7 +1862,11 @@ function JobsView({userId}){
     <div style={{flex:1,display:"flex",gap:8,overflow:"hidden"}}>
       {/* Job list */}
       <div style={{flex:selectedJob?1:2,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
-        {filtered.length===0&&<p style={{color:"rgba(255,255,255,.4)",textAlign:"center",padding:20}}>No jobs found</p>}
+        {filtered.length===0&&<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,padding:20}}>
+          <Briefcase size={40} style={{color:"rgba(139,92,246,.3)"}}/>
+          <p style={{color:"rgba(255,255,255,.5)",fontSize:14,fontWeight:500,textAlign:"center"}}>No jobs matched to you yet</p>
+          <p style={{color:"rgba(255,255,255,.3)",fontSize:12,textAlign:"center",maxWidth:280}}>When ABA finds roles that fit your profile, they'll appear here with cover letters and resumes ready to go.</p>
+        </div>}
         {filtered.map(job=>{
           const title=job.job_title||job.title||"Untitled";
           const company=job.organization||job.company||"Unknown";
@@ -3491,8 +3589,14 @@ export default function MyABA(){
   if(authLoading)return <div style={{position:"fixed",inset:0,background:"#08080d",display:"flex",alignItems:"center",justifyContent:"center"}}><Blob state="thinking" size={100}/></div>;
   if(!user)return <Login onLogin={setUser}/>;
 
+  // ⬡B:MYABA:TOUR:20260320⬡ First login tour check
+  const tourComplete=typeof window!=='undefined'&&localStorage.getItem("myaba_tour_complete")==="true";
+
   const sc=abaState==="thinking"?"245,158,11":abaState==="speaking"?"34,197,94":abaState==="listening"?"6,182,212":"139,92,246";
   const bgUrl=BG[bg]?.u||BG.pinkSmoke.u;
+
+  // Show tour on first login
+  if(!tourComplete)return <FirstLoginTour user={user} onComplete={()=>{try{localStorage.setItem("myaba_tour_complete","true")}catch{};window.location.reload()}}/>;
 
   return(<div style={{width:"100%",height:`${viewportHeight}px`,position:"relative",overflow:"hidden",fontFamily:"'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:"#08080d",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)"}}>
     <style>{`@keyframes mp{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}@keyframes mf{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes mb{0%,100%{opacity:.6}50%{opacity:1}}@keyframes ml{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 12px rgba(239,68,68,0)}}@keyframes kenBurns{0%{transform:scale(1) translate(0,0)}25%{transform:scale(1.08) translate(-1%,-1%)}50%{transform:scale(1.12) translate(1%,0)}75%{transform:scale(1.06) translate(-0.5%,1%)}100%{transform:scale(1) translate(0,0)}}@keyframes pulse{0%{transform:scale(1);opacity:1}100%{transform:scale(1.5);opacity:0}}@keyframes breathe{0%,100%{transform:scale(1);box-shadow:0 0 40px rgba(139,92,246,.3)}50%{transform:scale(1.05);box-shadow:0 0 60px rgba(139,92,246,.5)}}@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(139,92,246,.15);border-radius:99px}`}</style>
