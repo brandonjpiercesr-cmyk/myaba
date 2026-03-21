@@ -1067,6 +1067,7 @@ function FirstLoginTour({user,onComplete}){
     {tab:"briefing",title:"Briefing",body:"This is your Briefing. Every morning I'll summarize what happened overnight, what's pending, and what's on your calendar. Your personal morning report.",voice:"Briefing is your morning report. I'll tell you what happened, what needs attention, and what's coming up."},
     {tab:"jobs",title:"Jobs",body:"This is Jobs. Your job matches live here with cover letters and resumes ready for each one. Tap a job to apply. I'll walk you through the whole process and prep you for interviews.",voice:"Jobs has your matched roles with cover letters and resumes ready. Tap any job to apply. I'll prep you for interviews too."},
     {tab:"memos",title:"Memos",body:"This is Memos. Send messages to Brandon and the team through me. Think of it like internal DMs. You'll see a welcome message waiting for you.",voice:"Memos is how you message the team through me. Check your inbox, there's a welcome message from Brandon."},
+    {tab:"email",title:"Connect Your Email",body:"One more thing. To get the most out of ABA, connect your email. This lets me send emails on your behalf, check your inbox, and manage your calendar. Tap the button below to connect with Google.",voice:"One more thing. Connect your email so I can help you with emails and calendar. Tap Connect Email below.",action:"connect_email"},
     {tab:"done",title:"You're all set",body:`That's the basics, ${firstName}. Explore each tab and talk to me whenever you need anything. I'm always here.`,voice:`That's the basics. Explore each tab and talk to me whenever you need anything. I'm always here, ${firstName}.`}
   ];
 
@@ -1130,6 +1131,14 @@ function FirstLoginTour({user,onComplete}){
       <div style={{maxWidth:340,width:"100%",padding:"24px 20px",borderRadius:20,background:"rgba(255,255,255,.04)",border:`1px solid ${color}30`,backdropFilter:"blur(12px)"}}>
         <p style={{color,fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",margin:"0 0 8px"}}>{currentStep.title}</p>
         <p style={{color:"rgba(255,255,255,.8)",fontSize:14,lineHeight:1.6,margin:0}}>{currentStep.body}</p>
+        {currentStep.action==="connect_email"&&(
+          <button onClick={()=>{
+            const email=user?.email||"";
+            window.open(`https://abacia-services.onrender.com/api/nylas/auth/start?userId=${encodeURIComponent(email)}`,"_blank");
+          }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#10B981,#059669)",color:"white",cursor:"pointer",fontSize:14,fontWeight:600,marginTop:16,boxShadow:"0 4px 20px rgba(16,185,129,.3)"}}>
+            <Mail size={18}/>Connect Email with Google
+          </button>
+        )}
       </div>
 
       {/* Buttons */}
