@@ -64,6 +64,14 @@ function useIsMobile() {
 // ABABASE = Fat Prompt Architecture (87 agents, HAM identity)
 const ABABASE = "https://abacia-services.onrender.com";
 
+// ⬡B:PRE_ALPHA:ERROR_CAPTURE:20260321⬡ Capture console errors for incident reports
+window.__abaConsoleErrors = window.__abaConsoleErrors || [];
+const _origError = console.error;
+console.error = (...args) => {
+  try { window.__abaConsoleErrors.push({ msg: args.map(a => String(a)).join(' ').substring(0, 200), time: new Date().toISOString() }); if (window.__abaConsoleErrors.length > 10) window.__abaConsoleErrors.shift(); } catch {}
+  _origError.apply(console, args);
+};
+
 // v1.2.0: Check online status
 function isOnline() { return navigator.onLine; }
 
@@ -400,12 +408,19 @@ async function reachSynthesize(text) {
   } catch { return null; }
 }
 
-// ⬡B:PRE_ALPHA:WORKFLOW_LOG:20260321⬡ Silent background logging
+// ⬡B:PRE_ALPHA:WORKFLOW_LOG:20260321⬡ Silent background logging + sessionStorage for incident reports
 function logWorkflow(userId, action, context={}, page='') {
+  // Save to backend
   fetch(`${ABABASE}/api/workflow/log`, {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ userId, action, context, app: 'myaba', page })
   }).catch(() => {});
+  // Also cache in sessionStorage for incident report auto-context
+  try {
+    const log = JSON.parse(sessionStorage.getItem("myaba_workflow_log") || "[]");
+    log.push({ action, page, time: new Date().toISOString() });
+    sessionStorage.setItem("myaba_workflow_log", JSON.stringify(log.slice(-20)));
+  } catch {}
 }
 
 async function reachPresence(userId) {
@@ -3074,6 +3089,152 @@ function Queue({open,onToggle,items}){
 // ═══════════════════════════════════════════════════════════════════════════
 // F7: SETTINGS DRAWER - Full settings panel
 // ═══════════════════════════════════════════════════════════════════════════
+// ⬡B:PRE_ALPHA:INCIDENT_REPORT:20260321⬡
+// Smart bug reporting. Auto-captures context. Quick-tap categories/severity.
+// User barely has to type. Backend auto-categorizes from page + keywords.
+// ═══════════════════════════════════════════════════════════════════════════
+function IncidentReport({user,mainTab,onClose}){
+  const ABABASE="https://abacia-services.onrender.com";
+  const[category,setCategory]=useState(null);
+  const[severity,setSeverity]=useState(null);
+  const[note,setNote]=useState("");
+  const[sending,setSending]=useState(false);
+  const[result,setResult]=useState(null);
+  const[errorLog]=useState(()=>{
+    // Capture recent console errors if available
+    try{return window.__abaConsoleErrors||[]}catch{return[]}
+  });
+  const[recentActions]=useState(()=>{
+    try{return JSON.parse(sessionStorage.getItem("myaba_workflow_log")||"[]").slice(-5)}catch{return[]}
+  });
+
+  const CATEGORIES=[
+    {id:"chat",label:"Chat",emoji:"💬"},
+    {id:"email",label:"Email",emoji:"📧"},
+    {id:"jobs",label:"Jobs",emoji:"💼"},
+    {id:"voice",label:"Voice",emoji:"🎤"},
+    {id:"briefing",label:"Briefing",emoji:"📊"},
+    {id:"ui",label:"Display/Layout",emoji:"📱"},
+    {id:"auth",label:"Login/Auth",emoji:"🔐"},
+    {id:"other",label:"Other",emoji:"🐛"},
+  ];
+
+  const SEVERITIES=[
+    {id:"critical",label:"Can't use app",color:"#EF4444",emoji:"🚨"},
+    {id:"high",label:"Feature broken",color:"#F59E0B",emoji:"⚠️"},
+    {id:"medium",label:"Something wrong",color:"#3B82F6",emoji:"🔶"},
+    {id:"low",label:"Minor/cosmetic",color:"#6B7280",emoji:"💡"},
+  ];
+
+  // Auto-detected context
+  const autoPage=mainTab||"unknown";
+  const autoDevice=/iPhone|iPad/.test(navigator.userAgent)?"iPhone":/Android/.test(navigator.userAgent)?"Android":"Desktop";
+  const autoBrowser=/Safari/.test(navigator.userAgent)&&!/Chrome/.test(navigator.userAgent)?"Safari":/Chrome/.test(navigator.userAgent)?"Chrome":"Other";
+  const autoScreen=`${window.innerWidth}x${window.innerHeight}`;
+
+  const submit=async()=>{
+    setSending(true);
+    try{
+      const r=await fetch(`${ABABASE}/api/bugs/report`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          description:note||`${category||autoPage} issue reported`,
+          userId:user?.email,
+          app:"myaba",
+          page:autoPage,
+          category,
+          severity,
+          device:autoDevice,
+          browser:autoBrowser,
+          screenSize:autoScreen,
+          networkStatus:navigator.onLine?"online":"offline",
+          currentUrl:window.location.href,
+          appVersion:"2.35.0",
+          lastActions:recentActions,
+          consoleErrors:errorLog.slice(-3)
+        })
+      });
+      const d=await r.json();
+      setResult(d);
+    }catch(e){setResult({success:false,message:"Failed to submit: "+e.message})}
+    setSending(false);
+  };
+
+  if(result)return(
+    <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:340,background:"rgba(15,12,30,.98)",border:"1px solid rgba(16,185,129,.2)",borderRadius:20,padding:24,textAlign:"center"}}>
+        <CheckCircle size={40} style={{color:"#10B981",marginBottom:12}}/>
+        <p style={{color:"rgba(255,255,255,.9)",fontSize:15,fontWeight:600,margin:"0 0 6px"}}>{result.message||"Reported"}</p>
+        <p style={{color:"rgba(255,255,255,.3)",fontSize:11,margin:"0 0 16px"}}>ID: {result.bugId||"saved"} | {result.severity||"?"} | {result.category||"?"}</p>
+        <button onClick={onClose} style={{padding:"10px 24px",borderRadius:10,border:"none",background:"rgba(16,185,129,.2)",color:"#10B981",cursor:"pointer",fontSize:13,fontWeight:600}}>Done</button>
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:420,maxHeight:"85vh",overflowY:"auto",background:"rgba(15,12,30,.98)",border:"1px solid rgba(239,68,68,.15)",borderRadius:"20px 20px 0 0",padding:"20px 16px env(safe-area-inset-bottom, 16px)"}}>
+        {/* Header with auto-detected context */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <p style={{color:"rgba(255,255,255,.9)",fontSize:16,fontWeight:600,margin:0}}>Report an Issue</p>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.3)",cursor:"pointer",padding:4}}><X size={18}/></button>
+        </div>
+
+        {/* Auto-detected context pill */}
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>
+          <span style={{fontSize:10,padding:"4px 10px",borderRadius:8,background:"rgba(139,92,246,.1)",color:"rgba(139,92,246,.7)",border:"1px solid rgba(139,92,246,.15)"}}>📍 {autoPage}</span>
+          <span style={{fontSize:10,padding:"4px 10px",borderRadius:8,background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.35)",border:"1px solid rgba(255,255,255,.06)"}}>{autoDevice}</span>
+          <span style={{fontSize:10,padding:"4px 10px",borderRadius:8,background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.35)",border:"1px solid rgba(255,255,255,.06)"}}>{autoBrowser}</span>
+          {!navigator.onLine&&<span style={{fontSize:10,padding:"4px 10px",borderRadius:8,background:"rgba(239,68,68,.1)",color:"#EF4444"}}>Offline</span>}
+        </div>
+
+        {/* Category quick-tap */}
+        <p style={{color:"rgba(255,255,255,.5)",fontSize:11,fontWeight:600,margin:"0 0 8px",letterSpacing:.5}}>WHAT AREA?</p>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>
+          {CATEGORIES.map(c=>(
+            <button key={c.id} onClick={()=>setCategory(c.id===category?null:c.id)} style={{
+              padding:"8px 12px",borderRadius:10,border:`1px solid ${category===c.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.06)"}`,
+              background:category===c.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",
+              color:category===c.id?"rgba(139,92,246,.9)":"rgba(255,255,255,.5)",
+              cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",gap:5
+            }}><span>{c.emoji}</span>{c.label}</button>
+          ))}
+        </div>
+
+        {/* Severity quick-tap */}
+        <p style={{color:"rgba(255,255,255,.5)",fontSize:11,fontWeight:600,margin:"0 0 8px",letterSpacing:.5}}>HOW BAD?</p>
+        <div style={{display:"flex",gap:6,marginBottom:16}}>
+          {SEVERITIES.map(s=>(
+            <button key={s.id} onClick={()=>setSeverity(s.id===severity?null:s.id)} style={{
+              flex:1,padding:"10px 6px",borderRadius:10,border:`1px solid ${severity===s.id?s.color+"40":"rgba(255,255,255,.06)"}`,
+              background:severity===s.id?s.color+"15":"rgba(255,255,255,.03)",
+              color:severity===s.id?s.color:"rgba(255,255,255,.4)",
+              cursor:"pointer",fontSize:10,fontWeight:severity===s.id?600:400,textAlign:"center",lineHeight:1.3
+            }}><span style={{fontSize:16,display:"block",marginBottom:2}}>{s.emoji}</span>{s.label}</button>
+          ))}
+        </div>
+
+        {/* Short note */}
+        <p style={{color:"rgba(255,255,255,.5)",fontSize:11,fontWeight:600,margin:"0 0 8px",letterSpacing:.5}}>QUICK NOTE (optional)</p>
+        <input value={note} onChange={e=>setNote(e.target.value)} placeholder="What happened?" style={{
+          width:"100%",padding:"12px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.08)",
+          background:"rgba(255,255,255,.03)",color:"rgba(255,255,255,.8)",fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"inherit",marginBottom:16
+        }}/>
+
+        {/* Submit */}
+        <button disabled={sending} onClick={submit} style={{
+          width:"100%",padding:"14px",borderRadius:12,border:"none",cursor:"pointer",
+          background:(category||severity||note.trim())?"linear-gradient(135deg,rgba(239,68,68,.3),rgba(239,68,68,.15))":"rgba(255,255,255,.05)",
+          color:(category||severity||note.trim())?"#EF4444":"rgba(255,255,255,.3)",fontSize:14,fontWeight:600
+        }}>{sending?"Submitting...":"Submit Report"}</button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SETTINGS DRAWER
+// ═══════════════════════════════════════════════════════════════════════════
 function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,user,currentHam}){
   const[notifyBriefing,setNotifyBriefing]=useState(()=>{try{return localStorage.getItem("myaba_notifyBriefing")!=="false"}catch{return true}});
   const[notifyUrgent,setNotifyUrgent]=useState(()=>{try{return localStorage.getItem("myaba_notifyUrgent")!=="false"}catch{return true}});
@@ -4171,25 +4332,6 @@ export default function MyABA(){
     {currentHam?.is_admin&&<AdminPanel open={adminPanelOpen} onClose={()=>setAdminPanelOpen(false)} lastResponse={lastABAResponse}/>}
     
     {/* ⬡B:PRE_ALPHA:BUG_REPORT_MODAL:20260321⬡ */}
-    {bugReportOpen&&<div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setBugReportOpen(false)}>
-      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:380,background:"rgba(15,12,30,.98)",border:"1px solid rgba(239,68,68,.2)",borderRadius:20,padding:20}}>
-        <p style={{color:"rgba(255,255,255,.9)",fontSize:16,fontWeight:600,margin:"0 0 4px"}}>Report a Bug</p>
-        <p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:"0 0 16px"}}>Tell us what happened. Be as specific as you can.</p>
-        <textarea id="bugDesc" rows={4} placeholder="What went wrong? What were you trying to do?" style={{width:"100%",padding:12,borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.8)",fontSize:13,resize:"vertical",outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
-        <div style={{display:"flex",gap:8,marginTop:12}}>
-          <button onClick={()=>setBugReportOpen(false)} style={{flex:1,padding:12,borderRadius:10,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:13}}>Cancel</button>
-          <button onClick={async()=>{
-            const desc=document.getElementById("bugDesc")?.value;
-            if(!desc?.trim())return;
-            try{
-              const r=await fetch("https://abacia-services.onrender.com/api/bugs/report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({description:desc,userId:user?.email,app:"myaba",page:mainTab})});
-              const d=await r.json();
-              setBugReportOpen(false);
-              alert(d.message||"Bug reported. Thanks!");
-            }catch(e){alert("Failed to submit: "+e.message)}
-          }} style={{flex:1,padding:12,borderRadius:10,border:"none",background:"rgba(239,68,68,.2)",color:"#EF4444",cursor:"pointer",fontSize:13,fontWeight:600}}>Submit Bug</button>
-        </div>
-      </div>
-    </div>}
+    {bugReportOpen&&<IncidentReport user={user} mainTab={mainTab} onClose={()=>setBugReportOpen(false)}/>}
     {toast&&<Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)}/>}
   </div>)}
