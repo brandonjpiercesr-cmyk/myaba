@@ -1267,7 +1267,87 @@ function MainTabSwitcher({tab,setTab}){
 // ═══════════════════════════════════════════════════════════════════════════
 // F5: BRIEFING VIEW - What happened, what's pending, what she handled
 // ═══════════════════════════════════════════════════════════════════════════
-function BriefingView({data,loading,onRefresh}){
+// ⬡B:MYABA:BRIEFING_SETUP:20260321⬡ New user preference collection
+function BriefingSetup({userId,onRefresh}){
+  const ABABASE="https://abacia-services.onrender.com";
+  const[selected,setSelected]=useState([]);
+  const[custom,setCustom]=useState("");
+  const[saving,setSaving]=useState(false);
+  const[done,setDone]=useState(false);
+
+  const INTEREST_OPTIONS=[
+    {id:"nba",label:"NBA Basketball",emoji:"🏀"},
+    {id:"nfl",label:"NFL Football",emoji:"🏈"},
+    {id:"college_basketball",label:"College Basketball",emoji:"🎓"},
+    {id:"politics",label:"Politics",emoji:"🏛"},
+    {id:"tech",label:"Tech & AI",emoji:"💻"},
+    {id:"nonprofit",label:"Nonprofit Sector",emoji:"🤝"},
+    {id:"finance",label:"Finance & Markets",emoji:"📈"},
+    {id:"local_nc",label:"North Carolina News",emoji:"📍"},
+    {id:"music",label:"Music",emoji:"🎵"},
+    {id:"health",label:"Health & Wellness",emoji:"💪"},
+  ];
+
+  const toggle=(id)=>setSelected(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]);
+
+  const save=async()=>{
+    setSaving(true);
+    const interests=[...selected.map(id=>INTEREST_OPTIONS.find(o=>o.id===id)?.label||id)];
+    if(custom.trim())interests.push(...custom.split(",").map(s=>s.trim()).filter(Boolean));
+    try{
+      await fetch(`${ABABASE}/api/air/process`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({message:`Save my news interests for DAWN briefings: ${interests.join(", ")}`,user_id:userId,channel:"myaba"})
+      });
+      // Also save directly to brain as HAM preference
+      await fetch(`https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory`,{
+        method:"POST",
+        headers:{"apikey":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw","Content-Type":"application/json","Prefer":"return=minimal"},
+        body:JSON.stringify({source:`ham.preferences.${(userId||"").split("@")[0]}`,memory_type:"ham_preferences",content:JSON.stringify({news_interests:interests,updated:new Date().toISOString()}),importance:7,tags:["preferences","news",userId]})
+      });
+    }catch(e){console.error("[BRIEFING] Save prefs error:",e)}
+    setSaving(false);setDone(true);
+    setTimeout(()=>onRefresh(),1000);
+  };
+
+  if(done)return(<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12}}>
+    <CheckCircle size={48} style={{color:"rgba(16,185,129,.6)"}}/>
+    <p style={{color:"rgba(255,255,255,.6)",fontSize:14}}>Preferences saved. Loading your briefing...</p>
+  </div>);
+
+  return(<div style={{flex:1,overflowY:"auto",padding:"8px 4px"}}>
+    <div style={{textAlign:"center",marginBottom:16}}>
+      <Sparkles size={32} style={{color:"rgba(139,92,246,.6)",marginBottom:8}}/>
+      <p style={{color:"rgba(255,255,255,.8)",fontSize:16,fontWeight:600,margin:"0 0 4px"}}>Set up your briefing</p>
+      <p style={{color:"rgba(255,255,255,.4)",fontSize:12,margin:0}}>What do you want ABA to keep you updated on?</p>
+    </div>
+
+    <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:16}}>
+      {INTEREST_OPTIONS.map(opt=>{
+        const active=selected.includes(opt.id);
+        return(<button key={opt.id} onClick={()=>toggle(opt.id)} style={{
+          padding:"10px 14px",borderRadius:12,border:`1px solid ${active?"rgba(139,92,246,.3)":"rgba(255,255,255,.08)"}`,
+          background:active?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",
+          color:active?"rgba(139,92,246,.95)":"rgba(255,255,255,.5)",
+          cursor:"pointer",fontSize:12,fontWeight:active?600:400,display:"flex",alignItems:"center",gap:6
+        }}><span>{opt.emoji}</span>{opt.label}</button>);
+      })}
+    </div>
+
+    <input value={custom} onChange={e=>setCustom(e.target.value)} placeholder="Other interests (comma separated)..." style={{
+      width:"100%",padding:"12px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.08)",
+      background:"rgba(255,255,255,.03)",color:"rgba(255,255,255,.8)",fontSize:12,outline:"none",marginBottom:16,boxSizing:"border-box"
+    }}/>
+
+    <button disabled={saving||(selected.length===0&&!custom.trim())} onClick={save} style={{
+      width:"100%",padding:"14px",borderRadius:12,border:"none",cursor:"pointer",
+      background:selected.length>0||custom.trim()?"linear-gradient(135deg,#8B5CF6,#6366F1)":"rgba(255,255,255,.05)",
+      color:selected.length>0||custom.trim()?"white":"rgba(255,255,255,.3)",fontSize:14,fontWeight:600
+    }}>{saving?"Saving...":"Save & Load Briefing"}</button>
+  </div>);
+}
+
+function BriefingView({data,loading,onRefresh,userId}){
   if(loading){
     return(<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
       <div style={{width:50,height:50,borderRadius:"50%",border:"3px solid rgba(139,92,246,.2)",borderTopColor:"rgba(139,92,246,.8)",animation:"spin 1s linear infinite"}}/>
@@ -1276,11 +1356,7 @@ function BriefingView({data,loading,onRefresh}){
   }
   
   if(!data){
-    return(<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20}}>
-      <Bell size={48} style={{color:"rgba(139,92,246,.4)"}}/>
-      <p style={{color:"rgba(255,255,255,.5)",fontSize:14,textAlign:"center"}}>No briefing loaded yet</p>
-      <button onClick={onRefresh} style={{padding:"12px 24px",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(139,92,246,.25)",color:"rgba(139,92,246,.95)",fontSize:13,fontWeight:600}}>Load Briefing</button>
-    </div>);
+    return(<BriefingSetup userId={userId} onRefresh={onRefresh}/>);
   }
   
   const Section=({title,icon:Icon,items,emptyText,color})=>(
@@ -1597,29 +1673,45 @@ function MemosView({userId}){
     }catch(e){console.error("[MEMOS] react error:",e)}
   };
 
-  const renderMemo=(m)=>(
-    <div key={m.id||m.dbId} onClick={()=>{if(!m.read&&m.to===userId)markRead(m.id)}} style={{padding:12,borderRadius:10,background:m.read===false?"rgba(139,92,246,.08)":"rgba(255,255,255,.03)",border:`1px solid ${m.read===false?"rgba(139,92,246,.15)":"rgba(255,255,255,.05)"}`,marginBottom:6,cursor:"pointer"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-        <span style={{color:"rgba(255,255,255,.8)",fontSize:12,fontWeight:600}}>{m.from===userId?"To: "+m.to:m.fromName||m.from}</span>
-        <div style={{display:"flex",alignItems:"center",gap:4}}>
-          {m.priority==="urgent"&&<span style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:"rgba(239,68,68,.15)",color:"#EF4444",fontWeight:600}}>URGENT</span>}
-          {m.read===false&&<span style={{width:8,height:8,borderRadius:99,background:"#8B5CF6"}}/>}
-          <span style={{color:"rgba(255,255,255,.25)",fontSize:10}}>{m.sentAt?new Date(m.sentAt).toLocaleDateString():""}</span>
+  const TEAM_COLORS={brandon:"#8B5CF6",eric:"#3B82F6",bj:"#10B981",cj:"#F59E0B",vante:"#F97316",dwayne:"#EC4899",raquel:"#A78BFA"};
+  
+  const renderMemo=(m)=>{
+    const senderName=m.from===userId?"You":m.fromName||m.from;
+    const senderColor=TEAM_COLORS[(m.from||"").toLowerCase()]||"#6B7280";
+    const initial=(senderName||"?").charAt(0).toUpperCase();
+    const isUnread=m.read===false&&m.to===userId;
+    
+    return(
+    <div key={m.id||m.dbId} onClick={()=>{if(isUnread)markRead(m.id)}} style={{padding:"12px 14px",borderRadius:14,background:isUnread?"rgba(139,92,246,.08)":"rgba(255,255,255,.03)",border:`1px solid ${isUnread?"rgba(139,92,246,.2)":"rgba(255,255,255,.05)"}`,marginBottom:6,cursor:"pointer",display:"flex",gap:10}}>
+      {/* Avatar */}
+      <div style={{width:36,height:36,borderRadius:99,background:`${senderColor}30`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        <span style={{color:senderColor,fontSize:14,fontWeight:700}}>{initial}</span>
+      </div>
+      
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{color:isUnread?"rgba(255,255,255,.9)":"rgba(255,255,255,.6)",fontSize:12,fontWeight:isUnread?700:500}}>{senderName}</span>
+            {m.priority==="urgent"&&<span style={{fontSize:8,padding:"2px 5px",borderRadius:4,background:"rgba(239,68,68,.2)",color:"#EF4444",fontWeight:700}}>URGENT</span>}
+            {isUnread&&<span style={{width:7,height:7,borderRadius:99,background:"#8B5CF6"}}/>}
+          </div>
+          <span style={{color:"rgba(255,255,255,.2)",fontSize:9,flexShrink:0}}>{m.sentAt?new Date(m.sentAt).toLocaleDateString():""}</span>
+        </div>
+        {m.subject&&<p style={{color:isUnread?"rgba(255,255,255,.75)":"rgba(255,255,255,.5)",fontSize:12,fontWeight:isUnread?600:400,margin:"0 0 3px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.subject}</p>}
+        <p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:0,lineHeight:1.4,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{m.body?.substring(0,200)}</p>
+        {m.reactions&&m.reactions.length>0&&(
+          <div style={{display:"flex",gap:3,marginTop:6}}>{m.reactions.map((r,i)=><span key={i} style={{fontSize:13,background:"rgba(255,255,255,.05)",padding:"1px 4px",borderRadius:6}}>{r.emoji}</span>)}</div>
+        )}
+        <div style={{display:"flex",gap:4,marginTop:6}}>
+          {["👍","❤️","🔥","✅","👀"].map(e=>(
+            <button key={e} onClick={(ev)=>{ev.stopPropagation();react(m.id,e)}} style={{padding:"2px 5px",borderRadius:6,border:"1px solid rgba(255,255,255,.04)",background:"transparent",cursor:"pointer",fontSize:11}}>{e}</button>
+          ))}
+          {m.from!==userId&&<button onClick={(ev)=>{ev.stopPropagation();loadThread(m.from)}} style={{marginLeft:"auto",padding:"3px 10px",borderRadius:6,border:"1px solid rgba(139,92,246,.15)",background:"rgba(139,92,246,.06)",color:"rgba(139,92,246,.8)",cursor:"pointer",fontSize:10,fontWeight:500}}>Reply</button>}
         </div>
       </div>
-      {m.subject&&<p style={{color:"rgba(255,255,255,.6)",fontSize:11,fontWeight:500,margin:"0 0 4px"}}>{m.subject}</p>}
-      <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:0,lineHeight:1.4}}>{m.body?.substring(0,200)}{m.body?.length>200?"...":""}</p>
-      {m.reactions&&m.reactions.length>0&&(
-        <div style={{display:"flex",gap:4,marginTop:6}}>{m.reactions.map((r,i)=><span key={i} style={{fontSize:14}}>{r.emoji}</span>)}</div>
-      )}
-      <div style={{display:"flex",gap:4,marginTop:6}}>
-        {["👍","❤️","🔥","✅","👀"].map(e=>(
-          <button key={e} onClick={(ev)=>{ev.stopPropagation();react(m.id,e)}} style={{padding:"2px 6px",borderRadius:6,border:"1px solid rgba(255,255,255,.06)",background:"rgba(255,255,255,.03)",cursor:"pointer",fontSize:12}}>{e}</button>
-        ))}
-        {m.from!==userId&&<button onClick={(ev)=>{ev.stopPropagation();loadThread(m.from)}} style={{marginLeft:"auto",padding:"2px 8px",borderRadius:6,border:"1px solid rgba(139,92,246,.15)",background:"rgba(139,92,246,.06)",color:"rgba(139,92,246,.8)",cursor:"pointer",fontSize:10,fontWeight:500}}>Thread</button>}
-      </div>
     </div>
-  );
+    );
+  };
 
   return(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
     {/* Inbox/Sent toggle + Compose */}
@@ -3742,7 +3834,7 @@ export default function MyABA(){
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <button onClick={()=>setSidebarOpen(true)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.5)",padding:0,display:"flex",minWidth:44,minHeight:44,alignItems:"center",justifyContent:"center"}}><MessageSquare size={18}/></button>
           <div style={{width:8,height:8,borderRadius:99,background:`rgba(${sc},.9)`,boxShadow:`0 0 10px rgba(${sc},.6)`,animation:"mb 3s ease infinite"}}/>
-          <svg width="22" height="22" viewBox="0 0 100 100" style={{marginRight:4}}><defs><linearGradient id="abaGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#8B5CF6"/><stop offset="100%" stopColor="#6366F1"/></linearGradient></defs><circle cx="50" cy="50" r="45" fill="url(#abaGrad)" opacity=".2"/><circle cx="50" cy="50" r="35" fill="url(#abaGrad)" opacity=".4"/><circle cx="50" cy="50" r="25" fill="url(#abaGrad)"/><text x="50" y="58" textAnchor="middle" fill="white" fontSize="24" fontWeight="700" fontFamily="SF Pro Display,system-ui">A</text></svg>
+          <div style={{width:22,height:22,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",marginRight:4,boxShadow:"0 0 8px rgba(139,92,246,.4)"}}><Sparkles size={11} style={{color:"white"}}/></div>
           <span style={{color:"rgba(255,255,255,.75)",fontSize:14,fontWeight:700,letterSpacing:.5}}>MyABA</span>
           {liveActive&&<span style={{background:"rgba(239,68,68,.2)",color:"#EF4444",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99,animation:"ml 2s infinite",letterSpacing:1}}>LIVE</span>}
           <span style={{color:"rgba(255,255,255,.2)",fontSize:10}}>{abaState!=="idle"?(abaState==="thinking"?"thinking...":abaState==="speaking"?"speaking...":"listening..."):""}</span>
@@ -3811,7 +3903,7 @@ export default function MyABA(){
       </>}
       
       {/* Briefing Mode */}
-      {mainTab==="briefing"&&<BriefingView data={briefingData} loading={briefingLoading} onRefresh={async()=>{
+      {mainTab==="briefing"&&<BriefingView data={briefingData} loading={briefingLoading} userId={user?.email||"brandon"} onRefresh={async()=>{
         setBriefingLoading(true);
         const data=await fetchBriefing(user?.email||"brandon");
         setBriefingData(data);
