@@ -2967,6 +2967,19 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
         </div>
       </Section>
       
+      {/* ⬡B:MYABA:CONNECT_EMAIL:20260320⬡ */}
+      <button onClick={()=>{
+        const email=user?.email||"";
+        window.open(`https://abacia-services.onrender.com/api/nylas/auth/start?userId=${encodeURIComponent(email)}`,"_blank");
+      }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px 16px",borderRadius:14,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.06)",color:"rgba(16,185,129,.8)",cursor:"pointer",fontSize:14,fontWeight:600,marginBottom:8}}>
+        <Mail size={18}/>Connect Email
+      </button>
+      
+      {/* Replay Tour */}
+      <button onClick={()=>{try{localStorage.removeItem("myaba_tour_complete")}catch{};window.location.reload()}} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"12px 16px",borderRadius:14,border:"1px solid rgba(139,92,246,.15)",background:"rgba(139,92,246,.04)",color:"rgba(139,92,246,.6)",cursor:"pointer",fontSize:12,fontWeight:500,marginBottom:8}}>
+        <Sparkles size={16}/>Replay Welcome Tour
+      </button>
+      
       {/* Sign out */}
       <button onClick={onLogout} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px 16px",borderRadius:14,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.06)",color:"rgba(239,68,68,.8)",cursor:"pointer",fontSize:14,fontWeight:600}}>
         <LogOut size={18}/>Sign Out
@@ -2974,8 +2987,8 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
       
       {/* Version */}
       <div style={{marginTop:16,padding:"14px",background:"rgba(139,92,246,.05)",borderRadius:14,border:"1px solid rgba(139,92,246,.1)",textAlign:"center"}}>
-        <p style={{color:"rgba(139,92,246,.7)",fontSize:11,fontWeight:600,margin:0}}>MyABA v2.17.0</p>
-        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"4px 0 0"}}>AWA v2 Backend + Ghost Mode</p>
+        <p style={{color:"rgba(139,92,246,.7)",fontSize:11,fontWeight:600,margin:0}}>MyABA v2.25.0</p>
+        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"4px 0 0"}}>Pre-Alpha</p>
       </div>
     </div>
   </div>);
