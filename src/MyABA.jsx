@@ -38,7 +38,7 @@ import {
   Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock,
   Trash2, Archive, Search, WifiOff, Wifi, RefreshCw, Share2, Paperclip,
   FolderOpen, Image, File, FolderPlus, MoreVertical, Edit2, Copy, Briefcase,
-  MapPin, ExternalLink, Building, Download
+  MapPin, ExternalLink, Building, Download, ChevronDown
 } from "lucide-react";
 import { auth, signInGoogle, signOutUser } from "./firebase.js";
 import { onAuthStateChanged } from "firebase/auth";
@@ -985,16 +985,18 @@ function ElevenLabsVoice(){
   },[]);
   
   useEffect(()=>{
-    if(!loaded||!containerRef.current)return;
-    containerRef.current.innerHTML='';
+    if(!loaded)return;
+    // Mount widget to document.body, positioned at bottom-right, near-invisible but clickable
+    // User taps the small ElevenLabs mic button that appears in bottom-right corner
+    const existing=document.querySelector('elevenlabs-convai');
+    if(existing)existing.remove();
     const widget=document.createElement('elevenlabs-convai');
     widget.setAttribute('agent-id','agent_0601khe2q0gben08ws34bzf7a0sa');
-    // Hide the default widget chrome, we wrap our own UI around it
-    widget.style.cssText='position:absolute;bottom:0;right:0;left:0;top:0;width:100%;height:100%;z-index:2;';
-    containerRef.current.appendChild(widget);
+    widget.style.cssText='position:fixed;bottom:90px;right:20px;z-index:9998;';
+    document.body.appendChild(widget);
     setActive(true);
-    console.log('[VOICE] ElevenLabs widget mounted');
-    return()=>{if(containerRef.current)containerRef.current.innerHTML='';setActive(false)};
+    console.log('[VOICE] ElevenLabs widget mounted to body');
+    return()=>{try{widget.remove()}catch{};setActive(false)};
   },[loaded]);
   
   if(error)return(
@@ -1014,37 +1016,34 @@ function ElevenLabsVoice(){
       <div style={{position:"absolute",width:300,height:300,borderRadius:"50%",border:"1px solid rgba(139,92,246,.08)",animation:active?"pulse 2s ease-out .5s infinite":"none",opacity:.3,pointerEvents:"none"}}/>
       <div style={{position:"absolute",width:380,height:380,borderRadius:"50%",border:"1px solid rgba(139,92,246,.05)",animation:active?"pulse 2s ease-out 1s infinite":"none",opacity:.2,pointerEvents:"none"}}/>
       
-      {/* Loading state with breathing orb */}
-      {!loaded&&(
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16}}>
-          <div style={{width:140,height:140,borderRadius:"50%",background:"radial-gradient(circle at 30% 30%, rgba(139,92,246,.4), rgba(99,102,241,.3))",boxShadow:"0 0 80px rgba(139,92,246,.4), inset 0 0 40px rgba(255,255,255,.1)",animation:"breathe 2s ease-in-out infinite",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <Volume2 size={44} style={{color:"white",opacity:.8}}/>
-          </div>
-          <p style={{color:"rgba(255,255,255,.5)",fontSize:13}}>Connecting to ABA...</p>
+      {/* ABA orb visual - decorative, the real mic button is from ElevenLabs widget bottom-right */}
+      <div style={{
+        width:160,height:160,borderRadius:"50%",
+        background:"radial-gradient(circle at 30% 30%, rgba(139,92,246,.4), rgba(99,102,241,.25))",
+        boxShadow:"0 0 80px rgba(139,92,246,.4), inset 0 0 40px rgba(255,255,255,.1)",
+        border:"1px solid rgba(139,92,246,.2)",
+        display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,
+        animation:"breathe 3s ease-in-out infinite"
+      }}>
+        {!loaded?<div style={{width:30,height:30,borderRadius:"50%",border:"3px solid rgba(255,255,255,.2)",borderTopColor:"white",animation:"spin 1s linear infinite"}}/>:
+          <Volume2 size={44} style={{color:"white",opacity:.9}}/>}
+        <span style={{color:"white",fontSize:10,fontWeight:600,letterSpacing:1}}>{loaded?"ABA":"LOADING"}</span>
+      </div>
+      
+      {/* Instructions */}
+      {loaded&&<div style={{position:"absolute",bottom:60,display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 20px",borderRadius:14,background:"rgba(139,92,246,.1)",border:"1px solid rgba(139,92,246,.15)"}}>
+          <div style={{width:24,height:24,borderRadius:"50%",background:"rgba(139,92,246,.3)",display:"flex",alignItems:"center",justifyContent:"center"}}><Mic size={12} style={{color:"white"}}/></div>
+          <span style={{color:"rgba(255,255,255,.7)",fontSize:12}}>Tap the mic button below to talk</span>
+          <ChevronDown size={14} style={{color:"rgba(139,92,246,.6)"}}/>
         </div>
-      )}
-      
-      {/* Widget container - positioned to fill the center area */}
-      <div ref={containerRef} style={{
-        position:"relative",width:280,height:280,borderRadius:"50%",overflow:"hidden",
-        background:"radial-gradient(circle at 30% 30%, rgba(139,92,246,.15), rgba(99,102,241,.08))",
-        boxShadow:active?"0 0 100px rgba(139,92,246,.4), inset 0 0 60px rgba(255,255,255,.05)":"0 0 60px rgba(139,92,246,.2)",
-        border:"1px solid rgba(139,92,246,.15)",
-        display:loaded?"flex":"none",alignItems:"center",justifyContent:"center",
-        animation:active?"breathe 3s ease-in-out infinite":"none",
-        transition:"all .5s"
-      }}/>
-      
-      {/* Status text */}
-      {loaded&&<div style={{position:"absolute",bottom:80,display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
-        <p style={{color:"rgba(255,255,255,.5)",fontSize:13,textAlign:"center",margin:0}}>
-          {active?"Tap the orb to start talking":"Connecting..."}
-        </p>
         {active&&<div style={{display:"flex",alignItems:"center",gap:6}}>
           <div style={{width:8,height:8,borderRadius:"50%",background:"rgba(16,185,129,.8)",animation:"mb 1.5s ease infinite"}}/>
           <span style={{color:"rgba(16,185,129,.7)",fontSize:11,fontWeight:600}}>VOICE READY</span>
         </div>}
       </div>}
+      
+      <div ref={containerRef} style={{display:"none"}}/>
     </div>
   );
 }
@@ -1133,8 +1132,10 @@ function FirstLoginTour({user,onComplete}){
         <p style={{color:"rgba(255,255,255,.8)",fontSize:14,lineHeight:1.6,margin:0}}>{currentStep.body}</p>
         {currentStep.action==="connect_email"&&(
           <button onClick={()=>{
-            const email=user?.email||"";
-            window.open(`https://abacia-services.onrender.com/api/nylas/auth/start?userId=${encodeURIComponent(email)}`,"_blank");
+            const email=(user?.email||"").toLowerCase();
+            const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselane@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
+            const hamId=hamMap[email]||email.split("@")[0];
+            window.open(`https://abacia-services.onrender.com/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
           }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#10B981,#059669)",color:"white",cursor:"pointer",fontSize:14,fontWeight:600,marginTop:16,boxShadow:"0 4px 20px rgba(16,185,129,.3)"}}>
             <Mail size={18}/>Connect Email with Google
           </button>
@@ -2978,8 +2979,11 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
       
       {/* ⬡B:MYABA:CONNECT_EMAIL:20260320⬡ */}
       <button onClick={()=>{
-        const email=user?.email||"";
-        window.open(`https://abacia-services.onrender.com/api/nylas/auth/start?userId=${encodeURIComponent(email)}`,"_blank");
+        // Map email to ham_id for Nylas OAuth
+        const email=(user?.email||"").toLowerCase();
+        const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselane@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
+        const hamId=hamMap[email]||email.split("@")[0];
+        window.open(`https://abacia-services.onrender.com/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
       }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px 16px",borderRadius:14,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.06)",color:"rgba(16,185,129,.8)",cursor:"pointer",fontSize:14,fontWeight:600,marginBottom:8}}>
         <Mail size={18}/>Connect Email
       </button>
