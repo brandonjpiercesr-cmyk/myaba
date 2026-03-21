@@ -72,22 +72,6 @@ function isOnline() { return navigator.onLine; }
 const HAM_EMAILS = ['brandonjpiercesr@gmail.com', 'brandon@globalmajoritygroup.com'];
 function isHAM(email) { return HAM_EMAILS.includes(email?.toLowerCase()); }
 
-// ⬡B:MYABA:FIX:image_vision:20260321⬡
-// Convert image File to base64 for Anthropic vision API
-async function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result;
-      const base64 = dataUrl.split(',')[1]; // strip data:image/jpeg;base64, prefix
-      resolve({ data: base64, media_type: file.type || 'image/jpeg' });
-    };
-    reader.onerror = () => reject(new Error('Failed to read file'));
-    reader.readAsDataURL(file);
-  });
-}
-const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-
 async function airRequest(type, payload = {}, userId = "brandon", maxRetries = 3) {
   if (!isOnline()) {
     return { response: null, offline: true, queued: true };
@@ -327,6 +311,7 @@ async function airAddProjectFile(userId, projectId, file) {
 
 // ⬡B:MYABA:REAL_FILE_UPLOAD:v2.20:20260319⬡
 // Read file as base64 and upload to Supabase Storage via backend
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']; // ⬡B:MYABA:FIX:image_vision:20260321⬡
 async function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -3743,7 +3728,7 @@ export default function MyABA(){
     // Convert image attachments to base64 for Anthropic vision API
     let imagePayloads=[];
     for(const file of imageFiles){
-      try{const b64=await fileToBase64(file);imagePayloads.push(b64)}catch(e){console.error("[IMG] base64 conversion failed:",e)}
+      try{const b64=await fileToBase64(file);imagePayloads.push({data:b64,media_type:file.type||'image/jpeg'})}catch(e){console.error("[IMG] base64 conversion failed:",e)}
     }
     if(imagePayloads.length>0)console.log("[IMG] Sending",imagePayloads.length,"image(s) to AIR vision");
     const data=await airRequest("text",{message:messageForAIR,conversationId:activeId,conversationHistory:recentHistory,images:imagePayloads,attachments:attachmentInfo},user?.email||user?.uid||"brandon");
