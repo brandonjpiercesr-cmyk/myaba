@@ -402,6 +402,14 @@ async function reachSynthesize(text) {
   } catch { return null; }
 }
 
+// ⬡B:PRE_ALPHA:WORKFLOW_LOG:20260321⬡ Silent background logging
+function logWorkflow(userId, action, context={}, page='') {
+  fetch(`${ABABASE}/api/workflow/log`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ userId, action, context, app: 'myaba', page })
+  }).catch(() => {});
+}
+
 async function reachPresence(userId) {
   try {
     const res = await fetch(`${ABABASE}/api/presence?userId=${userId}`);
@@ -3949,6 +3957,7 @@ export default function MyABA(){
       {/* F5/F6: Main Tab Switcher - Chat | Briefing | Approve */}
       <MainTabSwitcher tab={mainTab} setTab={async(t)=>{
         setMainTab(t);
+        logWorkflow(user?.email,'tab_switch',{tab:t},t);
         if(t==="briefing"&&!briefingData&&!briefingLoading){
           setBriefingLoading(true);
           const data=await fetchBriefing(user?.email||"brandon");
