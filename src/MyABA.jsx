@@ -972,47 +972,81 @@ function ElevenLabsVoice(){
   const containerRef=useRef(null);
   const[loaded,setLoaded]=useState(false);
   const[error,setError]=useState(null);
+  const[active,setActive]=useState(false);
   
   useEffect(()=>{
-    // Load ElevenLabs widget script from CDN
-    if(document.querySelector('script[src*="elevenlabs/convai-widget"]')){{setLoaded(true);return}}
+    if(document.querySelector('script[src*="elevenlabs/convai-widget"]')){setLoaded(true);return}
     const script=document.createElement('script');
     script.src='https://unpkg.com/@elevenlabs/convai-widget-embed@latest';
     script.async=true;
     script.onload=()=>{console.log('[VOICE] ElevenLabs widget loaded');setLoaded(true)};
-    script.onerror=(e)=>{console.error('[VOICE] ElevenLabs widget failed to load:',e);setError('Voice widget failed to load')};
+    script.onerror=()=>{console.error('[VOICE] ElevenLabs widget failed');setError('Voice engine failed to load. Check your connection.')};
     document.head.appendChild(script);
   },[]);
   
   useEffect(()=>{
     if(!loaded||!containerRef.current)return;
-    // Clear any previous widget
     containerRef.current.innerHTML='';
-    // Create the ElevenLabs Conversational AI custom element
     const widget=document.createElement('elevenlabs-convai');
     widget.setAttribute('agent-id','agent_0601khe2q0gben08ws34bzf7a0sa');
-    // Style overrides to match ABA theme
-    widget.style.cssText='--elevenlabs-convai-widget-width:100%;--elevenlabs-convai-widget-height:100%;width:100%;height:100%;';
+    // Hide the default widget chrome, we wrap our own UI around it
+    widget.style.cssText='position:absolute;bottom:0;right:0;left:0;top:0;width:100%;height:100%;z-index:2;';
     containerRef.current.appendChild(widget);
-    console.log('[VOICE] ElevenLabs widget mounted with ABA agent');
-    return()=>{if(containerRef.current)containerRef.current.innerHTML=''};
+    setActive(true);
+    console.log('[VOICE] ElevenLabs widget mounted');
+    return()=>{if(containerRef.current)containerRef.current.innerHTML='';setActive(false)};
   },[loaded]);
   
   if(error)return(
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
-      <p style={{color:"rgba(239,68,68,.7)",fontSize:13}}>{error}</p>
-      <button onClick={()=>window.location.reload()} style={{padding:"8px 16px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.05)",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:12}}>Retry</button>
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,gap:16,padding:20}}>
+      <div style={{width:120,height:120,borderRadius:"50%",background:"radial-gradient(circle at 30% 30%, rgba(239,68,68,.3), rgba(139,92,246,.2))",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 60px rgba(239,68,68,.3)"}}>
+        <AlertTriangle size={40} style={{color:"rgba(239,68,68,.7)"}}/>
+      </div>
+      <p style={{color:"rgba(255,255,255,.6)",fontSize:13,textAlign:"center",maxWidth:280}}>{error}</p>
+      <button onClick={()=>window.location.reload()} style={{padding:"10px 24px",borderRadius:12,border:"1px solid rgba(139,92,246,.2)",background:"rgba(139,92,246,.1)",color:"rgba(139,92,246,.9)",cursor:"pointer",fontSize:12,fontWeight:600}}>Try Again</button>
     </div>
   );
   
-  if(!loaded)return(
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
-      <div style={{width:50,height:50,borderRadius:"50%",border:"3px solid rgba(139,92,246,.2)",borderTopColor:"rgba(139,92,246,.8)",animation:"spin 1s linear infinite"}}/>
-      <p style={{color:"rgba(255,255,255,.5)",fontSize:12}}>Loading voice...</p>
+  return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,position:"relative"}}>
+      {/* Pulsing rings behind the widget */}
+      <div style={{position:"absolute",width:220,height:220,borderRadius:"50%",border:"1px solid rgba(139,92,246,.12)",animation:active?"pulse 2s ease-out infinite":"none",opacity:.5,pointerEvents:"none"}}/>
+      <div style={{position:"absolute",width:300,height:300,borderRadius:"50%",border:"1px solid rgba(139,92,246,.08)",animation:active?"pulse 2s ease-out .5s infinite":"none",opacity:.3,pointerEvents:"none"}}/>
+      <div style={{position:"absolute",width:380,height:380,borderRadius:"50%",border:"1px solid rgba(139,92,246,.05)",animation:active?"pulse 2s ease-out 1s infinite":"none",opacity:.2,pointerEvents:"none"}}/>
+      
+      {/* Loading state with breathing orb */}
+      {!loaded&&(
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16}}>
+          <div style={{width:140,height:140,borderRadius:"50%",background:"radial-gradient(circle at 30% 30%, rgba(139,92,246,.4), rgba(99,102,241,.3))",boxShadow:"0 0 80px rgba(139,92,246,.4), inset 0 0 40px rgba(255,255,255,.1)",animation:"breathe 2s ease-in-out infinite",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <Volume2 size={44} style={{color:"white",opacity:.8}}/>
+          </div>
+          <p style={{color:"rgba(255,255,255,.5)",fontSize:13}}>Connecting to ABA...</p>
+        </div>
+      )}
+      
+      {/* Widget container - positioned to fill the center area */}
+      <div ref={containerRef} style={{
+        position:"relative",width:280,height:280,borderRadius:"50%",overflow:"hidden",
+        background:"radial-gradient(circle at 30% 30%, rgba(139,92,246,.15), rgba(99,102,241,.08))",
+        boxShadow:active?"0 0 100px rgba(139,92,246,.4), inset 0 0 60px rgba(255,255,255,.05)":"0 0 60px rgba(139,92,246,.2)",
+        border:"1px solid rgba(139,92,246,.15)",
+        display:loaded?"flex":"none",alignItems:"center",justifyContent:"center",
+        animation:active?"breathe 3s ease-in-out infinite":"none",
+        transition:"all .5s"
+      }}/>
+      
+      {/* Status text */}
+      {loaded&&<div style={{position:"absolute",bottom:80,display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+        <p style={{color:"rgba(255,255,255,.5)",fontSize:13,textAlign:"center",margin:0}}>
+          {active?"Tap the orb to start talking":"Connecting..."}
+        </p>
+        {active&&<div style={{display:"flex",alignItems:"center",gap:6}}>
+          <div style={{width:8,height:8,borderRadius:"50%",background:"rgba(16,185,129,.8)",animation:"mb 1.5s ease infinite"}}/>
+          <span style={{color:"rgba(16,185,129,.7)",fontSize:11,fontWeight:600}}>VOICE READY</span>
+        </div>}
+      </div>}
     </div>
   );
-  
-  return <div ref={containerRef} style={{width:"100%",flex:1,display:"flex",alignItems:"center",justifyContent:"center",minHeight:300}}/>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3525,19 +3559,20 @@ export default function MyABA(){
         </div>}
         
         {/* ⬡B:MYABA:TALK_TO_ABA:ELEVENLABS_WIDGET:20260320⬡ */}
-        {/* Uses same ElevenLabs Conversational AI as VARA phone calls */}
-        {voiceMode==="talk"&&<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,position:"relative"}}>
+        {voiceMode==="talk"&&<div style={{display:"flex",flexDirection:"column",flex:1,position:"relative",overflow:"hidden"}}>
           {/* Back to Chat button */}
-          <button onClick={()=>{setVoiceMode("chat")}} style={{position:"absolute",top:0,left:0,display:"flex",alignItems:"center",gap:6,padding:"8px 14px",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:12,fontWeight:500,zIndex:10}}>
-            <MessageSquare size={14}/>Back to Chat
+          <button onClick={()=>{setVoiceMode("chat")}} style={{position:"absolute",top:8,left:8,display:"flex",alignItems:"center",gap:6,padding:"8px 14px",background:"rgba(0,0,0,.4)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.1)",borderRadius:12,color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:12,fontWeight:500,zIndex:10}}>
+            <MessageSquare size={14}/>Chat
           </button>
+          
+          {/* Title */}
+          <div style={{textAlign:"center",paddingTop:16,paddingBottom:4}}>
+            <p style={{color:"rgba(139,92,246,.8)",fontSize:11,fontWeight:600,letterSpacing:2,textTransform:"uppercase",margin:0}}>TALK TO ABA</p>
+            <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"4px 0 0"}}>Same voice as your phone calls</p>
+          </div>
           
           {/* ElevenLabs Conversational AI Widget */}
           <ElevenLabsVoice/>
-          
-          <p style={{color:"rgba(255,255,255,.4)",fontSize:12,textAlign:"center",position:"absolute",bottom:40,left:20,right:20}}>
-            Powered by the same voice engine as ABA phone calls.
-          </p>
         </div>}
       </div>
       </>}
