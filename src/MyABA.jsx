@@ -968,82 +968,166 @@ function Typing(){return(<div style={{display:"flex",justifyContent:"flex-start"
 // ⬡B:MYABA:ELEVENLABS_VOICE:20260320⬡
 // Same agent + webhook as VARA phone calls. WebRTC-based, not MediaRecorder.
 // ═══════════════════════════════════════════════════════════════════════════
-function ElevenLabsVoice(){
-  const containerRef=useRef(null);
-  const[loaded,setLoaded]=useState(false);
-  const[error,setError]=useState(null);
-  const[active,setActive]=useState(false);
+// ═══════════════════════════════════════════════════════════════════════════
+// TALK TO ABA - Self-contained voice conversation
+// ⬡B:MYABA:TALK_TO_ABA:NATIVE:20260321⬡
+// No external widgets. MediaRecorder → Deepgram STT → AIR → ElevenLabs TTS.
+// Same backend endpoints that already work. Full status feedback.
+// ═══════════════════════════════════════════════════════════════════════════
+function TalkToABA({userId}){
+  const ABABASE="https://abacia-services.onrender.com";
+  const[phase,setPhase]=useState("idle"); // idle | listening | thinking | speaking | error
+  const[statusText,setStatusText]=useState("Tap the orb to start talking");
+  const[lastResponse,setLastResponse]=useState("");
+  const recRef=useRef(null);
+  const audioRef=useRef(null);
+  const chunksRef=useRef([]);
   
-  useEffect(()=>{
-    if(document.querySelector('script[src*="elevenlabs/convai-widget"]')){setLoaded(true);return}
-    const script=document.createElement('script');
-    script.src='https://unpkg.com/@elevenlabs/convai-widget-embed@latest';
-    script.async=true;
-    script.onload=()=>{console.log('[VOICE] ElevenLabs widget loaded');setLoaded(true)};
-    script.onerror=()=>{console.error('[VOICE] ElevenLabs widget failed');setError('Voice engine failed to load. Check your connection.')};
-    document.head.appendChild(script);
-  },[]);
+  // Detect supported mimeType
+  const getMime=()=>{
+    for(const m of["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus","audio/mp4","audio/aac"]){
+      if(MediaRecorder.isTypeSupported(m))return m;
+    }
+    return "";
+  };
   
-  useEffect(()=>{
-    if(!loaded)return;
-    // Mount widget to document.body, positioned at bottom-right, near-invisible but clickable
-    // User taps the small ElevenLabs mic button that appears in bottom-right corner
-    const existing=document.querySelector('elevenlabs-convai');
-    if(existing)existing.remove();
-    const widget=document.createElement('elevenlabs-convai');
-    widget.setAttribute('agent-id','agent_0601khe2q0gben08ws34bzf7a0sa');
-    widget.style.cssText='position:fixed;bottom:90px;right:20px;z-index:9998;';
-    document.body.appendChild(widget);
-    setActive(true);
-    console.log('[VOICE] ElevenLabs widget mounted to body');
-    return()=>{try{widget.remove()}catch{};setActive(false)};
-  },[loaded]);
+  const stopAudio=()=>{if(audioRef.current){audioRef.current.pause();audioRef.current=null}};
   
-  if(error)return(
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,gap:16,padding:20}}>
-      <div style={{width:120,height:120,borderRadius:"50%",background:"radial-gradient(circle at 30% 30%, rgba(239,68,68,.3), rgba(139,92,246,.2))",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 60px rgba(239,68,68,.3)"}}>
-        <AlertTriangle size={40} style={{color:"rgba(239,68,68,.7)"}}/>
-      </div>
-      <p style={{color:"rgba(255,255,255,.6)",fontSize:13,textAlign:"center",maxWidth:280}}>{error}</p>
-      <button onClick={()=>window.location.reload()} style={{padding:"10px 24px",borderRadius:12,border:"1px solid rgba(139,92,246,.2)",background:"rgba(139,92,246,.1)",color:"rgba(139,92,246,.9)",cursor:"pointer",fontSize:12,fontWeight:600}}>Try Again</button>
-    </div>
-  );
+  const startListening=async()=>{
+    stopAudio();
+    if(phase==="listening"){
+      // Stop recording and process
+      if(recRef.current&&recRef.current.state==="recording"){recRef.current.stop()}
+      return;
+    }
+    
+    setPhase("listening");setStatusText("Listening... tap orb when done");
+    chunksRef.current=[];
+    
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      const mime=getMime();
+      console.log("[TALK] Recording with mimeType:",mime||"default");
+      const rec=new MediaRecorder(stream,mime?{mimeType:mime}:{});
+      recRef.current=rec;
+      
+      rec.ondataavailable=(e)=>{if(e.data.size>0)chunksRef.current.push(e.data)};
+      rec.onstop=async()=>{
+        stream.getTracks().forEach(t=>t.stop());
+        const blob=new Blob(chunksRef.current,{type:rec.mimeType||"audio/webm"});
+        console.log("[TALK] Recorded blob:",blob.size,"bytes,",blob.type);
+        if(blob.size<1000){setPhase("idle");setStatusText("Too short. Tap and speak, then tap again.");return}
+        await processAudio(blob);
+      };
+      rec.start(500);
+    }catch(err){
+      console.error("[TALK] Mic error:",err);
+      setPhase("error");setStatusText("Mic access denied. Check your browser settings.");
+    }
+  };
+  
+  const processAudio=async(blob)=>{
+    // Step 1: Transcribe
+    setPhase("thinking");setStatusText("Transcribing...");
+    try{
+      const formData=new FormData();
+      formData.append("audio",blob,"recording.webm");
+      const txRes=await fetch(`${ABABASE}/api/voice/transcribe`,{method:"POST",body:formData});
+      if(!txRes.ok)throw new Error(`Transcribe HTTP ${txRes.status}`);
+      const txData=await txRes.json();
+      const transcript=txData.transcript||txData.text||"";
+      console.log("[TALK] Transcript:",transcript);
+      if(!transcript.trim()){setPhase("idle");setStatusText("Didn't catch that. Tap and try again.");return}
+      
+      setStatusText(`You said: "${transcript.substring(0,40)}${transcript.length>40?"...":""}"`);
+      
+      // Step 2: Send to AIR
+      setStatusText("ABA is thinking...");
+      const airRes=await fetch(`${ABABASE}/api/air/process`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({message:transcript,user_id:userId||"brandon",channel:"myaba_voice"})
+      });
+      if(!airRes.ok)throw new Error(`AIR HTTP ${airRes.status}`);
+      const airData=await airRes.json();
+      const response=airData.response||airData.message||airData.text||"I heard you but couldn't form a response.";
+      console.log("[TALK] AIR response:",response.substring(0,80));
+      setLastResponse(response);
+      
+      // Step 3: Speak response
+      setPhase("speaking");setStatusText("ABA is speaking...");
+      const ttsRes=await fetch(`${ABABASE}/api/voice/synthesize`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({text:response,voiceId:"AIFDUhRnM6s61433WMNu"})
+      });
+      if(!ttsRes.ok)throw new Error(`TTS HTTP ${ttsRes.status}`);
+      const ttsData=await ttsRes.json();
+      
+      if(ttsData.url){
+        const audio=new Audio(ttsData.url);
+        audioRef.current=audio;
+        audio.onended=()=>{setPhase("idle");setStatusText("Tap the orb to talk again")};
+        audio.onerror=()=>{setPhase("idle");setStatusText("Audio playback failed. Tap to try again.")};
+        await audio.play();
+      }else{
+        setPhase("idle");setStatusText("Response ready (no audio). Tap to talk again.");
+      }
+    }catch(err){
+      console.error("[TALK] Error:",err);
+      setPhase("error");setStatusText(`Error: ${err.message}. Tap to retry.`);
+    }
+  };
+  
+  const handleTap=()=>{
+    if(phase==="error"){setPhase("idle");setStatusText("Tap the orb to start talking");return}
+    if(phase==="speaking"){stopAudio();setPhase("idle");setStatusText("Tap the orb to talk again");return}
+    if(phase==="thinking")return; // Can't interrupt thinking
+    startListening();
+  };
+  
+  const colors={idle:"139,92,246",listening:"239,68,68",thinking:"245,158,11",speaking:"16,185,129",error:"239,68,68"};
+  const c=colors[phase]||colors.idle;
+  const icons={idle:Mic,listening:MicOff,thinking:Sparkles,speaking:Volume2,error:AlertTriangle};
+  const Icon=icons[phase]||Mic;
   
   return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,position:"relative"}}>
-      {/* Pulsing rings behind the widget */}
-      <div style={{position:"absolute",width:220,height:220,borderRadius:"50%",border:"1px solid rgba(139,92,246,.12)",animation:active?"pulse 2s ease-out infinite":"none",opacity:.5,pointerEvents:"none"}}/>
-      <div style={{position:"absolute",width:300,height:300,borderRadius:"50%",border:"1px solid rgba(139,92,246,.08)",animation:active?"pulse 2s ease-out .5s infinite":"none",opacity:.3,pointerEvents:"none"}}/>
-      <div style={{position:"absolute",width:380,height:380,borderRadius:"50%",border:"1px solid rgba(139,92,246,.05)",animation:active?"pulse 2s ease-out 1s infinite":"none",opacity:.2,pointerEvents:"none"}}/>
+      {/* Pulsing rings */}
+      <div style={{position:"absolute",width:220,height:220,borderRadius:"50%",border:`1px solid rgba(${c},.12)`,animation:phase!=="idle"?"pulse 2s ease-out infinite":"none",opacity:.5,pointerEvents:"none"}}/>
+      <div style={{position:"absolute",width:300,height:300,borderRadius:"50%",border:`1px solid rgba(${c},.08)`,animation:phase!=="idle"?"pulse 2s ease-out .5s infinite":"none",opacity:.3,pointerEvents:"none"}}/>
+      <div style={{position:"absolute",width:380,height:380,borderRadius:"50%",border:`1px solid rgba(${c},.05)`,animation:phase!=="idle"?"pulse 2s ease-out 1s infinite":"none",opacity:.2,pointerEvents:"none"}}/>
       
-      {/* ABA orb visual - decorative, the real mic button is from ElevenLabs widget bottom-right */}
-      <div style={{
-        width:160,height:160,borderRadius:"50%",
-        background:"radial-gradient(circle at 30% 30%, rgba(139,92,246,.4), rgba(99,102,241,.25))",
-        boxShadow:"0 0 80px rgba(139,92,246,.4), inset 0 0 40px rgba(255,255,255,.1)",
-        border:"1px solid rgba(139,92,246,.2)",
-        display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,
-        animation:"breathe 3s ease-in-out infinite"
+      {/* Main orb - tap to interact */}
+      <button onClick={handleTap} disabled={phase==="thinking"} style={{
+        width:160,height:160,borderRadius:"50%",border:"none",cursor:phase==="thinking"?"wait":"pointer",
+        background:`radial-gradient(circle at 30% 30%, rgba(${c},.5), rgba(${c},.25))`,
+        boxShadow:`0 0 80px rgba(${c},.4), inset 0 0 40px rgba(255,255,255,.1)`,
+        display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,color:"white",
+        animation:phase==="listening"?"breathe 1s ease-in-out infinite":phase==="speaking"?"breathe 1.5s ease-in-out infinite":"breathe 3s ease-in-out infinite",
+        transition:"all .3s"
       }}>
-        {!loaded?<div style={{width:30,height:30,borderRadius:"50%",border:"3px solid rgba(255,255,255,.2)",borderTopColor:"white",animation:"spin 1s linear infinite"}}/>:
-          <Volume2 size={44} style={{color:"white",opacity:.9}}/>}
-        <span style={{color:"white",fontSize:10,fontWeight:600,letterSpacing:1}}>{loaded?"ABA":"LOADING"}</span>
+        {phase==="thinking"?<div style={{animation:"spin 1s linear infinite"}}><Sparkles size={44}/></div>:<Icon size={44}/>}
+        <span style={{fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>
+          {phase==="idle"?"TAP TO TALK":phase==="listening"?"TAP TO SEND":phase==="thinking"?"THINKING":phase==="speaking"?"SPEAKING":"ERROR"}
+        </span>
+      </button>
+      
+      {/* Status */}
+      <div style={{position:"absolute",bottom:80,display:"flex",flexDirection:"column",alignItems:"center",gap:8,maxWidth:300}}>
+        <p style={{color:`rgba(${c},.8)`,fontSize:13,textAlign:"center",margin:0,fontWeight:500}}>{statusText}</p>
+        {phase==="listening"&&<div style={{display:"flex",alignItems:"center",gap:6}}>
+          <div style={{width:8,height:8,borderRadius:"50%",background:"rgba(239,68,68,.9)",animation:"mb 1s ease infinite"}}/>
+          <span style={{color:"rgba(239,68,68,.8)",fontSize:11,fontWeight:600}}>RECORDING</span>
+        </div>}
       </div>
       
-      {/* Instructions */}
-      {loaded&&<div style={{position:"absolute",bottom:60,display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 20px",borderRadius:14,background:"rgba(139,92,246,.1)",border:"1px solid rgba(139,92,246,.15)"}}>
-          <div style={{width:24,height:24,borderRadius:"50%",background:"rgba(139,92,246,.3)",display:"flex",alignItems:"center",justifyContent:"center"}}><Mic size={12} style={{color:"white"}}/></div>
-          <span style={{color:"rgba(255,255,255,.7)",fontSize:12}}>Tap the mic button below to talk</span>
-          <ChevronDown size={14} style={{color:"rgba(139,92,246,.6)"}}/>
+      {/* Last response card */}
+      {lastResponse&&phase==="idle"&&<div style={{position:"absolute",bottom:20,left:16,right:16,padding:"12px 16px",background:"rgba(0,0,0,.5)",backdropFilter:"blur(12px)",borderRadius:16,border:"1px solid rgba(139,92,246,.15)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+          <Sparkles size={10} style={{color:"rgba(139,92,246,.7)"}}/>
+          <span style={{color:"rgba(139,92,246,.6)",fontSize:9,fontWeight:600}}>ABA SAID</span>
         </div>
-        {active&&<div style={{display:"flex",alignItems:"center",gap:6}}>
-          <div style={{width:8,height:8,borderRadius:"50%",background:"rgba(16,185,129,.8)",animation:"mb 1.5s ease infinite"}}/>
-          <span style={{color:"rgba(16,185,129,.7)",fontSize:11,fontWeight:600}}>VOICE READY</span>
-        </div>}
+        <p style={{color:"rgba(255,255,255,.7)",fontSize:12,margin:0,lineHeight:1.4,maxHeight:60,overflow:"hidden"}}>{lastResponse.substring(0,180)}{lastResponse.length>180?"...":""}</p>
       </div>}
-      
-      <div ref={containerRef} style={{display:"none"}}/>
     </div>
   );
 }
@@ -3701,8 +3785,8 @@ export default function MyABA(){
             <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"4px 0 0"}}>Same voice as your phone calls</p>
           </div>
           
-          {/* ElevenLabs Conversational AI Widget */}
-          <ElevenLabsVoice/>
+          {/* Talk to ABA - Native voice conversation */}
+          <TalkToABA userId={user?.email||"brandon"}/>
         </div>}
       </div>
       </>}
