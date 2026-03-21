@@ -3114,10 +3114,31 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
     setGhostLoading(false);
   };
   
-  useEffect(()=>{try{localStorage.setItem("myaba_notifyBriefing",String(notifyBriefing))}catch{}},[notifyBriefing]);
-  useEffect(()=>{try{localStorage.setItem("myaba_notifyUrgent",String(notifyUrgent))}catch{}},[notifyUrgent]);
-  useEffect(()=>{try{localStorage.setItem("myaba_autoSpeak",String(autoSpeak))}catch{}},[autoSpeak]);
-  useEffect(()=>{try{localStorage.setItem("myaba_pushEnabled",String(pushEnabled))}catch{}},[pushEnabled]);
+  // ⬡B:90_10_FIX:settings_backend_sync:20260321⬡
+  // Load settings from backend on mount, localStorage as instant cache
+  useEffect(()=>{
+    if(!user?.email)return;
+    airLoadSettings(user.email).then(d=>{
+      if(d.success&&d.settings){
+        if(d.settings.notifyBriefing!==undefined)setNotifyBriefing(d.settings.notifyBriefing);
+        if(d.settings.notifyUrgent!==undefined)setNotifyUrgent(d.settings.notifyUrgent);
+        if(d.settings.autoSpeak!==undefined)setAutoSpeak(d.settings.autoSpeak);
+        if(d.settings.pushEnabled!==undefined)setPushEnabled(d.settings.pushEnabled);
+        if(d.settings.voiceOut!==undefined)setVoiceOut(d.settings.voiceOut);
+        if(d.settings.bg)setBg(d.settings.bg);
+      }
+    }).catch(()=>{});
+  },[user?.email]);
+
+  // Save to backend + localStorage on change
+  const syncSetting=(key,val)=>{
+    try{localStorage.setItem(`myaba_${key}`,String(val))}catch{}
+    if(user?.email)airSaveSettings(user.email,{[key]:val}).catch(()=>{});
+  };
+  useEffect(()=>{syncSetting("notifyBriefing",notifyBriefing)},[notifyBriefing]);
+  useEffect(()=>{syncSetting("notifyUrgent",notifyUrgent)},[notifyUrgent]);
+  useEffect(()=>{syncSetting("autoSpeak",autoSpeak)},[autoSpeak]);
+  useEffect(()=>{syncSetting("pushEnabled",pushEnabled)},[pushEnabled]);
   
   const handlePushToggle=async(enable)=>{
     setPushLoading(true);
