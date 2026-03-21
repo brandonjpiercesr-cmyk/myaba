@@ -64,19 +64,13 @@ function useIsMobile() {
 // ABABASE = Fat Prompt Architecture (87 agents, HAM identity)
 const ABABASE = "https://abacia-services.onrender.com";
 
-// ⬡B:PRE_ALPHA:ERROR_CAPTURE:20260321⬡ Capture console errors for incident reports
-window.__abaConsoleErrors = window.__abaConsoleErrors || [];
-const _origError = console.error;
-console.error = (...args) => {
-  try { window.__abaConsoleErrors.push({ msg: args.map(a => String(a)).join(' ').substring(0, 200), time: new Date().toISOString() }); if (window.__abaConsoleErrors.length > 10) window.__abaConsoleErrors.shift(); } catch {}
-  _origError.apply(console, args);
-};
-
 // v1.2.0: Check online status
 function isOnline() { return navigator.onLine; }
 
-// Admin access now resolved from backend via GET /api/ham/resolve → currentHam.is_admin
-// No hardcoded email lists. Trust level checked server-side.
+// v2.15.0: AIR with retry + offline awareness + proper userId handling
+// HAM users: brandonjpiercesr@gmail.com, brandon@globalmajoritygroup.com
+const HAM_EMAILS = ['brandonjpiercesr@gmail.com', 'brandon@globalmajoritygroup.com'];
+function isHAM(email) { return HAM_EMAILS.includes(email?.toLowerCase()); }
 
 async function airRequest(type, payload = {}, userId = "brandon", maxRetries = 3) {
   if (!isOnline()) {
@@ -383,19 +377,15 @@ async function uploadAttachmentsBatch(files, userId, conversationId) {
 
 async function reachTranscribe(audioBlob) {
   try {
-    // Send actual blob type — iOS Safari records audio/mp4, not audio/webm
-    const contentType = audioBlob.type || "audio/webm";
+    // Send raw audio blob with proper content type
     const res = await fetch(`${ABABASE}/api/voice/transcribe`, { 
       method: "POST", 
-      headers: { "Content-Type": contentType },
+      headers: { "Content-Type": "audio/webm" },
       body: audioBlob 
     });
-    if (!res.ok) {
-      console.error("[VOICE] Transcribe HTTP", res.status);
-      return null;
-    }
+    if (!res.ok) return null;
     return (await res.json()).transcript || null;
-  } catch (e) { console.error("[VOICE] Transcribe error:", e); return null; }
+  } catch { return null; }
 }
 
 async function reachSynthesize(text) {
@@ -410,21 +400,6 @@ async function reachSynthesize(text) {
     const data = await res.json();
     return data.url || null; // Returns data URL from backend
   } catch { return null; }
-}
-
-// ⬡B:PRE_ALPHA:WORKFLOW_LOG:20260321⬡ Silent background logging + sessionStorage for incident reports
-function logWorkflow(userId, action, context={}, page='') {
-  // Save to backend
-  fetch(`${ABABASE}/api/workflow/log`, {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ userId, action, context, app: 'myaba', page })
-  }).catch(() => {});
-  // Also cache in sessionStorage for incident report auto-context
-  try {
-    const log = JSON.parse(sessionStorage.getItem("myaba_workflow_log") || "[]");
-    log.push({ action, page, time: new Date().toISOString() });
-    sessionStorage.setItem("myaba_workflow_log", JSON.stringify(log.slice(-20)));
-  } catch {}
 }
 
 async function reachPresence(userId) {
@@ -1090,7 +1065,7 @@ function TalkToABA({userId}){
 // ⬡B:MYABA:FIRST_LOGIN_TOUR:20260320⬡
 // Shows on first login. ABA speaks + highlights each tab. Skip anytime.
 // ═══════════════════════════════════════════════════════════════════════════
-function FirstLoginTour({user,onComplete,currentHam,appConfig}){
+function FirstLoginTour({user,onComplete}){
   const[step,setStep]=useState(0);
   const[speaking,setSpeaking]=useState(false);
   const audioRef=useRef(null);
@@ -1098,16 +1073,13 @@ function FirstLoginTour({user,onComplete,currentHam,appConfig}){
   const firstName=(user?.displayName||user?.email||"").split(/[\s@]/)[0]||"friend";
 
   const STEPS=[
-    {tab:"welcome",title:"Welcome to ABA",body:`Hey ${firstName}. I'm ABA, your life assistant. Let me show you around real quick. This will take about 90 seconds. Tap Next to continue or Skip anytime.`,voice:`Hey ${firstName}. I'm ABA, your life assistant. Let me show you around. This will take about 90 seconds.`},
-    {tab:"chat",title:"Chat",body:"This is Chat. Talk to me about anything here. Ask questions, give me tasks, or just have a conversation. You can also tap Talk to have a voice conversation with me.",voice:"This is Chat. Talk to me about anything. You can type or tap Talk to speak with me directly."},
-    {tab:"briefing",title:"Briefing",body:"This is your Briefing. Every morning I'll summarize your emails, calendar events, news, job updates, and reminders. Your personal morning report from ABA.",voice:"Briefing is your morning report. I'll show you emails, calendar, news, jobs, and reminders."},
-    {tab:"jobs",title:"Jobs",body:"This is Jobs. Your matched positions live here with cover letters and resumes ready. Tap a job to see materials, download PDFs, or apply. I'll prep you for interviews too.",voice:"Jobs has your matched roles with cover letters and resumes ready. Tap any job to apply or prep for interviews."},
-    {tab:"pipeline",title:"Pipeline",body:"This is your Pipeline. Track where each job stands from New to Offer. Tap any stage to see the jobs in it.",voice:"Pipeline tracks where each job stands. From new matches all the way to offers."},
-    {tab:"memos",title:"Memos",body:"This is Memos. Send messages to the team through me. Think of it like internal messaging. Check your inbox for a welcome message.",voice:"Memos is how you message the team. Check your inbox for a welcome message."},
-    {tab:"email",title:"Email",body:"This is Email. Once you connect your account, you can read, reply to, and manage your emails right here inside ABA.",voice:"Email lets you read and reply to your emails right inside the app."},
-    {tab:"email",title:"Connect Your Email",body:"To get the most out of ABA, connect your email. This lets me check your inbox, manage your calendar, and send emails on your behalf. Tap the button below to connect with Google.",voice:"Connect your email so I can help with your inbox and calendar. Tap Connect Email below.",action:"connect_email"},
-    {tab:"done",title:"One more thing",body:`See the Report Bug button in the top right? If anything breaks or feels off, tap it and tell me what happened. This is pre-alpha so your feedback is everything.`,voice:"See the Report Bug button at the top? If anything breaks, tap it and tell me what happened. Your feedback makes me better."},
-    {tab:"done",title:"You're all set",body:`That's the tour, ${firstName}. Explore each tab and talk to me whenever you need anything. I'm always here.`,voice:`That's the tour. Explore and talk to me whenever you need anything. I'm always here, ${firstName}.`}
+    {tab:"welcome",title:"Welcome to ABA",body:`Hey ${firstName}. I'm ABA, your life assistant. Let me show you around real quick. This will take about 60 seconds. Tap Next to continue or Skip anytime.`,voice:`Hey ${firstName}. I'm ABA, your life assistant. Let me show you around. This will take about 60 seconds.`},
+    {tab:"chat",title:"Chat",body:"This is Chat. Talk to me about anything here. Ask questions, give me tasks, or just have a conversation. I remember our history and learn your preferences over time.",voice:"This is Chat. Talk to me about anything. I remember our conversations and learn your preferences."},
+    {tab:"briefing",title:"Briefing",body:"This is your Briefing. Every morning I'll summarize what happened overnight, what's pending, and what's on your calendar. Your personal morning report.",voice:"Briefing is your morning report. I'll tell you what happened, what needs attention, and what's coming up."},
+    {tab:"jobs",title:"Jobs",body:"This is Jobs. Your job matches live here with cover letters and resumes ready for each one. Tap a job to apply. I'll walk you through the whole process and prep you for interviews.",voice:"Jobs has your matched roles with cover letters and resumes ready. Tap any job to apply. I'll prep you for interviews too."},
+    {tab:"memos",title:"Memos",body:"This is Memos. Send messages to Brandon and the team through me. Think of it like internal DMs. You'll see a welcome message waiting for you.",voice:"Memos is how you message the team through me. Check your inbox, there's a welcome message from Brandon."},
+    {tab:"email",title:"Connect Your Email",body:"One more thing. To get the most out of ABA, connect your email. This lets me send emails on your behalf, check your inbox, and manage your calendar. Tap the button below to connect with Google.",voice:"One more thing. Connect your email so I can help you with emails and calendar. Tap Connect Email below.",action:"connect_email"},
+    {tab:"done",title:"You're all set",body:`That's the basics, ${firstName}. Explore each tab and talk to me whenever you need anything. I'm always here.`,voice:`That's the basics. Explore each tab and talk to me whenever you need anything. I'm always here, ${firstName}.`}
   ];
 
   const currentStep=STEPS[step];
@@ -1121,7 +1093,7 @@ function FirstLoginTour({user,onComplete,currentHam,appConfig}){
       try{
         const res=await fetch("https://abacia-services.onrender.com/api/voice/synthesize",{
           method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({text:currentStep.voice,voiceId:appConfig?.voice?.tour_voice_id||"6aDn1KB0hjpdcocrUkmq"})
+          body:JSON.stringify({text:currentStep.voice,voiceId:"6aDn1KB0hjpdcocrUkmq"})
         });
         if(res.ok&&!cancelled){
           const data=await res.json();
@@ -1149,7 +1121,7 @@ function FirstLoginTour({user,onComplete,currentHam,appConfig}){
     onComplete();
   };
 
-  const tabColors={welcome:"#8B5CF6",chat:"#8B5CF6",briefing:"#F59E0B",jobs:"#10B981",pipeline:"#3B82F6",memos:"#6366F1",email:"#34D399",done:"#8B5CF6"};
+  const tabColors={welcome:"#8B5CF6",chat:"#8B5CF6",briefing:"#F59E0B",jobs:"#10B981",memos:"#3B82F6",done:"#8B5CF6"};
   const color=tabColors[currentStep.tab]||"#8B5CF6";
 
   return(
@@ -1172,9 +1144,10 @@ function FirstLoginTour({user,onComplete,currentHam,appConfig}){
         <p style={{color:"rgba(255,255,255,.8)",fontSize:14,lineHeight:1.6,margin:0}}>{currentStep.body}</p>
         {currentStep.action==="connect_email"&&(
           <button onClick={()=>{
-            const hamId=currentHam?.hamId||(user?.email||"").split("@")[0];
-            const connectBase=appConfig?.nylas?.connect_base||"https://abacia-services.onrender.com/api/nylas/connect";
-            window.open(`${connectBase}?ham_id=${encodeURIComponent(hamId)}`,"_blank");
+            const email=(user?.email||"").toLowerCase();
+            const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselane@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
+            const hamId=hamMap[email]||email.split("@")[0];
+            window.open(`https://abacia-services.onrender.com/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
           }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#10B981,#059669)",color:"white",cursor:"pointer",fontSize:14,fontWeight:600,marginTop:16,boxShadow:"0 4px 20px rgba(16,185,129,.3)"}}>
             <Mail size={18}/>Connect Email with Google
           </button>
@@ -1208,18 +1181,15 @@ function VoiceMode({mode,setMode}){const modes=[{k:"chat",i:MessageSquare,l:"Cha
 // ⬡B:MYABA:EMAIL_VIEW:20260321⬡
 // Calls backend which calls Nylas. 90% backend, 10% frontend.
 // ═══════════════════════════════════════════════════════════════════════════
-function EmailView({userId,currentHam}){
+function EmailView({userId}){
   const ABABASE="https://abacia-services.onrender.com";
   const[emails,setEmails]=useState([]);
   const[loading,setLoading]=useState(true);
   const[selectedEmail,setSelectedEmail]=useState(null);
   const[folder,setFolder]=useState("inbox"); // inbox | sent
-  const[replyText,setReplyText]=useState("");
-  const[replying,setReplying]=useState(false);
-  const[replyOpen,setReplyOpen]=useState(false);
 
   const loadEmails=async(f)=>{
-    setLoading(true);setSelectedEmail(null);setReplyOpen(false);
+    setLoading(true);setSelectedEmail(null);
     try{
       const r=await fetch(`${ABABASE}/api/email/${f}?userId=${encodeURIComponent(userId)}&limit=20`);
       if(r.ok){const d=await r.json();setEmails(d.emails||d.messages||d.data||[])}
@@ -1227,55 +1197,28 @@ function EmailView({userId,currentHam}){
     }catch(e){console.error("[EMAIL]",e);setEmails([])}
     setLoading(false);
   };
-  
-  const sendReply=async()=>{
-    if(!replyText.trim()||!selectedEmail)return;
-    setReplying(true);
-    try{
-      const toEmail=selectedEmail.from?.[0]?.email||(typeof selectedEmail.from==='string'?selectedEmail.from:null);
-      await fetch(`${ABABASE}/api/email/reply`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,messageId:selectedEmail.id,body:replyText,to:toEmail})});
-      setReplyText("");setReplyOpen(false);alert("Reply sent!");
-    }catch(e){alert("Reply failed: "+e.message)}
-    setReplying(false);
-  };
-
-  // Use backend-resolved hamId for connect link — no hardcoded map
-  const connectHamId=currentHam?.hamId||(userId||"").split("@")[0];
 
   useEffect(()=>{loadEmails(folder)},[folder]);
 
   if(loading)return <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:40,height:40,borderRadius:"50%",border:"3px solid rgba(139,92,246,.2)",borderTopColor:"rgba(139,92,246,.8)",animation:"spin 1s linear infinite"}}/></div>;
 
   return(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-    {/* Folder toggle + connect */}
+    {/* Folder toggle */}
     <div style={{display:"flex",gap:4,padding:"4px 0",flexShrink:0}}>
       {["inbox","sent"].map(f=>(
         <button key={f} onClick={()=>{setFolder(f);loadEmails(f)}} style={{flex:1,padding:"8px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:folder===f?600:400,background:folder===f?"rgba(139,92,246,.2)":"rgba(255,255,255,.04)",color:folder===f?"rgba(139,92,246,.95)":"rgba(255,255,255,.4)",textTransform:"capitalize"}}>{f}</button>
       ))}
       <button onClick={()=>loadEmails(folder)} style={{padding:"8px 12px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.4)",fontSize:12}}><RefreshCw size={14}/></button>
-      <a href={`${ABABASE}/api/nylas/connect?ham_id=${connectHamId}`} target="_blank" rel="noopener noreferrer" style={{padding:"8px 12px",borderRadius:8,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.08)",color:"#34D399",cursor:"pointer",fontSize:12,fontWeight:600,textDecoration:"none",display:"flex",alignItems:"center"}}><Plus size={14}/></a>
     </div>
 
     {/* Selected email detail */}
     {selectedEmail&&<div style={{flex:1,overflowY:"auto",padding:8}}>
-      <button onClick={()=>{setSelectedEmail(null);setReplyOpen(false)}} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:11,marginBottom:8}}><ChevronRight size={12} style={{transform:"rotate(180deg)"}}/>Back</button>
+      <button onClick={()=>setSelectedEmail(null)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:11,marginBottom:8}}><ChevronRight size={12} style={{transform:"rotate(180deg)"}}/>Back</button>
       <div style={{padding:14,borderRadius:14,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)"}}>
         <p style={{color:"rgba(255,255,255,.9)",fontSize:14,fontWeight:600,margin:"0 0 4px"}}>{selectedEmail.subject||"(no subject)"}</p>
-        <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"0 0 2px"}}>From: {selectedEmail.fromName||selectedEmail.from?.[0]?.name||selectedEmail.from?.[0]?.email||(typeof selectedEmail.from==='string'?selectedEmail.from:"Unknown")}</p>
+        <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"0 0 2px"}}>From: {selectedEmail.from?.[0]?.name||selectedEmail.from?.[0]?.email||"Unknown"}</p>
         <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"0 0 12px"}}>{selectedEmail.date?new Date(selectedEmail.date*1000).toLocaleString():""}</p>
         <div style={{color:"rgba(255,255,255,.7)",fontSize:12,lineHeight:1.6}} dangerouslySetInnerHTML={{__html:selectedEmail.body||selectedEmail.snippet||"No content"}}/>
-        
-        {/* Reply section */}
-        <div style={{marginTop:16,borderTop:"1px solid rgba(255,255,255,.06)",paddingTop:12}}>
-          {!replyOpen?<button onClick={()=>setReplyOpen(true)} style={{padding:"8px 16px",borderRadius:10,border:"1px solid rgba(139,92,246,.2)",background:"rgba(139,92,246,.08)",color:"rgba(139,92,246,.8)",cursor:"pointer",fontSize:12,fontWeight:500}}>Reply</button>:(
-          <div>
-            <textarea value={replyText} onChange={e=>setReplyText(e.target.value)} rows={3} placeholder="Type your reply..." style={{width:"100%",padding:10,borderRadius:10,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.8)",fontSize:12,resize:"vertical",outline:"none",boxSizing:"border-box",fontFamily:"inherit",marginBottom:8}}/>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>{setReplyOpen(false);setReplyText("")}} style={{padding:"8px 14px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"rgba(255,255,255,.4)",cursor:"pointer",fontSize:11}}>Cancel</button>
-              <button disabled={replying||!replyText.trim()} onClick={sendReply} style={{padding:"8px 14px",borderRadius:8,border:"none",background:replyText.trim()?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)",color:replyText.trim()?"rgba(139,92,246,.95)":"rgba(255,255,255,.3)",cursor:"pointer",fontSize:11,fontWeight:600}}>{replying?"Sending...":"Send Reply"}</button>
-            </div>
-          </div>)}
-        </div>
       </div>
     </div>}
 
@@ -1286,7 +1229,7 @@ function EmailView({userId,currentHam}){
         <p style={{color:"rgba(255,255,255,.4)",fontSize:13,textAlign:"center"}}>{folder==="inbox"?"No emails found. Connect your email in Settings.":"No sent emails."}</p>
       </div>}
       {emails.map((em,i)=>{
-        const from=em.fromName||em.from?.[0]?.name||em.from?.[0]?.email||(typeof em.from==='string'?em.from:"Unknown");
+        const from=em.from?.[0]?.name||em.from?.[0]?.email||"Unknown";
         const unread=em.unread!==false;
         return(
         <div key={em.id||i} onClick={()=>setSelectedEmail(em)} style={{padding:"12px 10px",borderRadius:10,background:unread?"rgba(139,92,246,.06)":"rgba(255,255,255,.02)",border:`1px solid ${unread?"rgba(139,92,246,.12)":"rgba(255,255,255,.04)"}`,cursor:"pointer",display:"flex",gap:10,alignItems:"flex-start"}}>
@@ -1359,10 +1302,15 @@ function BriefingSetup({userId,onRefresh}){
     const interests=[...selected.map(id=>INTEREST_OPTIONS.find(o=>o.id===id)?.label||id)];
     if(custom.trim())interests.push(...custom.split(",").map(s=>s.trim()).filter(Boolean));
     try{
-      // Save via backend endpoint — NOT direct Supabase write
-      await fetch(`${ABABASE}/api/preferences/save`,{
+      await fetch(`${ABABASE}/api/air/process`,{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({userId,preferences:{news_interests:interests}})
+        body:JSON.stringify({message:`Save my news interests for DAWN briefings: ${interests.join(", ")}`,user_id:userId,channel:"myaba"})
+      });
+      // Also save directly to brain as HAM preference
+      await fetch(`https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory`,{
+        method:"POST",
+        headers:{"apikey":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw","Content-Type":"application/json","Prefer":"return=minimal"},
+        body:JSON.stringify({source:`ham.preferences.${(userId||"").split("@")[0]}`,memory_type:"ham_preferences",content:JSON.stringify({news_interests:interests,updated:new Date().toISOString()}),importance:7,tags:["preferences","news",userId]})
       });
     }catch(e){console.error("[BRIEFING] Save prefs error:",e)}
     setSaving(false);setDone(true);
@@ -1661,7 +1609,7 @@ function ApproveView({userId,onAction}){
 // MEMOS VIEW - Internal HAM-to-HAM messaging
 // ⬡B:MYABA.V2:memos:20260319⬡
 // ═══════════════════════════════════════════════════════════════════════════
-function MemosView({userId,teamMembers}){
+function MemosView({userId}){
   const[memos,setMemos]=useState([]);
   const[loading,setLoading]=useState(true);
   const[view,setView]=useState("inbox"); // inbox | sent | thread
@@ -1671,9 +1619,14 @@ function MemosView({userId,teamMembers}){
   const[composeForm,setComposeForm]=useState({to:"",subject:"",body:"",priority:"normal"});
   const[sending,setSending]=useState(false);
 
-  // Team from backend — no hardcoded list
-  const hamId=(userId||"").split("@")[0].toLowerCase();
-  const TEAM=(teamMembers||[]).filter(t=>t.id!==hamId).map(t=>({id:t.id,name:t.name,email:t.email}));
+  const TEAM=[
+    {id:"brandon",name:"Brandon",email:"brandonjpiercesr@gmail.com"},
+    {id:"eric",name:"Eric",email:"eric@globalmajoritygroup.com"},
+    {id:"bj",name:"BJ",email:"bj@globalmajoritygroup.com"},
+    {id:"cj",name:"CJ",email:"cj@globalmajoritygroup.com"},
+    {id:"vante",name:"Vante",email:"vante@globalmajoritygroup.com"},
+    {id:"dwayne",name:"Dwayne",email:"dwayne@globalmajoritygroup.com"}
+  ].filter(t=>t.id!==userId&&t.id!==(userId||"").split("@")[0]);
 
   const loadMemos=async(type)=>{
     setLoading(true);
@@ -1727,7 +1680,7 @@ function MemosView({userId,teamMembers}){
     }catch(e){console.error("[MEMOS] react error:",e)}
   };
 
-  const TEAM_COLORS={};for(const m of(teamMembers||[])){TEAM_COLORS[m.id]=m.color;TEAM_COLORS[m.name?.toLowerCase()]=m.color;}
+  const TEAM_COLORS={brandon:"#8B5CF6",eric:"#3B82F6",bj:"#10B981",cj:"#F59E0B",vante:"#F97316",dwayne:"#EC4899",raquel:"#A78BFA"};
   
   const renderMemo=(m)=>{
     const senderName=m.from===userId?"You":m.fromName||m.from;
@@ -1968,9 +1921,10 @@ function ReferencesView({userId}){
 // ═══════════════════════════════════════════════════════════════════════════
 // AWA JOBS VIEW - Apply With ABA job listings
 // ═══════════════════════════════════════════════════════════════════════════
-function JobsView({userId,teamMembers,currentHam}){
-  // Use backend-resolved hamId for default filter — no hardcoded map
-  const defaultHam=currentHam?.hamId||(userId||"").split("@")[0]||"all";
+function JobsView({userId}){
+  // Map email to ham_id for default filter
+  const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselane@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
+  const defaultHam=hamMap[(userId||"").toLowerCase()]||(userId||"").split("@")[0]||"all";
   
   const[jobs,setJobs]=useState([]);
   const[loading,setLoading]=useState(true);
@@ -1997,12 +1951,20 @@ function JobsView({userId,teamMembers,currentHam}){
   const[unmatchedJobs,setUnmatchedJobs]=useState([]);
   const[assigningJob,setAssigningJob]=useState(null); // job being assigned
   
-  // Team members from backend — no hardcoded list
-  const TEAM_MEMBERS=[{id:"all",name:"All",color:"#6B7280"},...(teamMembers||[]).map(m=>({id:m.id,name:m.name,color:m.color||"#6B7280"}))];
+  // Team members for filter
+  const TEAM_MEMBERS=[
+    {id:"all",name:"All",color:"#6B7280"},
+    {id:"brandon",name:"Brandon",color:"#8B5CF6"},
+    {id:"eric",name:"Eric",color:"#3B82F6"},
+    {id:"bj",name:"BJ",color:"#10B981"},
+    {id:"cj",name:"CJ",color:"#F59E0B"},
+    {id:"vante",name:"Vante",color:"#F97316"},
+    {id:"dwayne",name:"Dwayne",color:"#EC4899"},
+    {id:"gmg",name:"GMG",color:"#6B7280"}
+  ];
   
-  // Team colors from backend
-  const TEAM_COLORS={};
-  for(const m of (teamMembers||[])){TEAM_COLORS[m.name]=m.color;TEAM_COLORS[m.id]=m.color;}
+  // Team colors for job cards
+  const TEAM_COLORS={"Brandon":"#8B5CF6","Eric":"#3B82F6","BJ":"#10B981","CJ":"#F59E0B","Vante":"#F97316","Dwayne":"#EC4899","GMG":"#6B7280"};
   
   useEffect(()=>{
     (async()=>{
@@ -2096,7 +2058,7 @@ function JobsView({userId,teamMembers,currentHam}){
   return(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
     {/* Status filter: Active | My Applications | All | Unmatched (admin only) */}
     <div style={{display:"flex",gap:4,marginBottom:6}}>
-      {[{k:"active",l:"Active Jobs"},{k:"applied",l:"My Applications"},{k:"all",l:"All"},...(currentHam?.can_review_unmatched?[{k:"unmatched",l:"Review"}]:[])].map(sf=>(
+      {[{k:"active",l:"Active Jobs"},{k:"applied",l:"My Applications"},{k:"all",l:"All"},...(["brandon","brandonjpiercesr","eric","ericreeselane"].includes(defaultHam)?[{k:"unmatched",l:"Review"}]:[])].map(sf=>(
         <button key={sf.k} onClick={()=>{setStatusFilter(sf.k);setSelectedJob(null);}} style={{
           flex:1,padding:"8px 6px",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:statusFilter===sf.k?600:400,
           background:statusFilter===sf.k?"rgba(139,92,246,.2)":"rgba(255,255,255,.04)",
@@ -2149,7 +2111,7 @@ function JobsView({userId,teamMembers,currentHam}){
           const title=job.job_title||job.title||"Untitled";
           const company=job.organization||job.company||"Unknown";
           const assignee=(job.assignees||[])[0]||job.assignee||"Unassigned";
-          const DISPLAY_NAMES={};for(const m of(teamMembers||[])){DISPLAY_NAMES[m.id]=m.name}
+          const DISPLAY_NAMES={"brandon":"Brandon","eric":"Eric","bj":"BJ","cj":"CJ","vante":"Vante","dwayne":"Dwayne","gmg":"GMG"};
           const assigneeDisplay=DISPLAY_NAMES[assignee]||assignee;
           return(
           <div key={job.id} onClick={()=>{setSelectedJob(job);setApplyPreview(null);setInterviewForm(null);setOfferForm(null);setShowRefs(false);setPrepData(null);setMockMode(false);setMockQuestion(null);setMockEval(null);}} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
@@ -3093,153 +3055,7 @@ function Queue({open,onToggle,items}){
 // ═══════════════════════════════════════════════════════════════════════════
 // F7: SETTINGS DRAWER - Full settings panel
 // ═══════════════════════════════════════════════════════════════════════════
-// ⬡B:PRE_ALPHA:INCIDENT_REPORT:20260321⬡
-// Smart bug reporting. Auto-captures context. Quick-tap categories/severity.
-// User barely has to type. Backend auto-categorizes from page + keywords.
-// ═══════════════════════════════════════════════════════════════════════════
-function IncidentReport({user,mainTab,onClose}){
-  const ABABASE="https://abacia-services.onrender.com";
-  const[category,setCategory]=useState(null);
-  const[severity,setSeverity]=useState(null);
-  const[note,setNote]=useState("");
-  const[sending,setSending]=useState(false);
-  const[result,setResult]=useState(null);
-  const[errorLog]=useState(()=>{
-    // Capture recent console errors if available
-    try{return window.__abaConsoleErrors||[]}catch{return[]}
-  });
-  const[recentActions]=useState(()=>{
-    try{return JSON.parse(sessionStorage.getItem("myaba_workflow_log")||"[]").slice(-5)}catch{return[]}
-  });
-
-  const CATEGORIES=[
-    {id:"chat",label:"Chat",emoji:"💬"},
-    {id:"email",label:"Email",emoji:"📧"},
-    {id:"jobs",label:"Jobs",emoji:"💼"},
-    {id:"voice",label:"Voice",emoji:"🎤"},
-    {id:"briefing",label:"Briefing",emoji:"📊"},
-    {id:"ui",label:"Display/Layout",emoji:"📱"},
-    {id:"auth",label:"Login/Auth",emoji:"🔐"},
-    {id:"other",label:"Other",emoji:"🐛"},
-  ];
-
-  const SEVERITIES=[
-    {id:"critical",label:"Can't use app",color:"#EF4444",emoji:"🚨"},
-    {id:"high",label:"Feature broken",color:"#F59E0B",emoji:"⚠️"},
-    {id:"medium",label:"Something wrong",color:"#3B82F6",emoji:"🔶"},
-    {id:"low",label:"Minor/cosmetic",color:"#6B7280",emoji:"💡"},
-  ];
-
-  // Auto-detected context
-  const autoPage=mainTab||"unknown";
-  const autoDevice=/iPhone|iPad/.test(navigator.userAgent)?"iPhone":/Android/.test(navigator.userAgent)?"Android":"Desktop";
-  const autoBrowser=/Safari/.test(navigator.userAgent)&&!/Chrome/.test(navigator.userAgent)?"Safari":/Chrome/.test(navigator.userAgent)?"Chrome":"Other";
-  const autoScreen=`${window.innerWidth}x${window.innerHeight}`;
-
-  const submit=async()=>{
-    setSending(true);
-    try{
-      const r=await fetch(`${ABABASE}/api/bugs/report`,{
-        method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          description:note||`${category||autoPage} issue reported`,
-          userId:user?.email,
-          app:"myaba",
-          page:autoPage,
-          category,
-          severity,
-          device:autoDevice,
-          browser:autoBrowser,
-          screenSize:autoScreen,
-          networkStatus:navigator.onLine?"online":"offline",
-          currentUrl:window.location.href,
-          appVersion:"2.35.0",
-          lastActions:recentActions,
-          consoleErrors:errorLog.slice(-3)
-        })
-      });
-      const d=await r.json();
-      setResult(d);
-    }catch(e){setResult({success:false,message:"Failed to submit: "+e.message})}
-    setSending(false);
-  };
-
-  if(result)return(
-    <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:340,background:"rgba(15,12,30,.98)",border:"1px solid rgba(16,185,129,.2)",borderRadius:20,padding:24,textAlign:"center"}}>
-        <CheckCircle size={40} style={{color:"#10B981",marginBottom:12}}/>
-        <p style={{color:"rgba(255,255,255,.9)",fontSize:15,fontWeight:600,margin:"0 0 6px"}}>{result.message||"Reported"}</p>
-        <p style={{color:"rgba(255,255,255,.3)",fontSize:11,margin:"0 0 16px"}}>ID: {result.bugId||"saved"} | {result.severity||"?"} | {result.category||"?"}</p>
-        <button onClick={onClose} style={{padding:"10px 24px",borderRadius:10,border:"none",background:"rgba(16,185,129,.2)",color:"#10B981",cursor:"pointer",fontSize:13,fontWeight:600}}>Done</button>
-      </div>
-    </div>
-  );
-
-  return(
-    <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,.7)",backdropFilter:"blur(8px)",display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:420,maxHeight:"85vh",overflowY:"auto",background:"rgba(15,12,30,.98)",border:"1px solid rgba(239,68,68,.15)",borderRadius:"20px 20px 0 0",padding:"20px 16px env(safe-area-inset-bottom, 16px)"}}>
-        {/* Header with auto-detected context */}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <p style={{color:"rgba(255,255,255,.9)",fontSize:16,fontWeight:600,margin:0}}>Report an Issue</p>
-          <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.3)",cursor:"pointer",padding:4}}><X size={18}/></button>
-        </div>
-
-        {/* Auto-detected context pill */}
-        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>
-          <span style={{fontSize:10,padding:"4px 10px",borderRadius:8,background:"rgba(139,92,246,.1)",color:"rgba(139,92,246,.7)",border:"1px solid rgba(139,92,246,.15)"}}>📍 {autoPage}</span>
-          <span style={{fontSize:10,padding:"4px 10px",borderRadius:8,background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.35)",border:"1px solid rgba(255,255,255,.06)"}}>{autoDevice}</span>
-          <span style={{fontSize:10,padding:"4px 10px",borderRadius:8,background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.35)",border:"1px solid rgba(255,255,255,.06)"}}>{autoBrowser}</span>
-          {!navigator.onLine&&<span style={{fontSize:10,padding:"4px 10px",borderRadius:8,background:"rgba(239,68,68,.1)",color:"#EF4444"}}>Offline</span>}
-        </div>
-
-        {/* Category quick-tap */}
-        <p style={{color:"rgba(255,255,255,.5)",fontSize:11,fontWeight:600,margin:"0 0 8px",letterSpacing:.5}}>WHAT AREA?</p>
-        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>
-          {CATEGORIES.map(c=>(
-            <button key={c.id} onClick={()=>setCategory(c.id===category?null:c.id)} style={{
-              padding:"8px 12px",borderRadius:10,border:`1px solid ${category===c.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.06)"}`,
-              background:category===c.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",
-              color:category===c.id?"rgba(139,92,246,.9)":"rgba(255,255,255,.5)",
-              cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",gap:5
-            }}><span>{c.emoji}</span>{c.label}</button>
-          ))}
-        </div>
-
-        {/* Severity quick-tap */}
-        <p style={{color:"rgba(255,255,255,.5)",fontSize:11,fontWeight:600,margin:"0 0 8px",letterSpacing:.5}}>HOW BAD?</p>
-        <div style={{display:"flex",gap:6,marginBottom:16}}>
-          {SEVERITIES.map(s=>(
-            <button key={s.id} onClick={()=>setSeverity(s.id===severity?null:s.id)} style={{
-              flex:1,padding:"10px 6px",borderRadius:10,border:`1px solid ${severity===s.id?s.color+"40":"rgba(255,255,255,.06)"}`,
-              background:severity===s.id?s.color+"15":"rgba(255,255,255,.03)",
-              color:severity===s.id?s.color:"rgba(255,255,255,.4)",
-              cursor:"pointer",fontSize:10,fontWeight:severity===s.id?600:400,textAlign:"center",lineHeight:1.3
-            }}><span style={{fontSize:16,display:"block",marginBottom:2}}>{s.emoji}</span>{s.label}</button>
-          ))}
-        </div>
-
-        {/* Short note */}
-        <p style={{color:"rgba(255,255,255,.5)",fontSize:11,fontWeight:600,margin:"0 0 8px",letterSpacing:.5}}>QUICK NOTE (optional)</p>
-        <input value={note} onChange={e=>setNote(e.target.value)} placeholder="What happened?" style={{
-          width:"100%",padding:"12px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.08)",
-          background:"rgba(255,255,255,.03)",color:"rgba(255,255,255,.8)",fontSize:13,outline:"none",boxSizing:"border-box",fontFamily:"inherit",marginBottom:16
-        }}/>
-
-        {/* Submit */}
-        <button disabled={sending} onClick={submit} style={{
-          width:"100%",padding:"14px",borderRadius:12,border:"none",cursor:"pointer",
-          background:(category||severity||note.trim())?"linear-gradient(135deg,rgba(239,68,68,.3),rgba(239,68,68,.15))":"rgba(255,255,255,.05)",
-          color:(category||severity||note.trim())?"#EF4444":"rgba(255,255,255,.3)",fontSize:14,fontWeight:600
-        }}>{sending?"Submitting...":"Submit Report"}</button>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SETTINGS DRAWER
-// ═══════════════════════════════════════════════════════════════════════════
-function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,user,currentHam}){
+function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,user}){
   const[notifyBriefing,setNotifyBriefing]=useState(()=>{try{return localStorage.getItem("myaba_notifyBriefing")!=="false"}catch{return true}});
   const[notifyUrgent,setNotifyUrgent]=useState(()=>{try{return localStorage.getItem("myaba_notifyUrgent")!=="false"}catch{return true}});
   const[autoSpeak,setAutoSpeak]=useState(()=>{try{return localStorage.getItem("myaba_autoSpeak")==="true"}catch{return false}});
@@ -3279,31 +3095,10 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
     setGhostLoading(false);
   };
   
-  // ⬡B:90_10_FIX:settings_backend_sync:20260321⬡
-  // Load settings from backend on mount, localStorage as instant cache
-  useEffect(()=>{
-    if(!user?.email)return;
-    airLoadSettings(user.email).then(d=>{
-      if(d.success&&d.settings){
-        if(d.settings.notifyBriefing!==undefined)setNotifyBriefing(d.settings.notifyBriefing);
-        if(d.settings.notifyUrgent!==undefined)setNotifyUrgent(d.settings.notifyUrgent);
-        if(d.settings.autoSpeak!==undefined)setAutoSpeak(d.settings.autoSpeak);
-        if(d.settings.pushEnabled!==undefined)setPushEnabled(d.settings.pushEnabled);
-        if(d.settings.voiceOut!==undefined)setVoiceOut(d.settings.voiceOut);
-        if(d.settings.bg)setBg(d.settings.bg);
-      }
-    }).catch(()=>{});
-  },[user?.email]);
-
-  // Save to backend + localStorage on change
-  const syncSetting=(key,val)=>{
-    try{localStorage.setItem(`myaba_${key}`,String(val))}catch{}
-    if(user?.email)airSaveSettings(user.email,{[key]:val}).catch(()=>{});
-  };
-  useEffect(()=>{syncSetting("notifyBriefing",notifyBriefing)},[notifyBriefing]);
-  useEffect(()=>{syncSetting("notifyUrgent",notifyUrgent)},[notifyUrgent]);
-  useEffect(()=>{syncSetting("autoSpeak",autoSpeak)},[autoSpeak]);
-  useEffect(()=>{syncSetting("pushEnabled",pushEnabled)},[pushEnabled]);
+  useEffect(()=>{try{localStorage.setItem("myaba_notifyBriefing",String(notifyBriefing))}catch{}},[notifyBriefing]);
+  useEffect(()=>{try{localStorage.setItem("myaba_notifyUrgent",String(notifyUrgent))}catch{}},[notifyUrgent]);
+  useEffect(()=>{try{localStorage.setItem("myaba_autoSpeak",String(autoSpeak))}catch{}},[autoSpeak]);
+  useEffect(()=>{try{localStorage.setItem("myaba_pushEnabled",String(pushEnabled))}catch{}},[pushEnabled]);
   
   const handlePushToggle=async(enable)=>{
     setPushLoading(true);
@@ -3412,7 +3207,10 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
       
       {/* ⬡B:MYABA:CONNECT_EMAIL:20260320⬡ */}
       <button onClick={()=>{
-        const hamId=currentHam?.hamId||(user?.email||"").split("@")[0];
+        // Map email to ham_id for Nylas OAuth
+        const email=(user?.email||"").toLowerCase();
+        const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselane@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
+        const hamId=hamMap[email]||email.split("@")[0];
         window.open(`https://abacia-services.onrender.com/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
       }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px 16px",borderRadius:14,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.06)",color:"rgba(16,185,129,.8)",cursor:"pointer",fontSize:14,fontWeight:600,marginBottom:8}}>
         <Mail size={18}/>Connect Email
@@ -3443,10 +3241,6 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
 export default function MyABA(){
   const[user,setUser]=useState(null);const[authLoading,setAuthLoading]=useState(true);
   const[convos,setConvos]=useState([]);const[activeId,setActiveId]=useState(null);
-  // ⬡B:90_10_FIX:dynamic_team_config:20260321⬡ Loaded from backend, not hardcoded
-  const[teamMembers,setTeamMembers]=useState([]);
-  const[currentHam,setCurrentHam]=useState(null);
-  const[appConfig,setAppConfig]=useState(null);
   const activeConv=convos.find(c=>c.id===activeId);const messages=activeConv?.messages||[];
   const[input,setInput]=useState("");const[abaState,setAbaState]=useState("idle");
   const[attachments,setAttachments]=useState([]); // SPURT 5: files attached to message
@@ -3478,7 +3272,6 @@ export default function MyABA(){
   const[online,setOnline]=useState(navigator.onLine);
   // v2.15.0: Admin mode for HAM users
   const[adminPanelOpen,setAdminPanelOpen]=useState(false);
-  const[bugReportOpen,setBugReportOpen]=useState(false);
   const[commandCenterOpen,setCommandCenterOpen]=useState(false);
   const[lastABAResponse,setLastABAResponse]=useState(null);
   // ⬡B:snap.quick_question:STATE:20260317⬡
@@ -3630,18 +3423,6 @@ export default function MyABA(){
   },[]);
 
   useEffect(()=>{const unsub=onAuthStateChanged(auth,(u)=>{setUser(u);setAuthLoading(false)});return()=>unsub()},[]);
-  
-  // ⬡B:90_10_FIX:init_from_backend:20260321⬡ Load team + config from backend on auth
-  useEffect(()=>{
-    if(!user)return;
-    const email=user.email||user.uid;
-    // Load team members
-    fetch(`${ABABASE}/api/team`).then(r=>r.json()).then(d=>{if(d.success)setTeamMembers(d.members)}).catch(()=>{});
-    // Resolve current user's HAM profile
-    fetch(`${ABABASE}/api/ham/resolve?email=${encodeURIComponent(email)}`).then(r=>r.json()).then(d=>{if(d.success)setCurrentHam(d)}).catch(()=>{});
-    // Load app config (voice IDs, agent IDs)
-    fetch(`${ABABASE}/api/config/app`).then(r=>r.json()).then(d=>{if(d.success)setAppConfig(d)}).catch(()=>{});
-  },[user]);
   useEffect(()=>{if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight},[messages,isTyping]);
 
   const showToast=useCallback((message,type="info")=>{setToast({message,type})},[]);
@@ -3815,14 +3596,12 @@ export default function MyABA(){
     }
   },[messages.length,activeId]);
 
-  // v2.8.0: Save via direct Supabase endpoint
-  // v2.15.0: Use email for userId to match HAM resolution
-  // v2.19.0: Added error logging instead of silent swallow
-  useEffect(()=>{
-    if(user&&activeConv&&activeConv.messages.length>0){
-      saveConversation(user.email||user.uid,activeConv).catch(e=>console.warn("[SAVE] Conversation save failed:",e));
-    }
-  },[activeConv?.messages?.length]);
+  // ⬡B:MYABA:FIX:remove_duplicate_save:20260321⬡
+  // REMOVED: saveConversation useEffect that ran on every messages.length change.
+  // This was the ROOT CAUSE of duplicate conversations. It POSTed to the CREATE endpoint
+  // every time a message was added, creating a new 0-message record each time.
+  // addMsg() already saves each message individually via POST /conversations/:id/messages.
+  // That is the correct single save path. No duplicate useEffect needed.
 
   // ⬡B:chat.persistence.v19:SAVE_ON_CLOSE:20260319⬡
   // Save conversation when user leaves the app (tab switch, minimize, close)
@@ -4107,9 +3886,9 @@ export default function MyABA(){
   const bgUrl=BG[bg]?.u||BG.pinkSmoke.u;
 
   // Show tour on first login
-  if(!tourComplete)return <FirstLoginTour user={user} currentHam={currentHam} appConfig={appConfig} onComplete={()=>{try{localStorage.setItem("myaba_tour_complete","true")}catch{};window.location.reload()}}/>;
+  if(!tourComplete)return <FirstLoginTour user={user} onComplete={()=>{try{localStorage.setItem("myaba_tour_complete","true")}catch{};window.location.reload()}}/>;
 
-  return(<div style={{width:"100%",height:"100dvh",minHeight:`${viewportHeight}px`,position:"relative",overflow:"hidden",fontFamily:"'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:"#08080d",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)",boxSizing:"border-box"}}>
+  return(<div style={{width:"100%",height:`${viewportHeight}px`,position:"relative",overflow:"hidden",fontFamily:"'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:"#08080d",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)"}}>
     <style>{`@keyframes mp{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}@keyframes mf{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes mb{0%,100%{opacity:.6}50%{opacity:1}}@keyframes ml{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 12px rgba(239,68,68,0)}}@keyframes kenBurns{0%{transform:scale(1) translate(0,0)}25%{transform:scale(1.08) translate(-1%,-1%)}50%{transform:scale(1.12) translate(1%,0)}75%{transform:scale(1.06) translate(-0.5%,1%)}100%{transform:scale(1) translate(0,0)}}@keyframes pulse{0%{transform:scale(1);opacity:1}100%{transform:scale(1.5);opacity:0}}@keyframes breathe{0%,100%{transform:scale(1);box-shadow:0 0 40px rgba(139,92,246,.3)}50%{transform:scale(1.05);box-shadow:0 0 60px rgba(139,92,246,.5)}}@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(139,92,246,.15);border-radius:99px}`}</style>
     <div style={{position:"absolute",inset:"-10%",zIndex:0,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.4) saturate(.7)",animation:"kenBurns 30s ease-in-out infinite",willChange:"transform",WebkitBackfaceVisibility:"hidden"}}/>
     <div style={{position:"absolute",inset:0,zIndex:1,background:"radial-gradient(ellipse at center,rgba(0,0,0,0) 0%,rgba(0,0,0,.55) 100%)"}}/>
@@ -4124,10 +3903,8 @@ export default function MyABA(){
           <span style={{color:"rgba(255,255,255,.2)",fontSize:10}}>{abaState!=="idle"?(abaState==="thinking"?"thinking...":abaState==="speaking"?"speaking...":"listening..."):""}</span>
         </div>
         <div style={{display:"flex",gap:4}}>
-          {/* ⬡B:PRE_ALPHA:REPORT_BUG_BUTTON:20260321⬡ */}
-          <button onClick={()=>setBugReportOpen(true)} style={{background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.15)",color:"rgba(239,68,68,.7)",borderRadius:10,padding:"6px 10px",cursor:"pointer",fontSize:10,fontWeight:600,display:"flex",alignItems:"center",gap:4}}>Report Bug</button>
-          {/* Admin button - trust_level from backend, not hardcoded email list */}
-          {currentHam?.is_admin&&<button onClick={()=>setAdminPanelOpen(true)} style={{background:lastABAResponse?"rgba(34,197,94,.15)":"rgba(255,255,255,.04)",border:`1px solid ${lastABAResponse?"rgba(34,197,94,.2)":"rgba(255,255,255,.06)"}`,color:lastABAResponse?"rgba(34,197,94,.85)":"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} title="Admin Mode"><Activity size={15}/></button>}
+          {/* v2.15.0: Admin button for HAM users */}
+          {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{background:lastABAResponse?"rgba(34,197,94,.15)":"rgba(255,255,255,.04)",border:`1px solid ${lastABAResponse?"rgba(34,197,94,.2)":"rgba(255,255,255,.06)"}`,color:lastABAResponse?"rgba(34,197,94,.85)":"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} title="Admin Mode"><Activity size={15}/></button>}
           <button onClick={()=>setVoiceOut(!voiceOut)} style={{background:voiceOut?"rgba(139,92,246,.15)":"rgba(255,255,255,.04)",border:`1px solid ${voiceOut?"rgba(139,92,246,.2)":"rgba(255,255,255,.06)"}`,color:voiceOut?"rgba(139,92,246,.85)":"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={15}/>:<VolumeX size={15}/>}</button>
           <button onClick={()=>setSettingsOpen(true)} style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)",color:"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><Settings size={15}/></button>
         </div>
@@ -4135,7 +3912,6 @@ export default function MyABA(){
       {/* F5/F6: Main Tab Switcher - Chat | Briefing | Approve */}
       <MainTabSwitcher tab={mainTab} setTab={async(t)=>{
         setMainTab(t);
-        logWorkflow(user?.email,'tab_switch',{tab:t},t);
         if(t==="briefing"&&!briefingData&&!briefingLoading){
           setBriefingLoading(true);
           const data=await fetchBriefing(user?.email||"brandon");
@@ -4170,13 +3946,10 @@ export default function MyABA(){
           </div>))}
         </div>}
         
-        {voiceMode==="chat"&&<div style={{display:"flex",gap:8,alignItems:"flex-end",paddingBottom:"max(8px, env(safe-area-inset-bottom))"}}>
+        {voiceMode==="chat"&&<div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
           <button onClick={()=>fileInputRef.current?.click()} style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:"rgba(255,255,255,.05)",color:"rgba(255,255,255,.4)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Paperclip size={16}/></button>
-          <div style={{flex:1,display:"flex",alignItems:"flex-end",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:20,padding:"6px 6px 6px 16px",minHeight:44}}>
-            <textarea value={input} onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px"}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage(input)}}} onFocus={scrollInputIntoView} placeholder="Message ABA..." rows={1} style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.9)",fontSize:16,padding:"8px 0",WebkitAppearance:"none",resize:"none",overflow:"hidden",lineHeight:"1.4",maxHeight:120,minHeight:20,fontFamily:"inherit"}}/>
-            <button onClick={()=>{if(!isListening)startListening();else stopListening()}} style={{width:36,height:36,borderRadius:99,border:"none",cursor:"pointer",background:isListening?"rgba(6,182,212,.2)":"rgba(255,255,255,.05)",color:isListening?"rgba(6,182,212,.95)":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{isListening?<MicOff size={14}/>:<Mic size={14}/>}</button>
-          </div>
-          <button onClick={()=>sendMessage(input)} disabled={!input.trim()&&attachments.length===0} style={{width:44,height:44,borderRadius:99,border:"none",cursor:(input.trim()||attachments.length>0)?"pointer":"default",background:(input.trim()||attachments.length>0)?"rgba(139,92,246,.4)":"rgba(255,255,255,.04)",color:(input.trim()||attachments.length>0)?"white":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:(input.trim()||attachments.length>0)?"0 0 16px rgba(139,92,246,.25)":"none"}}><Send size={18}/></button>
+          <div style={{flex:1,display:"flex",alignItems:"center",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:24,padding:"0 6px 0 16px",minHeight:48}}><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey} onFocus={scrollInputIntoView} placeholder="Message ABA..." style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.9)",fontSize:16,padding:"12px 0",WebkitAppearance:"none"}}/><button onClick={()=>{if(!isListening)startListening();else stopListening()}} style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:isListening?"rgba(6,182,212,.2)":"rgba(255,255,255,.05)",color:isListening?"rgba(6,182,212,.95)":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{isListening?<MicOff size={16}/>:<Mic size={16}/>}</button></div>
+          <button onClick={()=>sendMessage(input)} disabled={!input.trim()&&attachments.length===0} style={{width:48,height:48,borderRadius:99,border:"none",cursor:(input.trim()||attachments.length>0)?"pointer":"default",background:(input.trim()||attachments.length>0)?"rgba(139,92,246,.4)":"rgba(255,255,255,.04)",color:(input.trim()||attachments.length>0)?"white":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:(input.trim()||attachments.length>0)?"0 0 16px rgba(139,92,246,.25)":"none"}}><Send size={18}/></button>
         </div>}
         
         {/* ⬡B:MYABA:TALK_TO_ABA:ELEVENLABS_WIDGET:20260320⬡ */}
@@ -4201,16 +3974,16 @@ export default function MyABA(){
       }}/>}
       
       {/* Jobs Mode - AWA Integration */}
-      {mainTab==="jobs"&&<JobsView userId={user?.email||"brandon"} teamMembers={teamMembers} currentHam={currentHam}/>}
+      {mainTab==="jobs"&&<JobsView userId={user?.email||"brandon"}/>}
       
       {/* Pipeline Mode - Kanban ⬡B:AWA.v3:Phase6:pipeline_tab:20260315⬡ */}
       {mainTab==="pipeline"&&<PipelineView userId={user?.email||"brandon"}/>}
       
       {/* Memos Mode - ⬡B:MYABA:memos_tab:20260319⬡ */}
-      {mainTab==="memos"&&<MemosView userId={user?.email||"brandon"} teamMembers={teamMembers}/>}
+      {mainTab==="memos"&&<MemosView userId={user?.email||"brandon"}/>}
       
       {/* Email Mode - ⬡B:MYABA:email_tab:20260321⬡ */}
-      {mainTab==="email"&&<EmailView userId={user?.email||"brandon"} currentHam={currentHam}/>}
+      {mainTab==="email"&&<EmailView userId={user?.email||"brandon"}/>}
       
       {/* Approve Mode */}
       {mainTab==="approve"&&<ApproveView userId={user?.email||"brandon"}/>}
@@ -4220,7 +3993,7 @@ export default function MyABA(){
     <NewChatModal open={newChatModal} onClose={()=>setNewChatModal(false)} onCreate={(shared,projectId,projectName)=>{if(projectName){const pId=createProject(projectName);createConv(shared,pId)}else{createConv(shared,projectId)}}} projects={projects} onCreateProject={createProject}/>
     <ProjectDetailModal open={!!projectDetailModal} project={projectDetailModal} onClose={()=>setProjectDetailModal(null)} onRename={renameProject} onDelete={deleteProject} onAddFile={addFileToProject} onRemoveFile={removeFileFromProject}/>
     <Queue open={queueOpen} onToggle={()=>setQueueOpen(!queueOpen)} items={proactiveItems}/>
-    <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} voiceOut={voiceOut} setVoiceOut={setVoiceOut} user={user} currentHam={currentHam} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
+    <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} voiceOut={voiceOut} setVoiceOut={setVoiceOut} user={user} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
     {/* ⬡B:snap.quick_question:FAB_AND_PANEL:20260317⬡ */}
     {/* ⬡B:clipboard.history:FAB:20260320⬡ Clipboard History Button */}
     {!clipboardOpen&&!snapOpen&&mainTab==="chat"&&<button onClick={()=>setClipboardOpen(true)} style={{
@@ -4336,9 +4109,6 @@ export default function MyABA(){
     </div>}
     <ConnectionStatus online={online}/>
     {/* v2.15.0: Admin Panel for HAM users */}
-    {currentHam?.is_admin&&<AdminPanel open={adminPanelOpen} onClose={()=>setAdminPanelOpen(false)} lastResponse={lastABAResponse}/>}
-    
-    {/* ⬡B:PRE_ALPHA:BUG_REPORT_MODAL:20260321⬡ */}
-    {bugReportOpen&&<IncidentReport user={user} mainTab={mainTab} onClose={()=>setBugReportOpen(false)}/>}
+    {isHAM(user?.email)&&<AdminPanel open={adminPanelOpen} onClose={()=>setAdminPanelOpen(false)} lastResponse={lastABAResponse}/>}
     {toast&&<Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)}/>}
   </div>)}
