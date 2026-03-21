@@ -1216,7 +1216,7 @@ function EmailView({userId}){
       <button onClick={()=>setSelectedEmail(null)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:11,marginBottom:8}}><ChevronRight size={12} style={{transform:"rotate(180deg)"}}/>Back</button>
       <div style={{padding:14,borderRadius:14,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)"}}>
         <p style={{color:"rgba(255,255,255,.9)",fontSize:14,fontWeight:600,margin:"0 0 4px"}}>{selectedEmail.subject||"(no subject)"}</p>
-        <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"0 0 2px"}}>From: {selectedEmail.from?.[0]?.name||selectedEmail.from?.[0]?.email||"Unknown"}</p>
+        <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"0 0 2px"}}>From: {selectedEmail.fromName||selectedEmail.from?.[0]?.name||selectedEmail.from?.[0]?.email||(typeof selectedEmail.from==='string'?selectedEmail.from:"Unknown")}</p>
         <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"0 0 12px"}}>{selectedEmail.date?new Date(selectedEmail.date*1000).toLocaleString():""}</p>
         <div style={{color:"rgba(255,255,255,.7)",fontSize:12,lineHeight:1.6}} dangerouslySetInnerHTML={{__html:selectedEmail.body||selectedEmail.snippet||"No content"}}/>
       </div>
@@ -1229,7 +1229,7 @@ function EmailView({userId}){
         <p style={{color:"rgba(255,255,255,.4)",fontSize:13,textAlign:"center"}}>{folder==="inbox"?"No emails found. Connect your email in Settings.":"No sent emails."}</p>
       </div>}
       {emails.map((em,i)=>{
-        const from=em.from?.[0]?.name||em.from?.[0]?.email||"Unknown";
+        const from=em.fromName||em.from?.[0]?.name||em.from?.[0]?.email||(typeof em.from==='string'?em.from:"Unknown");
         const unread=em.unread!==false;
         return(
         <div key={em.id||i} onClick={()=>setSelectedEmail(em)} style={{padding:"12px 10px",borderRadius:10,background:unread?"rgba(139,92,246,.06)":"rgba(255,255,255,.02)",border:`1px solid ${unread?"rgba(139,92,246,.12)":"rgba(255,255,255,.04)"}`,cursor:"pointer",display:"flex",gap:10,alignItems:"flex-start"}}>
