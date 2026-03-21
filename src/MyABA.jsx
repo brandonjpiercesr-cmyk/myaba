@@ -1027,15 +1027,23 @@ function TalkToABA({userId}){
   };
   
   const processAudio=async(blob)=>{
-    // Step 1: Transcribe - send raw audio bytes (backend expects Buffer, not FormData)
+    // Step 1: Convert blob to base64 (reliable on all browsers including iOS Safari)
     setPhase("thinking");setStatusText("Transcribing...");
     try{
-      const txRes=await fetch(`${ABABASE}/api/voice/transcribe`,{
-        method:"POST",
-        headers:{"Content-Type":blob.type||"audio/webm"},
-        body:blob
+      const base64=await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>{const b64=reader.result.split(",")[1];resolve(b64)};
+        reader.onerror=()=>reject(new Error("Failed to read audio"));
+        reader.readAsDataURL(blob);
       });
-      if(!txRes.ok)throw new Error(`Transcribe HTTP ${txRes.status}`);
+      console.log("[TALK] Audio base64 length:",base64.length,"type:",blob.type);
+      
+      const txRes=await fetch(`${ABABASE}/api/voice/transcribe-b64`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({audio_base64:base64,content_type:blob.type||"audio/mp4",source:"myaba_talk"})
+      });
+      if(!txRes.ok){const errText=await txRes.text();throw new Error(`Transcribe HTTP ${txRes.status}: ${errText.substring(0,100)}`)}
       const txData=await txRes.json();
       const transcript=txData.transcript||txData.text||"";
       console.log("[TALK] Transcript:",transcript);
