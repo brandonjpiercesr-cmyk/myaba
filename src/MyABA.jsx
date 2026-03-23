@@ -81,7 +81,7 @@ function isOnline() { return navigator.onLine; }
 const HAM_EMAILS = ['brandonjpiercesr@gmail.com', 'brandon@globalmajoritygroup.com'];
 function isHAM(email) { return HAM_EMAILS.includes(email?.toLowerCase()); }
 
-async function airRequest(type, payload = {}, userId = "brandon", maxRetries = 3) {
+async function airRequest(type, payload = {}, userId = "unknown", maxRetries = 3) {
   if (!isOnline()) {
     return { response: null, offline: true, queued: true };
   }
@@ -578,7 +578,7 @@ async function uploadAttachment(file, userId, conversationId) {
         filename: file.name,
         contentType: file.type || 'application/octet-stream',
         base64,
-        userId: userId || 'brandon',
+        userId: userId || 'unknown',
         conversationId: conversationId || null
       })
     });
@@ -606,7 +606,7 @@ async function uploadAttachmentsBatch(files, userId, conversationId) {
     const res = await fetch(`${ABABASE}/api/attachments/upload-batch`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ files: fileData, userId: userId || 'brandon', conversationId })
+      body: JSON.stringify({ files: fileData, userId: userId || 'unknown', conversationId })
     });
     if (!res.ok) return [];
     const data = await res.json();
@@ -2278,7 +2278,7 @@ function JobsView({userId}){
     if(!selectedJob)return;
     setGenerating(type);setOutput(null);
     try{
-      const assignee=(selectedJob.assignees||[])[0]||selectedJob.assignee||"brandon";
+      const assignee=(selectedJob.assignees||[])[0]||selectedJob.assignee||"unmatched";
       const endpoint = type==="cover" ? "cover-letter" : type==="resume" ? "resume" : "writing-sample";
       const res=await fetch(`https://abacia-services.onrender.com/api/awa/${endpoint}`,{
         method:"POST",headers:{"Content-Type":"application/json"},
@@ -2413,7 +2413,7 @@ function JobsView({userId}){
         <div style={{display:"flex",gap:6,marginBottom:8}}>
           <button onClick={async()=>{
             try{
-              const assignee=(selectedJob.assignees||[])[0]||"brandon";
+              const assignee=(selectedJob.assignees||[])[0]||"unmatched";
               const r=await fetch(`${ABABASE}/api/awa/export/combined/preview`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobId:selectedJob.id,format:"pdf",userId:assignee,includeReferences:true})});
               const d=await r.json();
               if(d.success&&d.base64){const blob=new Blob([Uint8Array.from(atob(d.base64),c=>c.charCodeAt(0))],{type:"application/pdf"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=d.filename||"application.pdf";a.click();URL.revokeObjectURL(url)}
@@ -2424,7 +2424,7 @@ function JobsView({userId}){
           </button>
           <button onClick={async()=>{
             try{
-              const assignee=(selectedJob.assignees||[])[0]||"brandon";
+              const assignee=(selectedJob.assignees||[])[0]||"unmatched";
               const r=await fetch(`${ABABASE}/api/awa/export/combined/preview`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobId:selectedJob.id,format:"docx",userId:assignee,includeReferences:true})});
               const d=await r.json();
               if(d.success&&d.base64){const blob=new Blob([Uint8Array.from(atob(d.base64),c=>c.charCodeAt(0))],{type:d.contentType});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=d.filename||"application.docx";a.click();URL.revokeObjectURL(url)}
@@ -2442,7 +2442,7 @@ function JobsView({userId}){
           <button disabled={applyLoading} onClick={async()=>{
             setApplyLoading(true);
             try{
-              const assignee=(selectedJob.assignees||[])[0]||"brandon";
+              const assignee=(selectedJob.assignees||[])[0]||"unmatched";
               const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/apply-preview`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee})});
               const d=await r.json();
               if(d.success){setApplyPreview(d)}else{setOutput("Preview failed: "+(d.error||"Unknown"))}
@@ -2470,7 +2470,7 @@ function JobsView({userId}){
               </button>
               <button onClick={async()=>{
                 try{
-                  const assignee=(selectedJob.assignees||[])[0]||"brandon";
+                  const assignee=(selectedJob.assignees||[])[0]||"unmatched";
                   const r=await fetch(`${ABABASE}/api/awa/export/combined/preview`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobId:selectedJob.id,format:"docx",userId:assignee,includeReferences:true})});
                   const d=await r.json();
                   if(d.success&&d.base64){const blob=new Blob([Uint8Array.from(atob(d.base64),c=>c.charCodeAt(0))],{type:d.contentType});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=d.filename||"application.docx";a.click();URL.revokeObjectURL(url)}
@@ -2521,7 +2521,7 @@ function JobsView({userId}){
             {/* Confirm applied */}
             <button onClick={async()=>{
               try{
-                const assignee=(selectedJob.assignees||[])[0]||"brandon";
+                const assignee=(selectedJob.assignees||[])[0]||"unmatched";
                 const method=applyPreview.applicationType||"manual";
                 const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/apply`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,method})});
                 const d=await r.json();
@@ -2544,7 +2544,7 @@ function JobsView({userId}){
         {selectedJob.status!=="DISMISSED"&&selectedJob.status!=="ACCEPTED"&&(
         <button onClick={async()=>{
           try{
-            const assignee=(selectedJob.assignees||[])[0]||"brandon";
+            const assignee=(selectedJob.assignees||[])[0]||"unmatched";
             const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:"DISMISSED"})});
             const d=await r.json();
             if(d.success){
@@ -2577,7 +2577,7 @@ function JobsView({userId}){
               return;
             }
             try{
-              const assignee=(selectedJob.assignees||[])[0]||"brandon";
+              const assignee=(selectedJob.assignees||[])[0]||"unmatched";
               const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:newStatus})});
               const d=await r.json();
               if(d.success){
@@ -2603,7 +2603,7 @@ function JobsView({userId}){
           <div style={{display:"flex",gap:6,marginTop:8}}>
             <button onClick={async()=>{
               try{
-                const assignee=(selectedJob.assignees||[])[0]||"brandon";
+                const assignee=(selectedJob.assignees||[])[0]||"unmatched";
                 const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:"INTERVIEW_SCHEDULED",interviewDate:interviewForm.date||null,interviewerName:interviewForm.name||null,notes:interviewForm.notes||null})});
                 const d=await r.json();
                 if(d.success){
@@ -2635,7 +2635,7 @@ function JobsView({userId}){
           <div style={{display:"flex",gap:6,marginTop:8}}>
             <button onClick={async()=>{
               try{
-                const assignee=(selectedJob.assignees||[])[0]||"brandon";
+                const assignee=(selectedJob.assignees||[])[0]||"unmatched";
                 const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:"OFFER",offerSalary:offerForm.salary||null,offerDeadline:offerForm.deadline||null,offerDetails:offerForm.details||null})});
                 const d=await r.json();
                 if(d.success){
@@ -2674,7 +2674,7 @@ function JobsView({userId}){
           <button disabled={prepLoading} onClick={async()=>{
             setPrepLoading(true);setPrepData(null);
             try{
-              const assignee=(selectedJob.assignees||[])[0]||"brandon";
+              const assignee=(selectedJob.assignees||[])[0]||"unmatched";
               const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/interview-prep`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee})});
               const d=await r.json();
               if(d.success)setPrepData(d.prep);
@@ -2717,7 +2717,7 @@ function JobsView({userId}){
             <button onClick={async()=>{
               setMockLoading(true);
               try{
-                const assignee=(selectedJob.assignees||[])[0]||"brandon";
+                const assignee=(selectedJob.assignees||[])[0]||"unmatched";
                 const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/mock-question`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,previousQuestions:mockHistory})});
                 const d=await r.json();
                 if(d.success)setMockQuestion(d);
@@ -2743,7 +2743,7 @@ function JobsView({userId}){
             <button disabled={!mockAnswer.trim()||mockLoading} onClick={async()=>{
               setMockLoading(true);
               try{
-                const assignee=(selectedJob.assignees||[])[0]||"brandon";
+                const assignee=(selectedJob.assignees||[])[0]||"unmatched";
                 const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/mock-evaluate`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,question:mockQuestion.question,answer:mockAnswer})});
                 const d=await r.json();
                 if(d.success){setMockEval(d);setMockHistory(prev=>[...prev,mockQuestion.question])}
@@ -2791,7 +2791,7 @@ function JobsView({userId}){
         <button onClick={async()=>{
           if(showRefs){setShowRefs(false);return}
           try{
-            const assignee=(selectedJob.assignees||[])[0]||"brandon";
+            const assignee=(selectedJob.assignees||[])[0]||"unmatched";
             const r=await fetch(`${ABABASE}/api/awa/references?userId=${assignee}`);
             const d=await r.json();
             if(d.success)setJobRefs(d.references||[]);
@@ -2818,7 +2818,7 @@ function JobsView({userId}){
           try{
             await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/dismiss`,{
               method:"PATCH",headers:{"Content-Type":"application/json"},
-              body:JSON.stringify({userId:"brandon",admin_dismiss:true,reason:"Dismissed from MyABA"})
+              body:JSON.stringify({userId:user?.email||"unknown",admin_dismiss:true,reason:"Dismissed from MyABA"})
             });
             setJobs(prev=>prev.filter(j=>j.id!==selectedJob.id));
             setSelectedJob(null);setOutput(null);
@@ -3327,7 +3327,7 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
       const res=await fetch('https://abacia-services.onrender.com/api/myaba/ghost',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({userId:user?.email||"brandon",enabled:enable,duration:24})
+        body:JSON.stringify({userId:user?.email||user?.uid||"unknown",enabled:enable,duration:24})
       });
       if(res.ok){
         const data=await res.json();
@@ -3346,10 +3346,10 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
     setPushLoading(true);
     try{
       if(enable){
-        const sub=await subscribeToPush(user?.email||"brandon");
+        const sub=await subscribeToPush(user?.email||user?.uid||"unknown");
         if(sub)setPushEnabled(true);
       }else{
-        await unsubscribeFromPush(user?.email||"brandon");
+        await unsubscribeFromPush(user?.email||user?.uid||"unknown");
         setPushEnabled(false);
       }
     }catch(e){console.error(e)}
@@ -3673,7 +3673,7 @@ export default function MyABA(){
 
   // v2.16.0: Create conversation via backend
   const createConv=useCallback(async(shared=false,projectId=null)=>{
-    const userId=user?.email||"brandon";
+    const userId=user?.email||user?.uid||"unknown";
     const result=await airCreateConversation(userId,"New Chat",projectId,shared);
     if(result.success&&result.conversation){
       const conv={
@@ -3710,7 +3710,7 @@ export default function MyABA(){
       if(String(activeId).startsWith('conv-')){
         // Retry creating on backend
         try{
-          const userId=user?.email||"brandon";
+          const userId=user?.email||user?.uid||"unknown";
           const activeConvLocal=convos.find(c=>c.id===activeId);
           const result=await airCreateConversation(userId,activeConvLocal?.title||"New Chat",activeConvLocal?.projectId,activeConvLocal?.shared||false);
           if(result.success&&result.conversation){
@@ -3755,7 +3755,7 @@ export default function MyABA(){
   
   // SPURT 4: Create project - saves to backend
   const createProject=useCallback(async(name="New Project")=>{
-    const userId=user?.email||"brandon";
+    const userId=user?.email||user?.uid||"unknown";
     const result=await airCreateProject(userId,name);
     if(result.success&&result.project){
       const proj={id:result.project.id,name:result.project.name||name,files:result.project.files||[],createdAt:Date.now()};
@@ -3776,7 +3776,7 @@ export default function MyABA(){
     setProjects(p=>p.filter(proj=>proj.id!==projectId));
     if(activeProject===projectId)setActiveProject(null);
     if(!String(projectId).startsWith('proj-')){
-      try{await fetch(`${ABABASE}/api/projects/${projectId}`,{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:user?.email||"brandon"})})}catch(e){console.error("[PROJECTS] Delete failed:",e)}
+      try{await fetch(`${ABABASE}/api/projects/${projectId}`,{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:user?.email||user?.uid||"unknown"})})}catch(e){console.error("[PROJECTS] Delete failed:",e)}
     }
   },[activeProject,user]);
   
@@ -3795,7 +3795,7 @@ export default function MyABA(){
   const renameProject=useCallback(async(projectId,newName)=>{
     setProjects(p=>p.map(proj=>proj.id===projectId?{...proj,name:newName}:proj));
     if(!String(projectId).startsWith('proj-')){
-      try{await fetch(`${ABABASE}/api/projects/${projectId}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:user?.email||"brandon",name:newName})})}catch(e){console.error("[PROJECTS] Rename failed:",e)}
+      try{await fetch(`${ABABASE}/api/projects/${projectId}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:user?.email||user?.uid||"unknown",name:newName})})}catch(e){console.error("[PROJECTS] Rename failed:",e)}
     }
   },[user]);
 
@@ -3932,10 +3932,10 @@ export default function MyABA(){
       const filesToUpload=attachments.map(a=>a.file).filter(Boolean);
       if(filesToUpload.length>0){
         if(filesToUpload.length===1){
-          const result=await uploadAttachment(filesToUpload[0],user?.email||"brandon",activeId);
+          const result=await uploadAttachment(filesToUpload[0],user?.email||user?.uid||"unknown",activeId);
           if(result)uploadedFiles=[result];
         }else{
-          uploadedFiles=await uploadAttachmentsBatch(filesToUpload,user?.email||"brandon",activeId);
+          uploadedFiles=await uploadAttachmentsBatch(filesToUpload,user?.email||user?.uid||"unknown",activeId);
         }
       }
       if(uploadedFiles.length===0&&attachments.length>0){
@@ -3981,7 +3981,7 @@ export default function MyABA(){
     
     const streamResult=await airRequestStream({
       message:messageForAIR,
-      userId:user?.email||user?.uid||"brandon",
+      userId:user?.email||user?.uid||"unknown",
       channel:"myaba",
       appScope:appScope||undefined,
       conversationId:activeId,
@@ -4141,7 +4141,7 @@ export default function MyABA(){
     try{
       const res=await fetch(ABABASE+"/api/air/process",{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({message:text.trim(),user_id:user?.email||"brandon",userId:user?.email||"brandon",channel:"snap"})
+        body:JSON.stringify({message:text.trim(),user_id:user?.email||user?.uid||"unknown",userId:user?.email||user?.uid||"unknown",channel:"snap"})
       });
       const data=await res.json();
       const abaMsg={id:"sq-a-"+Date.now(),role:"aba",content:data.response||data.message||"",timestamp:Date.now()};
@@ -4194,7 +4194,7 @@ export default function MyABA(){
           setMainTab(t);
           if(t==="briefing"&&!briefingData&&!briefingLoading){
             setBriefingLoading(true);
-            const data=await fetchBriefing(user?.email||"brandon");
+            const data=await fetchBriefing(user?.email||user?.uid||"unknown");
             setBriefingData(data);
             setBriefingLoading(false);
           }
@@ -4204,7 +4204,7 @@ export default function MyABA(){
       {/* ⬡B:aba_skins:RENDER:app_launcher_view:20260323⬡ */}
       {mainTab==="apps"&&<div style={{flex:1,overflowY:"auto",padding:"8px 4px"}}>
         <AppLauncher 
-          userId={user?.email||"brandon"} 
+          userId={user?.email||user?.uid||"unknown"} 
           currentApp={null}
           onAppSelect={(app)=>{
             // ⬡B:aba_skins:ROUTE:app_select_handler:20260323⬡
@@ -4224,7 +4224,7 @@ export default function MyABA(){
             // Briefing loads data
             if(app.id==="briefing"&&!briefingData&&!briefingLoading){
               setBriefingLoading(true);
-              fetchBriefing(user?.email||"brandon").then(d=>{setBriefingData(d);setBriefingLoading(false)});
+              fetchBriefing(user?.email||user?.uid||"unknown").then(d=>{setBriefingData(d);setBriefingLoading(false)});
             }
             // NURA opens scanner automatically
             if(app.id==="nura"){setScannerOpen(true);}
@@ -4276,33 +4276,33 @@ export default function MyABA(){
           </button>
           
           {/* Talk to ABA - ElevenLabs voice conversation */}
-          <TalkToABA userId={user?.email||"brandon"}/>
+          <TalkToABA userId={user?.email||user?.uid||"unknown"}/>
         </div>}
       </div>
       </>}
       
       {/* Briefing Mode */}
-      {mainTab==="briefing"&&<BriefingView data={briefingData} loading={briefingLoading} userId={user?.email||"brandon"} onRefresh={async()=>{
+      {mainTab==="briefing"&&<BriefingView data={briefingData} loading={briefingLoading} userId={user?.email||user?.uid||"unknown"} onRefresh={async()=>{
         setBriefingLoading(true);
-        const data=await fetchBriefing(user?.email||"brandon");
+        const data=await fetchBriefing(user?.email||user?.uid||"unknown");
         setBriefingData(data);
         setBriefingLoading(false);
       }}/>}
       
       {/* Jobs Mode - AWA Integration */}
-      {mainTab==="jobs"&&<JobsView userId={user?.email||"brandon"}/>}
+      {mainTab==="jobs"&&<JobsView userId={user?.email||user?.uid||"unknown"}/>}
       
       {/* Pipeline Mode - Kanban ⬡B:AWA.v3:Phase6:pipeline_tab:20260315⬡ */}
-      {mainTab==="pipeline"&&<PipelineView userId={user?.email||"brandon"}/>}
+      {mainTab==="pipeline"&&<PipelineView userId={user?.email||user?.uid||"unknown"}/>}
       
       {/* Memos Mode - ⬡B:MYABA:memos_tab:20260319⬡ */}
-      {mainTab==="memos"&&<MemosView userId={user?.email||"brandon"}/>}
+      {mainTab==="memos"&&<MemosView userId={user?.email||user?.uid||"unknown"}/>}
       
       {/* Email Mode - ⬡B:MYABA:email_tab:20260321⬡ */}
-      {mainTab==="email"&&<EmailView userId={user?.email||"brandon"}/>}
+      {mainTab==="email"&&<EmailView userId={user?.email||user?.uid||"unknown"}/>}
       
       {/* Approve Mode */}
-      {mainTab==="approve"&&<ApproveView userId={user?.email||"brandon"}/>}
+      {mainTab==="approve"&&<ApproveView userId={user?.email||user?.uid||"unknown"}/>}
       
       {/* ⬡B:aba_skins:RENDER:app_scoped_chat:20260323⬡ */}
       {/* Catch-all: apps from launcher that aren't native tabs get scoped chat */}
