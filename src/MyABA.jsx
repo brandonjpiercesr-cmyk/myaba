@@ -38,7 +38,7 @@ import {
   Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock,
   Trash2, Archive, Search, WifiOff, Wifi, RefreshCw, Share2, Paperclip,
   FolderOpen, Image, File, FolderPlus, MoreVertical, Edit2, Copy, Briefcase,
-  MapPin, ExternalLink, Building, Download, ChevronDown
+  MapPin, ExternalLink, Building, Download, ChevronDown, Camera
 } from "lucide-react";
 import { auth, signInGoogle, signOutUser } from "./firebase.js";
 import { useConversation } from "@elevenlabs/react";
@@ -189,6 +189,97 @@ async function airRequestStream({ message, userId, channel, conversationId, conv
     onError?.(e.message);
     return { response: null, error: true, errorMessage: e.message };
   }
+}
+
+// ⬡B:roadmap.tier3:COMPONENT:barcode_scanner:20260323⬡
+// NURA barcode scanner. Uses native BarcodeDetector API (Chrome Android, Safari iOS).
+// Falls back to manual barcode entry if API unavailable.
+function BarcodeScanner({ onScan, onClose }) {
+  const videoRef = useRef(null);
+  const [error, setError] = useState(null);
+  const [manual, setManual] = useState("");
+  const [supported] = useState(() => typeof window !== "undefined" && "BarcodeDetector" in window);
+  const streamRef = useRef(null);
+  
+  useEffect(() => {
+    if (!supported) return;
+    let detecting = true;
+    
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } 
+        });
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+        
+        const detector = new BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "qr_code"] });
+        
+        const scan = async () => {
+          if (!detecting || !videoRef.current) return;
+          try {
+            const barcodes = await detector.detect(videoRef.current);
+            if (barcodes.length > 0) {
+              detecting = false;
+              if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+              onScan(barcodes[0].rawValue);
+              return;
+            }
+          } catch {}
+          if (detecting) requestAnimationFrame(scan);
+        };
+        requestAnimationFrame(scan);
+      } catch (e) {
+        setError("Camera access denied. Enter barcode manually.");
+      }
+    })();
+    
+    return () => {
+      detecting = false;
+      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+    };
+  }, [supported, onScan]);
+  
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,.95)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+      <div style={{position:"absolute",top:16,right:16,zIndex:10000}}>
+        <button onClick={() => { if(streamRef.current) streamRef.current.getTracks().forEach(t=>t.stop()); onClose(); }} 
+          style={{width:44,height:44,borderRadius:99,border:"none",background:"rgba(255,255,255,.1)",color:"white",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <X size={20}/>
+        </button>
+      </div>
+      
+      <p style={{color:"rgba(255,255,255,.6)",fontSize:13,marginBottom:16,fontFamily:"system-ui"}}>
+        {supported ? "Point at a barcode" : "Barcode scanner not available on this browser"}
+      </p>
+      
+      {supported && !error && (
+        <div style={{position:"relative",width:"85vw",maxWidth:400,aspectRatio:"4/3",borderRadius:16,overflow:"hidden",border:"2px solid rgba(139,92,246,.4)"}}>
+          <video ref={videoRef} style={{width:"100%",height:"100%",objectFit:"cover"}} playsInline muted/>
+          <div style={{position:"absolute",inset:"20%",border:"2px dashed rgba(139,92,246,.6)",borderRadius:8,pointerEvents:"none"}}/>
+        </div>
+      )}
+      
+      {(error || !supported) && (
+        <div style={{display:"flex",gap:8,marginTop:16,width:"85vw",maxWidth:400}}>
+          <input value={manual} onChange={e=>setManual(e.target.value)} placeholder="Enter barcode number..." 
+            style={{flex:1,padding:"12px 16px",borderRadius:12,border:"1px solid rgba(139,92,246,.3)",background:"rgba(255,255,255,.05)",color:"white",fontSize:15,fontFamily:"system-ui"}}
+            onKeyDown={e=>{if(e.key==="Enter"&&manual.trim()){onScan(manual.trim())}}}/>
+          <button onClick={()=>{if(manual.trim())onScan(manual.trim())}} 
+            style={{padding:"12px 20px",borderRadius:12,border:"none",background:"rgba(139,92,246,.4)",color:"white",cursor:"pointer",fontSize:14,fontWeight:600}}>Scan</button>
+        </div>
+      )}
+      
+      {error && <p style={{color:"rgba(239,68,68,.8)",fontSize:12,marginTop:12}}>{error}</p>}
+      
+      <p style={{color:"rgba(255,255,255,.3)",fontSize:11,marginTop:24,fontFamily:"system-ui"}}>
+        Powered by NURA (Nutritional Understanding and Research Agent)
+      </p>
+    </div>
+  );
 }
 
 // v2.8.0: Conversations via direct Supabase endpoints (not AIR)
@@ -3314,6 +3405,7 @@ export default function MyABA(){
   const[input,setInput]=useState("");const[abaState,setAbaState]=useState("idle");
   const[attachments,setAttachments]=useState([]); // SPURT 5: files attached to message
   const fileInputRef=useRef(null);
+  const [scannerOpen,setScannerOpen]=useState(false);
   const[isTyping,setIsTyping]=useState(false);
   
   // v2.16.1: Settings from backend (fallback to localStorage, then defaults)
@@ -3858,6 +3950,12 @@ export default function MyABA(){
     }
   },[activeId,user,voiceOut,addMsg,showToast,attachments]);
 
+  // Barcode scanner overlay
+  const handleBarcodeScan=useCallback((barcode)=>{
+    setScannerOpen(false);
+    sendMessage("Look up this food barcode: "+barcode);
+  },[sendMessage]);
+  
   // Keep ref always pointing to latest sendMessage
   useEffect(()=>{sendMessageRef.current=sendMessage},[sendMessage]);
 
@@ -4043,9 +4141,13 @@ export default function MyABA(){
         
         {voiceMode==="chat"&&<div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
           <button onClick={()=>fileInputRef.current?.click()} style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:"rgba(255,255,255,.05)",color:"rgba(255,255,255,.4)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Paperclip size={16}/></button>
+          <button onClick={()=>setScannerOpen(true)} title="Scan food barcode" style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:"rgba(255,255,255,.05)",color:"rgba(139,92,246,.5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Camera size={16}/></button>
           <div style={{flex:1,display:"flex",alignItems:"flex-end",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:20,padding:"6px 6px 6px 16px",minHeight:44}}><textarea value={input} onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px"}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage(input)}}} onFocus={scrollInputIntoView} placeholder="Message ABA..." rows={1} style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.9)",fontSize:16,padding:"8px 0",WebkitAppearance:"none",resize:"none",overflow:"hidden",lineHeight:"1.4",maxHeight:120,minHeight:20,fontFamily:"inherit"}}/><button onClick={()=>{if(!isListening)startListening();else stopListening()}} style={{width:36,height:36,borderRadius:99,border:"none",cursor:"pointer",background:isListening?"rgba(6,182,212,.2)":"rgba(255,255,255,.05)",color:isListening?"rgba(6,182,212,.95)":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{isListening?<MicOff size={14}/>:<Mic size={14}/>}</button></div>
           <button onClick={()=>sendMessage(input)} disabled={!input.trim()&&attachments.length===0} style={{width:48,height:48,borderRadius:99,border:"none",cursor:(input.trim()||attachments.length>0)?"pointer":"default",background:(input.trim()||attachments.length>0)?"rgba(139,92,246,.4)":"rgba(255,255,255,.04)",color:(input.trim()||attachments.length>0)?"white":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:(input.trim()||attachments.length>0)?"0 0 16px rgba(139,92,246,.25)":"none"}}><Send size={18}/></button>
         </div>}
+        
+        {/* ⬡B:roadmap.tier3:RENDER:barcode_scanner:20260323⬡ */}
+        {scannerOpen && <BarcodeScanner onScan={handleBarcodeScan} onClose={()=>setScannerOpen(false)} />}
         
         {/* ⬡B:MYABA:TALK_TO_ABA:ELEVENLABS_WIDGET:20260320⬡ */}
         {voiceMode==="talk"&&<div style={{display:"flex",flexDirection:"column",flex:1,position:"relative",overflow:"hidden"}}>
