@@ -4207,27 +4207,19 @@ export default function MyABA(){
           userId={user?.email||user?.uid||"unknown"} 
           currentApp={null}
           onAppSelect={(app)=>{
-            // ⬡B:aba_skins:ROUTE:app_select_handler:20260323⬡
-            // Map app IDs to mainTab values. Native tabs route to their tab.
-            // App-scoped apps route to their ID (caught by catch-all chat).
-            const nativeTabMap = {
-              chat:"chat", briefing:"briefing", jobs:"jobs", email:"email",
-              memos:"memos", approve:"approve", settings:"settings", incidents:"chat"
-            };
-            const targetTab = nativeTabMap[app.id] || app.id;
-            setMainTab(targetTab);
             setAppScope(app.app_scope||null);
-            // Settings opens drawer, doesn't change tab
-            if(app.id==="settings")setSettingsOpen(true);
-            // Incidents sends a pre-filled message
-            if(app.id==="incidents"){setInput("I want to report a bug");}
-            // Briefing loads data
-            if(app.id==="briefing"&&!briefingData&&!briefingLoading){
-              setBriefingLoading(true);
-              fetchBriefing(user?.email||user?.uid||"unknown").then(d=>{setBriefingData(d);setBriefingLoading(false)});
-            }
-            // NURA opens scanner automatically
-            if(app.id==="nura"){setScannerOpen(true);}
+            if(app.id==="chat"){setMainTab("chat")}
+            else if(app.id==="briefing"){setMainTab("briefing");if(!briefingData&&!briefingLoading){setBriefingLoading(true);fetchBriefing(user?.email||user?.uid||"unknown").then(d=>{setBriefingData(d);setBriefingLoading(false)})}}
+            else if(app.id==="jobs"){setMainTab("jobs")}
+            else if(app.id==="email"){setMainTab("email")}
+            else if(app.id==="memos"){setMainTab("memos")}
+            else if(app.id==="approve"){setMainTab("approve")}
+            else if(app.id==="settings"){setSettingsOpen(true)}
+            else if(app.id==="gmg_university"){window.open("https://gmg-university-v7.vercel.app","_blank")}
+            else if(app.id==="phone"){setMainTab("chat");setVoiceMode("talk")}
+            else if(app.id==="nura"){setMainTab("nura");setScannerOpen(true)}
+            else if(app.id==="incidents"){setMainTab("chat");setInput("I want to report a bug: ")}
+            else{setMainTab(app.id)}
           }}
         />
       </div>}
