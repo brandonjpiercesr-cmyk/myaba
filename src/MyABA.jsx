@@ -4207,13 +4207,27 @@ export default function MyABA(){
           userId={user?.email||"brandon"} 
           currentApp={null}
           onAppSelect={(app)=>{
-            setMainTab(app.id==="settings"?"chat":app.id);
+            // ⬡B:aba_skins:ROUTE:app_select_handler:20260323⬡
+            // Map app IDs to mainTab values. Native tabs route to their tab.
+            // App-scoped apps route to their ID (caught by catch-all chat).
+            const nativeTabMap = {
+              chat:"chat", briefing:"briefing", jobs:"jobs", email:"email",
+              memos:"memos", approve:"approve", settings:"settings", incidents:"chat"
+            };
+            const targetTab = nativeTabMap[app.id] || app.id;
+            setMainTab(targetTab);
             setAppScope(app.app_scope||null);
+            // Settings opens drawer, doesn't change tab
             if(app.id==="settings")setSettingsOpen(true);
+            // Incidents sends a pre-filled message
+            if(app.id==="incidents"){setInput("I want to report a bug");}
+            // Briefing loads data
             if(app.id==="briefing"&&!briefingData&&!briefingLoading){
               setBriefingLoading(true);
               fetchBriefing(user?.email||"brandon").then(d=>{setBriefingData(d);setBriefingLoading(false)});
             }
+            // NURA opens scanner automatically
+            if(app.id==="nura"){setScannerOpen(true);}
           }}
         />
       </div>}
@@ -4289,6 +4303,29 @@ export default function MyABA(){
       
       {/* Approve Mode */}
       {mainTab==="approve"&&<ApproveView userId={user?.email||"brandon"}/>}
+      
+      {/* ⬡B:aba_skins:RENDER:app_scoped_chat:20260323⬡ */}
+      {/* Catch-all: apps from launcher that aren't native tabs get scoped chat */}
+      {!["apps","chat","briefing","jobs","pipeline","memos","email","approve"].includes(mainTab)&&<>
+        <div style={{padding:"8px 12px",background:"rgba(139,92,246,.08)",borderRadius:12,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
+          <div style={{width:8,height:8,borderRadius:4,background:"rgba(139,92,246,.6)"}}/>
+          <span style={{color:"rgba(139,92,246,.8)",fontSize:13,fontWeight:500}}>{mainTab.replace(/_/g," ").toUpperCase()}</span>
+          <span style={{color:"rgba(255,255,255,.3)",fontSize:11,marginLeft:"auto"}}>{appScope||"full"} scope</span>
+        </div>
+        <div style={{flexShrink:0,display:"flex",justifyContent:"center",padding:"2px 0"}}><Blob state={abaState} size={messages.length<=1?80:40}/></div>
+        <div ref={scrollRef} style={{flex:1,overflowY:"auto",padding:"4px 2px",display:"flex",flexDirection:"column",gap:2,maskImage:"linear-gradient(transparent 0%,black 2%,black 96%,transparent 100%)",WebkitMaskImage:"linear-gradient(transparent 0%,black 2%,black 96%,transparent 100%)"}}>
+          {messages.map(msg=><div key={msg.id} style={{animation:"mf .3s ease"}}><Bubble msg={msg} userPhoto={user?.photoURL} onSpeak={speakText}/></div>)}
+          {isTyping&&<Typing/>}
+        </div>
+        <div style={{flexShrink:0,padding:"6px 0 14px",display:"flex",flexDirection:"column"}}>
+          <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+            <div style={{flex:1,display:"flex",alignItems:"flex-end",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:20,padding:"4px 4px 4px 14px",minHeight:48}}>
+              <textarea value={input} onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px"}} onKeyDown={handleKey} placeholder={"Ask about "+mainTab.replace(/_/g," ")+"..."} rows={1} style={{flex:1,background:"transparent",border:"none",color:"white",fontSize:15,outline:"none",resize:"none",lineHeight:"22px",maxHeight:120,fontFamily:"system-ui"}}/>
+            </div>
+            <button onClick={()=>sendMessage(input)} disabled={!input.trim()} style={{width:48,height:48,borderRadius:99,border:"none",cursor:input.trim()?"pointer":"default",background:input.trim()?"rgba(139,92,246,.4)":"rgba(255,255,255,.04)",color:input.trim()?"white":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Send size={18}/></button>
+          </div>
+        </div>
+      </>}
     </div>
     <Sidebar open={sidebarOpen} convos={convos} activeId={activeId} onSelect={setActiveId} onCreate={()=>setNewChatModal(true)} onClose={()=>setSidebarOpen(false)} onDelete={deleteConv} onArchive={archiveConv} onShare={c=>setShareModal(c)} projects={projects} activeProject={activeProject} onSelectProject={setActiveProject} onCreateProject={()=>setNewChatModal(true)} onProjectDetail={p=>setProjectDetailModal(p)} user={user}/>
     <ShareModal open={!!shareModal} conversation={shareModal} onClose={()=>setShareModal(null)} onShare={shareConversation}/>
