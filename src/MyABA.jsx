@@ -122,6 +122,75 @@ async function airRequest(type, payload = {}, userId = "brandon", maxRetries = 3
   return { response: null, error: true, errorMessage: lastError?.message };
 }
 
+// ⬡B:roadmap.tier3:STREAMING:airRequestStream:20260323⬡
+// SSE streaming variant of airRequest. Streams text chunks via onChunk callback.
+// Returns the full response when done. Used by sendMessage for real-time chat.
+async function airRequestStream({ message, userId, channel, conversationId, conversationHistory, images, onChunk, onToolStart, onDone, onError }) {
+  if (!isOnline()) {
+    onError?.("You are offline");
+    return { response: null, offline: true };
+  }
+  
+  try {
+    const res = await fetch(ABABASE + "/api/air/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: (message || "").trim() || "hello",
+        user_id: userId,
+        userId,
+        email: userId?.includes("@") ? userId : undefined,
+        channel: channel || "myaba",
+        conversationId,
+        conversationHistory: conversationHistory || [],
+        images: images || []
+      })
+    });
+    
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      onError?.("REACH " + res.status + ": " + errText);
+      return { response: null, error: true, errorMessage: errText };
+    }
+    
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let accumulated = "";
+    let finalData = null;
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      const text = decoder.decode(value, { stream: true });
+      const lines = text.split("\n").filter(l => l.startsWith("data: "));
+      
+      for (const line of lines) {
+        try {
+          const data = JSON.parse(line.slice(6));
+          if (data.type === "chunk") {
+            accumulated += data.text;
+            onChunk?.(accumulated, data.text);
+          } else if (data.type === "tool_start") {
+            onToolStart?.(data.tool);
+          } else if (data.type === "done") {
+            finalData = data;
+            onDone?.(data);
+          } else if (data.type === "error") {
+            onError?.(data.error);
+          }
+        } catch {}
+      }
+    }
+    
+    return { response: accumulated || finalData?.fullResponse || "", ...finalData };
+  } catch (e) {
+    console.error("[AIR-STREAM] Error:", e.message);
+    onError?.(e.message);
+    return { response: null, error: true, errorMessage: e.message };
+  }
+}
+
 // v2.8.0: Conversations via direct Supabase endpoints (not AIR)
 async function saveConversation(userId, conv) {
   try {
@@ -3729,31 +3798,57 @@ export default function MyABA(){
       try{const b64=await fileToBase64(file);imagePayloads.push({data:b64,media_type:file.type||'image/jpeg'})}catch(e){console.error("[IMG] base64 conversion failed:",e)}
     }
     if(imagePayloads.length>0)console.log("[IMG] Sending",imagePayloads.length,"image(s) to AIR vision");
-    const data=await airRequest("text",{message:messageForAIR,conversationId:activeId,conversationHistory:recentHistory,images:imagePayloads,attachments:attachmentInfo},user?.email||user?.uid||"brandon");
-    setIsTyping(false);
-    setLastABAResponse(data);
+    // ⬡B:roadmap.tier3:STREAMING:sendMessage_stream:20260323⬡
+    // Stream response — words appear in real-time instead of 15-35s wait
+    const abaMsgId="a-"+Date.now();
+    const abaMsg={id:abaMsgId,role:"aba",timestamp:Date.now(),content:"",streaming:true};
+    addMsg(abaMsg);
     
-    if(data.error){
-      console.error("[VOICE] AIR returned error:",data.errorMessage||data.error);
-      showToast("Taking a moment to reconnect...","offline");
+    const streamResult=await airRequestStream({
+      message:messageForAIR,
+      userId:user?.email||user?.uid||"brandon",
+      channel:"myaba",
+      conversationId:activeId,
+      conversationHistory:recentHistory,
+      images:imagePayloads,
+      onChunk:(accumulated)=>{
+        // Update the ABA message content in real-time
+        setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:accumulated}:m));
+      },
+      onToolStart:(tool)=>{
+        setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:m.content+(m.content?"\n":"")+"_Checking "+tool+"..._"}:m));
+      },
+      onDone:(data)=>{
+        // Finalize: remove streaming flag, set final content
+        setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:data.fullResponse||m.content,streaming:false}:m));
+        setLastABAResponse(data);
+        console.log("[STREAM] Done. Tools:",data.toolsExecuted,"Duration:",data.duration+"ms");
+      },
+      onError:(err)=>{
+        console.error("[STREAM] Error:",err);
+        setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:"Taking a moment to reconnect...",streaming:false}:m));
+        showToast("Taking a moment to reconnect...","offline");
+      }
+    });
+    
+    setIsTyping(false);
+    
+    if(streamResult.error){
       setAbaState("idle");
       return;
     }
     
-    const abaMsg={id:`a-${Date.now()}`,role:"aba",timestamp:Date.now(),content:data.response||data.message||"",output:data.actions?.[0]?{type:data.actions[0].type,title:data.actions[0].title,subtitle:data.actions[0].subtitle,preview:data.actions[0].preview,actions:true}:undefined};
-    addMsg(abaMsg);
-    console.log("[VOICE] ABA response:",abaMsg.content?.substring(0,80));
-    if(voiceOut&&abaMsg.content){
+    const finalContent=streamResult.response||"";
+    // Voice output after streaming completes (full text available)
+    if(voiceOut&&finalContent){
       setAbaState("speaking");
-      console.log("[VOICE] Synthesizing response...");
-      const url=await reachSynthesize(abaMsg.content);
+      console.log("[VOICE] Synthesizing streamed response...");
+      const url=await reachSynthesize(finalContent);
       if(url){
-        console.log("[VOICE] Playing audio...");
         const a=new Audio(url);
         a.onended=()=>{setAbaState("idle");if(liveRef.current&&startListeningRef.current)startListeningRef.current()};
         a.play().catch(err=>{console.error("[VOICE] Audio play error:",err);setAbaState("idle");if(liveRef.current&&startListeningRef.current)startListeningRef.current()});
       }else{
-        console.warn("[VOICE] Synthesis returned no URL");
         setAbaState("idle");
         if(liveRef.current&&startListeningRef.current)startListeningRef.current();
       }
