@@ -4090,7 +4090,7 @@ export default function MyABA(){
           return;
         }
         
-        const blob=new Blob(chunks,{type:mimeType||"audio/webm"});
+        const blob=new Blob(chunks,{type:rec.mimeType||mimeType||"audio/webm"});
         console.log("[VOICE] Blob size:",blob.size,"type:",blob.type);
         
         try{
