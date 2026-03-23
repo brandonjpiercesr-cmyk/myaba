@@ -38,7 +38,7 @@ import {
   Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock,
   Trash2, Archive, Search, WifiOff, Wifi, RefreshCw, Share2, Paperclip,
   FolderOpen, Image, File, FolderPlus, MoreVertical, Edit2, Copy, Briefcase,
-  MapPin, ExternalLink, Building, Download, ChevronDown, Camera
+  MapPin, ExternalLink, Building, Download, ChevronDown, Camera, Sunrise, BookOpen, GripVertical
 } from "lucide-react";
 import { auth, signInGoogle, signOutUser } from "./firebase.js";
 import { useConversation } from "@elevenlabs/react";
@@ -63,6 +63,15 @@ function useIsMobile() {
 // ⬡B:MYABA:ABABASE:v2.6.0:20260228⬡
 // ABABASE = Fat Prompt Architecture (87 agents, HAM identity)
 const ABABASE = "https://abacia-services.onrender.com";
+
+
+// ⬡B:aba_skins:MAP:icon_lookup:20260323⬡
+// Maps icon names from /api/apps to lucide-react components
+const ICON_MAP = {
+  MessageSquare, Sunrise, Briefcase, Mail, MessageCircle, Camera,
+  MapPin, CheckCircle, Phone, Settings, BookOpen, AlertTriangle,
+  FileText, Calendar, Search, Activity, Sparkles, Users
+};
 
 // v1.2.0: Check online status
 function isOnline() { return navigator.onLine; }
@@ -125,7 +134,7 @@ async function airRequest(type, payload = {}, userId = "brandon", maxRetries = 3
 // ⬡B:roadmap.tier3:STREAMING:airRequestStream:20260323⬡
 // SSE streaming variant of airRequest. Streams text chunks via onChunk callback.
 // Returns the full response when done. Used by sendMessage for real-time chat.
-async function airRequestStream({ message, userId, channel, conversationId, conversationHistory, images, onChunk, onToolStart, onDone, onError }) {
+async function airRequestStream({ message, userId, channel, conversationId, conversationHistory, images, appScope, onChunk, onToolStart, onDone, onError }) {
   if (!isOnline()) {
     onError?.("You are offline");
     return { response: null, offline: true };
@@ -143,7 +152,8 @@ async function airRequestStream({ message, userId, channel, conversationId, conv
         channel: channel || "myaba",
         conversationId,
         conversationHistory: conversationHistory || [],
-        images: images || []
+        images: images || [],
+        appScope: appScope || undefined
       })
     });
     
@@ -189,6 +199,78 @@ async function airRequestStream({ message, userId, channel, conversationId, conv
     onError?.(e.message);
     return { response: null, error: true, errorMessage: e.message };
   }
+}
+
+// ⬡B:aba_skins:COMPONENT:app_launcher:20260323⬡
+// CIP App Launcher — renders app grid from GET /api/apps
+// Zero hardcoded apps. Backend is source of truth.
+function AppLauncher({ userId, onAppSelect, currentApp }) {
+  const [apps, setApps] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(ABABASE + "/api/apps?userId=" + encodeURIComponent(userId));
+        if (res.ok) {
+          const data = await res.json();
+          setApps(data.apps || []);
+        }
+      } catch (e) { console.error("[APPS] Load failed:", e); }
+      finally { setLoading(false); }
+    })();
+  }, [userId]);
+  
+  if (loading) return null;
+  
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(4, 1fr)",
+      gap: 12,
+      padding: "12px 8px"
+    }}>
+      {apps.map(app => {
+        const IconComponent = ICON_MAP[app.icon] || Sparkles;
+        const isActive = currentApp === app.id;
+        return (
+          <button
+            key={app.id}
+            onClick={() => onAppSelect(app)}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 6,
+              padding: "14px 4px",
+              borderRadius: 16,
+              border: isActive ? "1px solid rgba(139,92,246,.5)" : "1px solid transparent",
+              background: isActive ? "rgba(139,92,246,.15)" : "rgba(255,255,255,.04)",
+              cursor: "pointer",
+              transition: "all .2s"
+            }}
+          >
+            <div style={{
+              width: 48, height: 48, borderRadius: 14,
+              background: isActive ? "rgba(139,92,246,.25)" : "rgba(255,255,255,.06)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: isActive ? "0 0 12px rgba(139,92,246,.2)" : "none"
+            }}>
+              <IconComponent size={22} color={isActive ? "#a78bfa" : "rgba(255,255,255,.5)"} />
+            </div>
+            <span style={{
+              fontSize: 11, fontWeight: 500, textAlign: "center",
+              color: isActive ? "#c4b5fd" : "rgba(255,255,255,.45)",
+              lineHeight: 1.2, maxWidth: 72, overflow: "hidden",
+              textOverflow: "ellipsis", whiteSpace: "nowrap"
+            }}>
+              {app.name}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 // ⬡B:roadmap.tier3:COMPONENT:barcode_scanner:20260323⬡
@@ -3415,7 +3497,8 @@ export default function MyABA(){
   const[settingsLoaded,setSettingsLoaded]=useState(false);
   
   const[settingsOpen,setSettingsOpen]=useState(false);const[sidebarOpen,setSidebarOpen]=useState(false);
-  const[mainTab,setMainTab]=useState("chat"); // F5/F6: "chat" | "briefing" | "approve"
+  const[mainTab,setMainTab]=useState("apps"); // ⬡B:aba_skins:STATE:app_launcher_default:20260323⬡
+  const[appScope,setAppScope]=useState(null); // Current app agent scope for AIR calls
   const[briefingData,setBriefingData]=useState(null);
   const[briefingLoading,setBriefingLoading]=useState(false);
   const[shareModal,setShareModal]=useState(null); // conversation being shared
@@ -3900,6 +3983,7 @@ export default function MyABA(){
       message:messageForAIR,
       userId:user?.email||user?.uid||"brandon",
       channel:"myaba",
+      appScope:appScope||undefined,
       conversationId:activeId,
       conversationHistory:recentHistory,
       images:imagePayloads,
@@ -3948,7 +4032,7 @@ export default function MyABA(){
       setAbaState("idle");
       if(liveRef.current&&startListeningRef.current)startListeningRef.current();
     }
-  },[activeId,user,voiceOut,addMsg,showToast,attachments]);
+  },[activeId,user,voiceOut,addMsg,showToast,attachments,appScope]);
 
   // Barcode scanner overlay
   const handleBarcodeScan=useCallback((barcode)=>{
@@ -4103,15 +4187,36 @@ export default function MyABA(){
         </div>
       </div>
       {/* F5/F6: Main Tab Switcher - Chat | Briefing | Approve */}
-      <MainTabSwitcher tab={mainTab} setTab={async(t)=>{
-        setMainTab(t);
-        if(t==="briefing"&&!briefingData&&!briefingLoading){
-          setBriefingLoading(true);
-          const data=await fetchBriefing(user?.email||"brandon");
-          setBriefingData(data);
-          setBriefingLoading(false);
-        }
-      }}/>
+      {/* ⬡B:aba_skins:NAV:home_button_plus_tabs:20260323⬡ */}
+      {mainTab!=="apps"?<div style={{display:"flex",alignItems:"center",gap:4,padding:"4px 0"}}>
+        <button onClick={()=>{setMainTab("apps");setAppScope(null)}} style={{width:40,height:40,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(139,92,246,.12)",color:"rgba(139,92,246,.7)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title="All Apps"><GripVertical size={16}/></button>
+        <div style={{flex:1,overflow:"hidden"}}><MainTabSwitcher tab={mainTab} setTab={async(t)=>{
+          setMainTab(t);
+          if(t==="briefing"&&!briefingData&&!briefingLoading){
+            setBriefingLoading(true);
+            const data=await fetchBriefing(user?.email||"brandon");
+            setBriefingData(data);
+            setBriefingLoading(false);
+          }
+        }}/></div>
+      </div>:null}
+      
+      {/* ⬡B:aba_skins:RENDER:app_launcher_view:20260323⬡ */}
+      {mainTab==="apps"&&<div style={{flex:1,overflowY:"auto",padding:"8px 4px"}}>
+        <AppLauncher 
+          userId={user?.email||"brandon"} 
+          currentApp={null}
+          onAppSelect={(app)=>{
+            setMainTab(app.id==="settings"?"chat":app.id);
+            setAppScope(app.app_scope||null);
+            if(app.id==="settings")setSettingsOpen(true);
+            if(app.id==="briefing"&&!briefingData&&!briefingLoading){
+              setBriefingLoading(true);
+              fetchBriefing(user?.email||"brandon").then(d=>{setBriefingData(d);setBriefingLoading(false)});
+            }
+          }}
+        />
+      </div>}
       
       {/* Chat Mode */}
       {mainTab==="chat"&&<>
