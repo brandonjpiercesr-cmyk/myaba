@@ -3497,7 +3497,7 @@ export default function MyABA(){
   const[settingsLoaded,setSettingsLoaded]=useState(false);
   
   const[settingsOpen,setSettingsOpen]=useState(false);const[sidebarOpen,setSidebarOpen]=useState(false);
-  const[mainTab,setMainTab]=useState("apps"); // ⬡B:aba_skins:STATE:app_launcher_default:20260323⬡
+  const[mainTab,setMainTab]=useState("chat"); // ⬡B:aba_skins:STATE:chat_default_safe:20260323⬡ (apps grid via grid button)
   const[appScope,setAppScope]=useState(null); // Current app agent scope for AIR calls
   const[briefingData,setBriefingData]=useState(null);
   const[briefingLoading,setBriefingLoading]=useState(false);
