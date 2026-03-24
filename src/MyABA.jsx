@@ -38,7 +38,8 @@ import {
   Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock,
   Trash2, Archive, Search, WifiOff, Wifi, RefreshCw, Share2, Paperclip,
   FolderOpen, Image, File, FolderPlus, MoreVertical, Edit2, Copy, Briefcase,
-  MapPin, ExternalLink, Building, Download, ChevronDown, Camera, Sunrise, BookOpen, GripVertical
+  MapPin, ExternalLink, Building, Download, ChevronDown, Camera, Sunrise, BookOpen, GripVertical,
+  Loader2, Timer, Play, Pause, Square, Target
 } from "lucide-react";
 import { auth, signInGoogle, signOutUser } from "./firebase.js";
 import { useConversation } from "@elevenlabs/react";
@@ -825,6 +826,497 @@ function ClosedCaptions({ text, visible }) {
       pointerEvents: "none"
     }}>
       <p style={{ fontSize: 13, color: "rgba(255,255,255,.9)", lineHeight: 1.5, margin: 0, textAlign: "center" }}>{text}</p>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// MEETING MODE — 3-panel: Transcript | ABA Answers | Glossary
+// ⬡B:cip.meeting_mode:VIEW:3_panel:20260324⬡
+// TIM (Temporary Interim Model) + COOK (Conversational Optimization) pipeline
+// 90/10: All processing through AIR. Frontend is display only.
+// ═══════════════════════════════════════════════════════════
+function MeetingModeView({ userId }) {
+  const [running, setRunning] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [transcript, setTranscript] = useState([]);
+  const [answers, setAnswers] = useState([]);
+  const [glossary, setGlossary] = useState([]);
+  const [recording, setRecording] = useState(false);
+  const [activePanel, setActivePanel] = useState("transcript");
+  const [askInput, setAskInput] = useState("");
+  const [askLoading, setAskLoading] = useState(false);
+  const recRef = useRef(null);
+  const streamRef = useRef(null);
+  const intervalRef = useRef(null);
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    if (running) {
+      intervalRef.current = setInterval(() => setSeconds(s => s + 1), 1000);
+    } else { clearInterval(intervalRef.current); }
+    return () => clearInterval(intervalRef.current);
+  }, [running]);
+
+  const fmt = (s) => {
+    const m = Math.floor(s / 60); const sec = s % 60;
+    return `${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+  };
+
+  const toggleRecord = async () => {
+    if (recording) {
+      recRef.current?.stop();
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      setRecording(false);
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mimeTypes = ["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus","audio/mp4",""];
+      let mimeType = "";
+      for (const mt of mimeTypes) { if (!mt || MediaRecorder.isTypeSupported(mt)) { mimeType = mt; break; } }
+      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const chunks = [];
+      rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+      rec.onstop = async () => {
+        const blob = new Blob(chunks, { type: mimeType || "audio/webm" });
+        const text = await reachTranscribe(blob);
+        if (text) {
+          const entry = { text, time: fmt(seconds), ts: Date.now() };
+          setTranscript(prev => [...prev, entry]);
+          processTranscript(text);
+        }
+      };
+      rec.start();
+      recRef.current = rec;
+      setRecording(true);
+      if (!running) setRunning(true);
+    } catch (e) { console.error("[MEETING] Mic error:", e); }
+  };
+
+  const processTranscript = async (text) => {
+    try {
+      const res = await fetch(`${ABABASE}/api/air/process`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `Meeting transcript segment: "${text}"\n\nAnalyze this for: 1) Any questions asked that need answers 2) Key terms or acronyms to define 3) Action items mentioned. Return JSON: {"answers":[{"q":"question","a":"answer"}], "terms":[{"term":"word","definition":"meaning"}], "actions":[]}`,
+          user_id: userId, userId, channel: "cip", appScope: "meeting"
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const responseText = data.response || "";
+        try {
+          const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.answers?.length) setAnswers(prev => [...prev, ...parsed.answers]);
+            if (parsed.terms?.length) setGlossary(prev => {
+              const existing = prev.map(t => t.term.toLowerCase());
+              return [...prev, ...parsed.terms.filter(t => !existing.includes(t.term.toLowerCase()))];
+            });
+          }
+        } catch { setAnswers(prev => [...prev, { q: "Meeting note", a: responseText.substring(0, 300) }]); }
+      }
+    } catch (e) { console.error("[MEETING] AIR failed:", e); }
+  };
+
+  const askABA = async () => {
+    if (!askInput.trim()) return;
+    setAskLoading(true);
+    const q = askInput; setAskInput("");
+    try {
+      const res = await fetch(`${ABABASE}/api/air/process`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `During a live meeting, the user asks: "${q}"\n\nMeeting context so far: ${transcript.map(t => t.text).join(" ").substring(0, 1500)}\n\nAnswer concisely (2-3 sentences max).`,
+          user_id: userId, userId, channel: "cip", appScope: "meeting"
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAnswers(prev => [...prev, { q, a: data.response || "No answer generated." }]);
+      }
+    } catch (e) { console.error("[MEETING] Ask failed:", e); }
+    setAskLoading(false);
+  };
+
+  const endMeeting = async () => {
+    setRunning(false); setRecording(false);
+    recRef.current?.stop();
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    await fetch(`${ABABASE}/api/air/process`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: `Meeting ended. Duration: ${fmt(seconds)}. Full transcript: ${transcript.map(t => `[${t.time}] ${t.text}`).join(" ")}. Generate a MARS-style meeting summary.`,
+        user_id: userId, userId, channel: "cip", appScope: "meeting"
+      })
+    });
+  };
+
+  const PANELS = [
+    { id: "transcript", label: "Transcript", icon: Mic },
+    { id: "answers", label: "Answers", icon: Sparkles },
+    { id: "glossary", label: "Glossary", icon: BookOpen }
+  ];
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      {/* Timer bar */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Timer size={16} style={{ color: running ? "#06b6d4" : "rgba(255,255,255,.3)" }} />
+          <span style={{ fontFamily: "monospace", fontSize: 20, color: running ? "#fff" : "rgba(255,255,255,.4)", fontWeight: 300 }}>{fmt(seconds)}</span>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button onClick={toggleRecord} style={{
+            padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
+            display: "flex", alignItems: "center", gap: 5, transition: "all .2s",
+            background: recording ? "rgba(239,68,68,.25)" : "rgba(6,182,212,.2)",
+            color: recording ? "#fca5a5" : "#67e8f9"
+          }}>{recording ? <><MicOff size={13}/> Stop</> : <><Mic size={13}/> Record</>}</button>
+          {seconds > 0 && <button onClick={endMeeting} style={{
+            padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
+            background: "rgba(239,68,68,.15)", color: "#f87171", display: "flex", alignItems: "center", gap: 5
+          }}><Square size={13}/> End</button>}
+        </div>
+      </div>
+
+      {/* Panel toggle */}
+      <div style={{ display: "flex", gap: 2, padding: "6px 12px", borderBottom: "1px solid rgba(255,255,255,.04)" }}>
+        {PANELS.map(p => {
+          const Icon = p.icon;
+          const count = p.id === "transcript" ? transcript.length : p.id === "answers" ? answers.length : glossary.length;
+          return (
+            <button key={p.id} onClick={() => setActivePanel(p.id)} style={{
+              flex: 1, padding: "6px 0", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 500,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 4, transition: "all .15s",
+              background: activePanel === p.id ? "rgba(6,182,212,.2)" : "transparent",
+              color: activePanel === p.id ? "#67e8f9" : "rgba(255,255,255,.3)"
+            }}><Icon size={12}/> {p.label} {count > 0 && <span style={{ fontSize: 9, background: "rgba(6,182,212,.3)", padding: "1px 5px", borderRadius: 8 }}>{count}</span>}</button>
+          );
+        })}
+      </div>
+
+      {/* Active panel content */}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: 12 }}>
+        {activePanel === "transcript" && (
+          transcript.length === 0
+            ? <p style={{ textAlign: "center", padding: 40, color: "rgba(255,255,255,.2)", fontSize: 13 }}>Tap Record to capture meeting audio. ABA will transcribe and analyze in real time.</p>
+            : transcript.map((t, i) => (
+              <div key={i} style={{ padding: "8px 10px", marginBottom: 6, borderRadius: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.05)" }}>
+                <span style={{ fontSize: 10, color: "rgba(6,182,212,.5)", marginRight: 6 }}>[{t.time}]</span>
+                <span style={{ fontSize: 13, color: "rgba(255,255,255,.75)", lineHeight: 1.5 }}>{t.text}</span>
+              </div>
+            ))
+        )}
+        {activePanel === "answers" && (
+          answers.length === 0
+            ? <p style={{ textAlign: "center", padding: 40, color: "rgba(255,255,255,.2)", fontSize: 13 }}>ABA will surface answers to questions mentioned in the meeting. You can also ask directly below.</p>
+            : answers.map((a, i) => (
+              <div key={i} style={{ padding: 10, marginBottom: 8, borderRadius: 10, background: "rgba(139,92,246,.06)", border: "1px solid rgba(139,92,246,.12)" }}>
+                <p style={{ fontSize: 12, color: "#a78bfa", fontWeight: 500, margin: "0 0 4px" }}>{a.q}</p>
+                <p style={{ fontSize: 13, color: "rgba(255,255,255,.7)", margin: 0, lineHeight: 1.5 }}>{a.a}</p>
+              </div>
+            ))
+        )}
+        {activePanel === "glossary" && (
+          glossary.length === 0
+            ? <p style={{ textAlign: "center", padding: 40, color: "rgba(255,255,255,.2)", fontSize: 13 }}>Key terms and acronyms from the meeting will appear here as ABA identifies them.</p>
+            : glossary.map((g, i) => (
+              <div key={i} style={{ padding: "8px 10px", marginBottom: 6, borderRadius: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.05)" }}>
+                <span style={{ fontSize: 12, color: "#67e8f9", fontWeight: 600 }}>{g.term}</span>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", margin: "2px 0 0", lineHeight: 1.4 }}>{g.definition}</p>
+              </div>
+            ))
+        )}
+      </div>
+
+      {/* Ask ABA bar (answers panel) */}
+      {activePanel === "answers" && (
+        <div style={{ padding: "8px 12px", borderTop: "1px solid rgba(255,255,255,.06)", display: "flex", gap: 6 }}>
+          <input value={askInput} onChange={e => setAskInput(e.target.value)} onKeyDown={e => e.key === "Enter" && askABA()}
+            placeholder="Ask ABA a question during the meeting..."
+            style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", color: "#fff", fontSize: 12, outline: "none" }} />
+          <button onClick={askABA} disabled={askLoading || !askInput.trim()} style={{
+            padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer",
+            background: askInput.trim() ? "rgba(139,92,246,.25)" : "rgba(255,255,255,.04)",
+            color: askInput.trim() ? "#c4b5fd" : "rgba(255,255,255,.2)", fontSize: 12
+          }}>{askLoading ? <Loader2 size={13} className="animate-spin"/> : <Send size={13}/>}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// INTERVIEW MODE — 3-panel: Transcript | ABA Coach | Job Context
+// ⬡B:cip.interview_mode:VIEW:3_panel:20260324⬡
+// JOBA (Job Opportunity Bot Assistant) + HUNTER (Headhunting Unified Network Tracking)
+// Mock interview mode: ABA acts as interviewer, scores responses
+// 90/10: All processing through AIR. Frontend is display only.
+// ═══════════════════════════════════════════════════════════
+function InterviewModeView({ userId }) {
+  const [mode, setMode] = useState("prep"); // "prep" | "live" | "mock"
+  const [jobs, setJobs] = useState([]);
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [prepData, setPrepData] = useState(null);
+  const [prepLoading, setPrepLoading] = useState(false);
+  const [transcript, setTranscript] = useState([]);
+  const [coaching, setCoaching] = useState([]);
+  const [recording, setRecording] = useState(false);
+  const [mockQ, setMockQ] = useState(null);
+  const [mockHistory, setMockHistory] = useState([]);
+  const [mockAnswer, setMockAnswer] = useState("");
+  const [mockLoading, setMockLoading] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [running, setRunning] = useState(false);
+  const recRef = useRef(null);
+  const streamRef = useRef(null);
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${ABABASE}/api/awa/jobs?assignee=${encodeURIComponent(userId)}&status=INTERVIEW_SCHEDULED`);
+        if (res.ok) { const d = await res.json(); setJobs((d.jobs || d.data || []).slice(0, 10)); }
+      } catch {}
+      try {
+        const res2 = await fetch(`${ABABASE}/api/awa/jobs?assignee=${encodeURIComponent(userId)}&limit=10`);
+        if (res2.ok) { const d2 = await res2.json(); setJobs(prev => { const ids = new Set(prev.map(j => j.id)); return [...prev, ...(d2.jobs || d2.data || []).filter(j => !ids.has(j.id)).slice(0, 5)]; }); }
+      } catch {}
+    })();
+  }, [userId]);
+
+  useEffect(() => {
+    if (running) { intervalRef.current = setInterval(() => setSeconds(s => s + 1), 1000); }
+    else { clearInterval(intervalRef.current); }
+    return () => clearInterval(intervalRef.current);
+  }, [running]);
+
+  const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+
+  const loadPrep = async (job) => {
+    setSelectedJob(job); setPrepLoading(true);
+    try {
+      const res = await fetch(`${ABABASE}/api/air/process`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `Prepare me for an interview at ${job.organization || "this company"} for the role "${job.title || "this position"}". Include: 1) Likely questions they'll ask 2) Key talking points from my background 3) Questions I should ask them 4) Company research highlights. Be specific and actionable.`,
+          user_id: userId, userId, channel: "cip", appScope: "interview"
+        })
+      });
+      if (res.ok) { const d = await res.json(); setPrepData(d.response || ""); }
+    } catch (e) { console.error("[INTERVIEW] Prep failed:", e); }
+    setPrepLoading(false);
+  };
+
+  const startMock = async () => {
+    setMode("mock"); setMockHistory([]); setMockLoading(true);
+    try {
+      const res = await fetch(`${ABABASE}/api/air/process`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `You are interviewing me for the role "${selectedJob?.title || "a professional position"}" at ${selectedJob?.organization || "an organization"}. Ask me one interview question. Just the question, nothing else.`,
+          user_id: userId, userId, channel: "cip", appScope: "interview"
+        })
+      });
+      if (res.ok) { const d = await res.json(); setMockQ(d.response || "Tell me about yourself."); }
+    } catch { setMockQ("Tell me about yourself."); }
+    setMockLoading(false);
+  };
+
+  const submitMockAnswer = async () => {
+    if (!mockAnswer.trim()) return;
+    setMockLoading(true);
+    const answer = mockAnswer; setMockAnswer("");
+    setMockHistory(prev => [...prev, { q: mockQ, a: answer }]);
+    try {
+      const res = await fetch(`${ABABASE}/api/air/process`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `I'm doing a mock interview for "${selectedJob?.title || "a role"}". I was asked: "${mockQ}" and answered: "${answer}". Score my answer 1-10 and give brief coaching feedback (2 sentences). Then ask the next interview question. Format: SCORE: X/10\nFEEDBACK: ...\nNEXT QUESTION: ...`,
+          user_id: userId, userId, channel: "cip", appScope: "interview"
+        })
+      });
+      if (res.ok) {
+        const d = await res.json();
+        const text = d.response || "";
+        const scoreMatch = text.match(/SCORE:\s*(\d+)/i);
+        const feedbackMatch = text.match(/FEEDBACK:\s*(.+?)(?=NEXT|$)/is);
+        const nextMatch = text.match(/NEXT QUESTION:\s*(.+)/is);
+        setMockHistory(prev => { const last = prev[prev.length - 1]; if (last) { last.score = scoreMatch ? scoreMatch[1] : "?"; last.feedback = feedbackMatch ? feedbackMatch[1].trim() : text.substring(0, 200); } return [...prev]; });
+        setMockQ(nextMatch ? nextMatch[1].trim() : "Tell me more about your experience.");
+      }
+    } catch (e) { console.error("[INTERVIEW] Mock failed:", e); }
+    setMockLoading(false);
+  };
+
+  const toggleRecord = async () => {
+    if (recording) {
+      recRef.current?.stop(); streamRef.current?.getTracks().forEach(t => t.stop()); setRecording(false); return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mimeTypes = ["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus","audio/mp4",""];
+      let mimeType = "";
+      for (const mt of mimeTypes) { if (!mt || MediaRecorder.isTypeSupported(mt)) { mimeType = mt; break; } }
+      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const chunks = [];
+      rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+      rec.onstop = async () => {
+        const blob = new Blob(chunks, { type: mimeType || "audio/webm" });
+        const text = await reachTranscribe(blob);
+        if (text) {
+          setTranscript(prev => [...prev, { text, time: fmt(seconds) }]);
+          if (mode === "mock") { setMockAnswer(prev => prev ? prev + " " + text : text); }
+          else {
+            const res = await fetch(`${ABABASE}/api/air/process`, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ message: `During a live interview, I just said: "${text}". Brief coaching tip (1 sentence) on how that sounded.`, user_id: userId, userId, channel: "cip", appScope: "interview" })
+            });
+            if (res.ok) { const d = await res.json(); setCoaching(prev => [...prev, { tip: d.response || "", time: fmt(seconds) }]); }
+          }
+        }
+      };
+      rec.start(); recRef.current = rec; setRecording(true);
+      if (!running) setRunning(true);
+    } catch (e) { console.error("[INTERVIEW] Mic error:", e); }
+  };
+
+  // Prep mode: job selection + prep package
+  if (mode === "prep") return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: 16 }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "rgba(255,255,255,.04)", borderRadius: 10, padding: 3 }}>
+        {[{ id: "prep", label: "Prep" }, { id: "live", label: "Live Interview" }, { id: "mock", label: "Mock Interview" }].map(m => (
+          <button key={m.id} onClick={() => { if (m.id === "mock" && selectedJob) startMock(); else setMode(m.id); }} style={{
+            flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
+            background: mode === m.id ? "rgba(245,158,11,.25)" : "transparent",
+            color: mode === m.id ? "#fbbf24" : "rgba(255,255,255,.3)"
+          }}>{m.label}</button>
+        ))}
+      </div>
+
+      {!selectedJob ? (
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,.3)", marginBottom: 10 }}>Select a job to prepare for:</p>
+          {jobs.length === 0 ? <p style={{ textAlign: "center", padding: 30, color: "rgba(255,255,255,.2)", fontSize: 13 }}>No jobs found. Check the Jobs app first.</p>
+          : jobs.map((j, i) => (
+            <button key={j.id || i} onClick={() => loadPrep(j)} style={{
+              display: "block", width: "100%", textAlign: "left", padding: 12, marginBottom: 6, borderRadius: 10,
+              background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", cursor: "pointer", color: "#fff"
+            }}>
+              <p style={{ fontSize: 13, fontWeight: 500, margin: 0, color: "rgba(255,255,255,.8)" }}>{j.title || "Untitled"}</p>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,.35)", margin: "2px 0 0" }}>{j.organization || ""} {j.status ? `• ${j.status}` : ""}</p>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          <button onClick={() => { setSelectedJob(null); setPrepData(null); }} style={{ background: "none", border: "none", color: "rgba(245,158,11,.5)", cursor: "pointer", fontSize: 11, marginBottom: 8, padding: 0 }}>← Back to jobs</button>
+          <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,.85)", margin: "0 0 2px" }}>{selectedJob.title}</p>
+          <p style={{ fontSize: 11, color: "rgba(255,255,255,.35)", margin: "0 0 12px" }}>{selectedJob.organization}</p>
+          {prepLoading ? <div style={{ textAlign: "center", padding: 30 }}><Loader2 size={20} style={{ color: "#fbbf24", animation: "spin 1s linear infinite" }}/></div>
+          : prepData ? <div style={{ fontSize: 13, color: "rgba(255,255,255,.7)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{prepData}</div>
+          : <p style={{ color: "rgba(255,255,255,.25)", fontSize: 13 }}>Loading prep...</p>}
+        </div>
+      )}
+    </div>
+  );
+
+  // Mock mode
+  if (mode === "mock") return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: 16 }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "rgba(255,255,255,.04)", borderRadius: 10, padding: 3 }}>
+        {[{ id: "prep", label: "Prep" }, { id: "live", label: "Live" }, { id: "mock", label: "Mock" }].map(m => (
+          <button key={m.id} onClick={() => setMode(m.id)} style={{
+            flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
+            background: mode === m.id ? "rgba(245,158,11,.25)" : "transparent",
+            color: mode === m.id ? "#fbbf24" : "rgba(255,255,255,.3)"
+          }}>{m.label}</button>
+        ))}
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto" }}>
+        {mockHistory.map((h, i) => (
+          <div key={i} style={{ marginBottom: 12 }}>
+            <div style={{ padding: 10, borderRadius: "10px 10px 2px 10px", background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.15)", marginBottom: 4 }}>
+              <p style={{ fontSize: 12, color: "#fbbf24", fontWeight: 500, margin: 0 }}>Interviewer</p>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,.75)", margin: "4px 0 0", lineHeight: 1.5 }}>{h.q}</p>
+            </div>
+            <div style={{ padding: 10, borderRadius: "2px 10px 10px 10px", background: "rgba(139,92,246,.06)", border: "1px solid rgba(139,92,246,.12)", marginBottom: 4 }}>
+              <p style={{ fontSize: 12, color: "#a78bfa", fontWeight: 500, margin: 0 }}>You</p>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,.7)", margin: "4px 0 0", lineHeight: 1.5 }}>{h.a}</p>
+            </div>
+            {h.score && <div style={{ padding: "6px 10px", borderRadius: 8, background: "rgba(16,185,129,.08)", border: "1px solid rgba(16,185,129,.12)" }}>
+              <span style={{ fontSize: 11, color: "#34d399", fontWeight: 600 }}>{h.score}/10</span>
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,.5)", marginLeft: 8 }}>{h.feedback}</span>
+            </div>}
+          </div>
+        ))}
+
+        {mockQ && (
+          <div style={{ padding: 12, borderRadius: 10, background: "rgba(245,158,11,.1)", border: "1px solid rgba(245,158,11,.2)", marginBottom: 8 }}>
+            <p style={{ fontSize: 12, color: "#fbbf24", fontWeight: 500, margin: 0 }}>Interviewer asks:</p>
+            <p style={{ fontSize: 14, color: "rgba(255,255,255,.85)", margin: "6px 0 0", lineHeight: 1.5 }}>{mockQ}</p>
+          </div>
+        )}
+      </div>
+
+      <div style={{ padding: "8px 0", borderTop: "1px solid rgba(255,255,255,.06)", display: "flex", gap: 6 }}>
+        <button onClick={toggleRecord} style={{
+          padding: "8px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12,
+          background: recording ? "rgba(239,68,68,.2)" : "rgba(255,255,255,.06)",
+          color: recording ? "#fca5a5" : "rgba(255,255,255,.4)", display: "flex", alignItems: "center", gap: 4
+        }}>{recording ? <MicOff size={13}/> : <Mic size={13}/>}</button>
+        <input value={mockAnswer} onChange={e => setMockAnswer(e.target.value)} onKeyDown={e => e.key === "Enter" && submitMockAnswer()}
+          placeholder="Type or speak your answer..." style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", color: "#fff", fontSize: 12, outline: "none" }} />
+        <button onClick={submitMockAnswer} disabled={mockLoading || !mockAnswer.trim()} style={{
+          padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer",
+          background: mockAnswer.trim() ? "rgba(245,158,11,.25)" : "rgba(255,255,255,.04)",
+          color: mockAnswer.trim() ? "#fbbf24" : "rgba(255,255,255,.2)", fontSize: 12
+        }}>{mockLoading ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }}/> : <Send size={13}/>}</button>
+      </div>
+    </div>
+  );
+
+  // Live interview mode: 3-panel like Meeting Mode
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", gap: 4, padding: "6px 12px", borderBottom: "1px solid rgba(255,255,255,.04)" }}>
+        {[{ id: "prep", label: "Prep" }, { id: "live", label: "Live" }, { id: "mock", label: "Mock" }].map(m => (
+          <button key={m.id} onClick={() => { if (m.id === "mock" && selectedJob) startMock(); else setMode(m.id); }} style={{
+            flex: 1, padding: "6px 0", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 500,
+            background: mode === m.id ? "rgba(245,158,11,.25)" : "transparent",
+            color: mode === m.id ? "#fbbf24" : "rgba(255,255,255,.3)"
+          }}>{m.label}</button>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 12px", borderBottom: "1px solid rgba(255,255,255,.04)" }}>
+        <span style={{ fontFamily: "monospace", fontSize: 16, color: running ? "#fbbf24" : "rgba(255,255,255,.3)" }}>{fmt(seconds)}</span>
+        <button onClick={toggleRecord} style={{
+          padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12,
+          background: recording ? "rgba(239,68,68,.25)" : "rgba(245,158,11,.2)",
+          color: recording ? "#fca5a5" : "#fbbf24", display: "flex", alignItems: "center", gap: 5
+        }}>{recording ? <><MicOff size={13}/> Stop</> : <><Mic size={13}/> Record</>}</button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
+        {transcript.length === 0 && coaching.length === 0
+          ? <p style={{ textAlign: "center", padding: 30, color: "rgba(255,255,255,.2)", fontSize: 13 }}>Record during your live interview. ABA will transcribe your answers and provide real-time coaching tips.</p>
+          : [...transcript.map(t => ({ type: "you", ...t })), ...coaching.map(c => ({ type: "coach", text: c.tip, time: c.time }))]
+            .sort((a, b) => (a.time || "").localeCompare(b.time || ""))
+            .map((item, i) => (
+              <div key={i} style={{ padding: "8px 10px", marginBottom: 6, borderRadius: 10, borderLeft: item.type === "coach" ? "3px solid rgba(245,158,11,.4)" : "3px solid rgba(139,92,246,.3)", background: "rgba(255,255,255,.03)" }}>
+                <span style={{ fontSize: 10, color: item.type === "coach" ? "rgba(245,158,11,.5)" : "rgba(139,92,246,.5)", marginRight: 6 }}>[{item.time}] {item.type === "coach" ? "ABA Coach" : "You"}</span>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,.7)", margin: "2px 0 0", lineHeight: 1.5 }}>{item.text}</p>
+              </div>
+            ))
+        }
+      </div>
     </div>
   );
 }
@@ -4916,7 +5408,7 @@ export default function MyABA(){
       {mainTab!=="apps"?<div style={{display:"flex",alignItems:"center",gap:4,padding:"4px 0"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,width:"100%"}}>
           {mainTab!=="home"&&<button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(139,92,246,.12)",color:"rgba(139,92,246,.7)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title="Home"><Home size={16}/></button>}
-          {mainTab!=="home"&&<span style={{fontSize:14,fontWeight:600,color:"rgba(255,255,255,.7)"}}>{mainTab==="chat"?"ABA":mainTab==="briefing"?"DAWN":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"CeeCee":mainTab==="nura"?"NURA":mainTab==="phone"?"ABA Dials":mainTab==="settings"?"Settings":mainTab==="gmg_university"?"GMG-U":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"GUIDE":mainTab==="ccwa"?"CCWA":mainTab==="aoa"?"AOA":mainTab}</span>}
+          {mainTab!=="home"&&<span style={{fontSize:14,fontWeight:600,color:"rgba(255,255,255,.7)"}}>{mainTab==="chat"?"ABA":mainTab==="briefing"?"DAWN":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"CeeCee":mainTab==="nura"?"NURA":mainTab==="phone"?"ABA Dials":mainTab==="settings"?"Settings":mainTab==="gmg_university"?"GMG-U":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"GUIDE":mainTab==="ccwa"?"CCWA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"Meeting Mode":mainTab==="interview"?"Interview Prep":mainTab}</span>}
         </div>
         {/* Legacy tab switcher hidden — launcher is the new nav */}
         <div style={{display:"none"}}><MainTabSwitcher tab={mainTab} setTab={async(t)=>{
@@ -4957,6 +5449,8 @@ export default function MyABA(){
             else if(app.id==="crm"){setMainTab("crm")}
             else if(app.id==="journal"){setMainTab("journal")}
             else if(app.id==="guide"){setMainTab("guide")}
+            else if(app.id==="meeting"){setMainTab("meeting")}
+            else if(app.id==="interview"){setMainTab("interview")}
             else{setMainTab(app.id)}
           }}
         />
@@ -5042,6 +5536,8 @@ export default function MyABA(){
       {mainTab==="guide"&&<GuideView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="ccwa"&&<CCWAView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="aoa"&&<AOAView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="meeting"&&<MeetingModeView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="interview"&&<InterviewModeView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="nura"&&<NURAView userId={user?.email||user?.uid||"unknown"} onScan={()=>setScannerOpen(true)}/>}
 
       
