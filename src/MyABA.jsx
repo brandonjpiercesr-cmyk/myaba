@@ -5382,7 +5382,11 @@ export default function MyABA(){
   // Show tour on first login
   if(!tourComplete)return <FirstLoginTour user={user} onComplete={()=>{try{localStorage.setItem("myaba_tour_complete","true")}catch{};window.location.reload()}}/>;
 
-  return(<div style={{width:"100%",height:"100dvh",minHeight:`${viewportHeight}px`,position:"relative",overflow:"hidden",fontFamily:"'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:"#08080d",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)",boxSizing:"border-box"}}>
+  return(<div style={{width:"100%",height:"100dvh",minHeight:`${viewportHeight}px`,position:"relative",overflow:"hidden",fontFamily:"'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:"linear-gradient(165deg, #0a0a1a 0%, #1a0a2e 30%, #0d1117 60%, #0a0a1a 100%)",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)",boxSizing:"border-box"}}>
+    {/* ⬡B:FIX:phone_wallpaper:20260324⬡ Persistent background that shows through on home screen */}
+    <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 30% 20%, rgba(139,92,246,.08) 0%, transparent 50%), radial-gradient(ellipse at 70% 80%, rgba(99,102,241,.06) 0%, transparent 50%)",pointerEvents:"none",zIndex:0}}/>
+    {/* App content container — sits on top of wallpaper */}
+    <div style={{position:"relative",zIndex:1,display:"flex",flexDirection:"column",height:"100%"}}>
     <style>{`@keyframes mp{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}@keyframes mf{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes mb{0%,100%{opacity:.6}50%{opacity:1}}@keyframes ml{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 12px rgba(239,68,68,0)}}@keyframes kenBurns{0%{transform:scale(1) translate(0,0)}25%{transform:scale(1.08) translate(-1%,-1%)}50%{transform:scale(1.12) translate(1%,0)}75%{transform:scale(1.06) translate(-0.5%,1%)}100%{transform:scale(1) translate(0,0)}}@keyframes pulse{0%{transform:scale(1);opacity:1}100%{transform:scale(1.5);opacity:0}}@keyframes breathe{0%,100%{transform:scale(1);box-shadow:0 0 40px rgba(139,92,246,.3)}50%{transform:scale(1.05);box-shadow:0 0 60px rgba(139,92,246,.5)}}@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(139,92,246,.15);border-radius:99px}`}</style>
     <div style={{position:"absolute",inset:"-10%",zIndex:0,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.4) saturate(.7)",animation:"kenBurns 30s ease-in-out infinite",willChange:"transform",WebkitBackfaceVisibility:"hidden"}}/>
     <div style={{position:"absolute",inset:0,zIndex:1,background:"radial-gradient(ellipse at center,rgba(0,0,0,0) 0%,rgba(0,0,0,.55) 100%)"}}/>
@@ -5429,6 +5433,11 @@ export default function MyABA(){
           currentApp={null}
           onAppSelect={(app)=>{
             setAppScope(app.app_scope||null);
+            // ⬡B:FIX:dismiss_chat_on_switch:20260324⬡ Reset voice/chat state when leaving chat
+            if(app.id!=="chat"&&app.id!=="phone"&&app.id!=="incidents"){
+              if(voiceMode==="talk")setVoiceMode("chat");
+              setSnapOpen(false);setClipboardOpen(false);
+            }
             if(app.id==="chat"){setMainTab("chat")}
             else if(app.id==="briefing"){setMainTab("briefing");if(!briefingData&&!briefingLoading){setBriefingLoading(true);fetchBriefing(user?.email||user?.uid||"unknown").then(d=>{setBriefingData(d);setBriefingLoading(false)})}}
             else if(app.id==="jobs"){setMainTab("jobs")}
@@ -5505,15 +5514,10 @@ export default function MyABA(){
       </div>
       </>}
       
-      {/* Briefing Mode */}
-      {mainTab==="briefing"&&<BriefingView data={briefingData} loading={briefingLoading} userId={user?.email||user?.uid||"unknown"} onRefresh={async()=>{
-        setBriefingLoading(true);
-        const data=await fetchBriefing(user?.email||user?.uid||"unknown");
-        setBriefingData(data);
-        setBriefingLoading(false);
-      }}/>}
-      
       {/* Jobs Mode - AWA Integration */}
+      {/* ⬡B:FIX:phone_app_card:20260324⬡ All non-home apps render in a glass card over wallpaper */}
+      {mainTab!=="home"&&mainTab!=="apps"&&mainTab!=="chat"&&(
+        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"rgba(8,8,13,.88)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderRadius:"16px 16px 0 0",marginTop:4}}>
       {mainTab==="jobs"&&<JobsView userId={user?.email||user?.uid||"unknown"}/>}
       
       {/* Pipeline Mode - Kanban ⬡B:AWA.v3:Phase6:pipeline_tab:20260315⬡ */}
@@ -5539,6 +5543,11 @@ export default function MyABA(){
       {mainTab==="meeting"&&<MeetingModeView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="interview"&&<InterviewModeView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="nura"&&<NURAView userId={user?.email||user?.uid||"unknown"} onScan={()=>setScannerOpen(true)}/>}
+      {mainTab==="briefing"&&<BriefingView data={briefingData} loading={briefingLoading} userId={user?.email||user?.uid||"unknown"} onRefresh={async()=>{
+        setBriefingLoading(true);const data=await fetchBriefing(user?.email||user?.uid||"unknown");setBriefingData(data);setBriefingLoading(false);
+      }}/>}
+        </div>
+      )}
 
       
       {/* ⬡B:aba_skins:RENDER:app_scoped_chat:20260323⬡ */}
@@ -5690,4 +5699,5 @@ export default function MyABA(){
     {/* v2.15.0: Admin Panel for HAM users */}
     {isHAM(user?.email)&&<AdminPanel open={adminPanelOpen} onClose={()=>setAdminPanelOpen(false)} lastResponse={lastABAResponse}/>}
     {toast&&<Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)}/>}
+    </div>{/* close content wrapper */}
   </div>)}
