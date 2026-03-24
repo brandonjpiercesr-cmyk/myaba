@@ -3673,7 +3673,9 @@ export default function MyABA(){
 
   // v2.16.0: Create conversation via backend
   const createConv=useCallback(async(shared=false,projectId=null)=>{
-    const userId=user?.email||user?.uid||"unknown";
+    // ⬡B:fix:null_userid_conversations:20260323⬡ Wait for auth before creating conversations
+    const userId=user?.email||user?.uid||null;
+    if(!userId){console.warn("[CHAT] Cannot create conversation — user not loaded yet");return null;}
     const result=await airCreateConversation(userId,"New Chat",projectId,shared);
     if(result.success&&result.conversation){
       const conv={
@@ -3705,7 +3707,8 @@ export default function MyABA(){
     setConvos(p=>p.map(c=>c.id===activeId?{...c,messages:[...c.messages,msg],updatedAt:Date.now()}:c));
     // ⬡B:FIX:chat_persistence:always_save:20260321⬡
     // Always sync to backend. If conv- prefix (local fallback), create it on backend first then save.
-    if(activeId){
+    const msgUserId=user?.email||user?.uid||null;
+    if(activeId&&msgUserId){
       let backendId=activeId;
       if(String(activeId).startsWith('conv-')){
         // Retry creating on backend
@@ -3922,6 +3925,7 @@ export default function MyABA(){
   const startListeningRef=useRef(null);
 
   const sendMessage=useCallback(async(text,isVoice=false)=>{
+    if(!user?.email&&!user?.uid){showToast("Please wait for login to complete","warning");return;}
     if(!text.trim()&&attachments.length===0)return;
     
     // Upload files FIRST if any
