@@ -204,9 +204,14 @@ async function airRequestStream({ message, userId, channel, conversationId, conv
 // ⬡B:aba_skins:COMPONENT:app_launcher:20260323⬡
 // CIP App Launcher — renders app grid from GET /api/apps
 // Zero hardcoded apps. Backend is source of truth.
+// ⬡B:ccwa.fix:COMP:drag_reorder_launcher:20260324⬡
 function AppLauncher({ userId, onAppSelect, currentApp }) {
   const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [dragging, setDragging] = useState(null); // index of dragged app
+  const [dragOver, setDragOver] = useState(null); // index being hovered
+  const longPressTimer = useRef(null);
+  const touchStart = useRef(null);
   
   useEffect(() => {
     (async () => {
@@ -214,12 +219,49 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
         const res = await fetch(ABABASE + "/api/apps?userId=" + encodeURIComponent(userId));
         if (res.ok) {
           const data = await res.json();
-          setApps(data.apps || []);
+          // Load saved order from localStorage, fallback to backend order
+          const saved = (() => { try { return JSON.parse(localStorage.getItem("myaba_app_order")||"null") } catch { return null } })();
+          const backendApps = data.apps || [];
+          if (saved && Array.isArray(saved)) {
+            const ordered = [];
+            saved.forEach(id => { const a = backendApps.find(x => x.id === id); if (a) ordered.push(a); });
+            backendApps.forEach(a => { if (!ordered.find(x => x.id === a.id)) ordered.push(a); });
+            setApps(ordered);
+          } else {
+            setApps(backendApps);
+          }
         }
       } catch (e) { console.error("[APPS] Load failed:", e); }
       finally { setLoading(false); }
     })();
   }, [userId]);
+  
+  const handleTouchStart = (idx, e) => {
+    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    longPressTimer.current = setTimeout(() => { setDragging(idx); }, 500);
+  };
+  const handleTouchMove = (e) => {
+    if (dragging === null && longPressTimer.current) {
+      const dx = Math.abs(e.touches[0].clientX - (touchStart.current?.x||0));
+      const dy = Math.abs(e.touches[0].clientY - (touchStart.current?.y||0));
+      if (dx > 10 || dy > 10) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+    }
+    if (dragging === null) return;
+    const el = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY);
+    const btn = el?.closest("[data-app-idx]");
+    if (btn) setDragOver(parseInt(btn.dataset.appIdx));
+  };
+  const handleTouchEnd = () => {
+    clearTimeout(longPressTimer.current); longPressTimer.current = null;
+    if (dragging !== null && dragOver !== null && dragging !== dragOver) {
+      const newApps = [...apps];
+      const [moved] = newApps.splice(dragging, 1);
+      newApps.splice(dragOver, 0, moved);
+      setApps(newApps);
+      try { localStorage.setItem("myaba_app_order", JSON.stringify(newApps.map(a => a.id))); } catch {}
+    }
+    setDragging(null); setDragOver(null);
+  };
   
   if (loading) return null;
   
@@ -229,14 +271,21 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
       gridTemplateColumns: "repeat(4, 1fr)",
       gap: 12,
       padding: "12px 8px"
-    }}>
-      {apps.map(app => {
+    }}
+    onTouchMove={handleTouchMove}
+    onTouchEnd={handleTouchEnd}
+    >
+      {apps.map((app, idx) => {
         const IconComponent = ICON_MAP[app.icon] || Sparkles;
         const isActive = currentApp === app.id;
+        const isDragged = dragging === idx;
+        const isTarget = dragOver === idx && dragging !== null && dragging !== idx;
         return (
           <button
             key={app.id}
-            onClick={() => onAppSelect(app)}
+            data-app-idx={idx}
+            onTouchStart={(e) => handleTouchStart(idx, e)}
+            onClick={() => { if (dragging === null) onAppSelect(app); }}
             style={{
               display: "flex",
               flexDirection: "column",
@@ -244,10 +293,12 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
               gap: 6,
               padding: "14px 4px",
               borderRadius: 16,
-              border: isActive ? "1px solid rgba(139,92,246,.5)" : "1px solid transparent",
-              background: isActive ? "rgba(139,92,246,.15)" : "rgba(255,255,255,.04)",
+              border: isTarget ? "2px dashed rgba(139,92,246,.6)" : isActive ? "1px solid rgba(139,92,246,.5)" : "1px solid transparent",
+              background: isDragged ? "rgba(139,92,246,.25)" : isActive ? "rgba(139,92,246,.15)" : "rgba(255,255,255,.04)",
               cursor: "pointer",
-              transition: "all .2s"
+              transition: "all .2s",
+              opacity: isDragged ? 0.6 : 1,
+              transform: isDragged ? "scale(1.1)" : "scale(1)"
             }}
           >
             <div style={{
@@ -360,6 +411,101 @@ function BarcodeScanner({ onScan, onClose }) {
       <p style={{color:"rgba(255,255,255,.3)",fontSize:11,marginTop:24,fontFamily:"system-ui"}}>
         Powered by NURA (Nutritional Understanding and Research Agent)
       </p>
+    </div>
+  );
+}
+
+// ⬡B:ccwa.fix:COMP:mobile_doc_editor:20260324⬡
+// MobileDocEditor — mobile-friendly rich text editor for cover letters/resumes
+// Inspired by Google Docs mobile. Toolbar at top, editable area below.
+function MobileDocEditor({ content, onSave, onClose, title }) {
+  const [text, setText] = useState(content || "");
+  const [saved, setSaved] = useState(false);
+  const editorRef = useRef(null);
+  
+  const handleSave = () => {
+    if (onSave) onSave(text);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+  
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text).catch(() => {});
+  };
+  
+  const handleExport = async (format) => {
+    try {
+      const res = await fetch(`${ABABASE}/api/awa/export/${format}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: text, title: title || "Document" })
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${(title || "document").replace(/\s+/g, "_")}.${format}`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) { console.error("[EDITOR] Export failed:", e); }
+  };
+  
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(8,8,13,.98)",display:"flex",flexDirection:"column"}}>
+      {/* Toolbar */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,.08)",flexShrink:0}}>
+        <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",padding:8,display:"flex",alignItems:"center",gap:4,fontSize:13}}>
+          <ChevronRight size={16} style={{transform:"rotate(180deg)"}}/>Back
+        </button>
+        <span style={{color:"rgba(255,255,255,.8)",fontSize:14,fontWeight:600}}>{title || "Editor"}</span>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={handleCopy} style={{background:"rgba(255,255,255,.06)",border:"none",borderRadius:8,color:"rgba(255,255,255,.5)",cursor:"pointer",padding:"6px 10px",fontSize:11,display:"flex",alignItems:"center",gap:4}}>
+            <Copy size={12}/>Copy
+          </button>
+          <button onClick={handleSave} style={{background:saved?"rgba(16,185,129,.2)":"rgba(139,92,246,.2)",border:"none",borderRadius:8,color:saved?"#10B981":"rgba(139,92,246,.9)",cursor:"pointer",padding:"6px 12px",fontSize:11,fontWeight:600}}>
+            {saved?"Saved":"Save"}
+          </button>
+        </div>
+      </div>
+      {/* Export bar */}
+      <div style={{display:"flex",gap:8,padding:"8px 16px",borderBottom:"1px solid rgba(255,255,255,.05)",flexShrink:0}}>
+        <button onClick={()=>handleExport("pdf")} style={{background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.15)",borderRadius:6,color:"rgba(239,68,68,.7)",cursor:"pointer",padding:"4px 10px",fontSize:10}}>PDF</button>
+        <button onClick={()=>handleExport("docx")} style={{background:"rgba(59,130,246,.1)",border:"1px solid rgba(59,130,246,.15)",borderRadius:6,color:"rgba(59,130,246,.7)",cursor:"pointer",padding:"4px 10px",fontSize:10}}>DOCX</button>
+      </div>
+      {/* Editor area */}
+      <div style={{flex:1,overflow:"auto",padding:16}}>
+        <textarea
+          ref={editorRef}
+          value={text}
+          onChange={e => setText(e.target.value)}
+          style={{
+            width:"100%",minHeight:"100%",background:"transparent",border:"none",
+            color:"rgba(255,255,255,.85)",fontSize:14,lineHeight:1.8,
+            fontFamily:"'Georgia',serif",outline:"none",resize:"none",
+            caretColor:"#8B5CF6"
+          }}
+          autoFocus
+        />
+      </div>
+    </div>
+  );
+}
+
+// ⬡B:ccwa.fix:COMP:closed_captions:20260324⬡
+// ClosedCaptions — displays subtitle text from voice responses
+function ClosedCaptions({ text }) {
+  if (!text) return null;
+  return (
+    <div style={{
+      position:"fixed",bottom:"calc(80px + env(safe-area-inset-bottom,0px))",left:"50%",transform:"translateX(-50%)",
+      maxWidth:360,width:"90%",padding:"10px 16px",borderRadius:12,
+      background:"rgba(0,0,0,.85)",backdropFilter:"blur(8px)",
+      border:"1px solid rgba(255,255,255,.1)",zIndex:150,
+      pointerEvents:"none"
+    }}>
+      <p style={{color:"rgba(255,255,255,.9)",fontSize:13,margin:0,textAlign:"center",lineHeight:1.5}}>{text}</p>
     </div>
   );
 }
@@ -2830,7 +2976,10 @@ function JobsView({userId}){
         {output&&<div style={{background:"rgba(0,0,0,.3)",borderRadius:8,padding:12,maxHeight:200,overflowY:"auto"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
             <span style={{color:"rgba(255,255,255,.5)",fontSize:11}}>Generated Output</span>
-            <button onClick={()=>navigator.clipboard.writeText(output)} style={{background:"none",border:"none",cursor:"pointer",padding:2}}><Copy size={14} style={{color:"rgba(139,92,246,.6)"}}/></button>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={()=>{setEditorContent(output);setEditorOpen(true)}} style={{background:"rgba(139,92,246,.15)",border:"1px solid rgba(139,92,246,.2)",borderRadius:6,cursor:"pointer",padding:"3px 8px",display:"flex",alignItems:"center",gap:4,color:"rgba(139,92,246,.8)",fontSize:10,fontWeight:500}}><Edit2 size={10}/>Edit</button>
+              <button onClick={()=>navigator.clipboard.writeText(output)} style={{background:"none",border:"none",cursor:"pointer",padding:2}}><Copy size={14} style={{color:"rgba(139,92,246,.6)"}}/></button>
+            </div>
           </div>
           <pre style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:0,whiteSpace:"pre-wrap",lineHeight:1.5}}>{output}</pre>
         </div>}
@@ -3527,6 +3676,10 @@ export default function MyABA(){
   // ⬡B:clipboard.history:STATE:20260320⬡
   const[clipboardOpen,setClipboardOpen]=useState(false);
   const[clipboardItems,setClipboardItems]=useState(()=>{try{return JSON.parse(localStorage.getItem("myaba_clipboard")||"[]")}catch{return[]}});
+  // ⬡B:ccwa.fix:STATE:captions_and_editor:20260324⬡
+  const[captionText,setCaptionText]=useState("");
+  const[editorOpen,setEditorOpen]=useState(false);
+  const[editorContent,setEditorContent]=useState("");
   // v2.16.0: Projects now load from backend
   const[projectsLoading,setProjectsLoading]=useState(false);
   const scrollRef=useRef(null);const recorderRef=useRef(null);const liveRef=useRef(false);
@@ -4051,13 +4204,14 @@ export default function MyABA(){
   const speakText=useCallback(async(text)=>{
     if(!text)return;
     setAbaState("speaking");
+    setCaptionText(text); // ⬡B:ccwa.fix:captions_on_speak:20260324⬡
     const url=await reachSynthesize(text);
     if(url){
       const audio=new Audio(url);
-      audio.onended=()=>setAbaState("idle");
-      audio.play().catch(()=>setAbaState("idle"));
+      audio.onended=()=>{setAbaState("idle");setCaptionText("")};
+      audio.play().catch(()=>{setAbaState("idle");setCaptionText("")});
     }else{
-      setAbaState("idle");
+      setAbaState("idle");setCaptionText("");
     }
   },[]);
 
@@ -4323,6 +4477,9 @@ export default function MyABA(){
         </div>
       </>}
     </div>
+    {/* ⬡B:ccwa.fix:RENDER:captions_and_editor:20260324⬡ */}
+    {voiceOut&&<ClosedCaptions text={captionText}/>}
+    {editorOpen&&<MobileDocEditor content={editorContent} title="Cover Letter" onSave={(t)=>{setEditorContent(t);setOutput&&setOutput(t)}} onClose={()=>setEditorOpen(false)}/>}
     <Sidebar open={sidebarOpen} convos={convos} activeId={activeId} onSelect={setActiveId} onCreate={()=>setNewChatModal(true)} onClose={()=>setSidebarOpen(false)} onDelete={deleteConv} onArchive={archiveConv} onShare={c=>setShareModal(c)} projects={projects} activeProject={activeProject} onSelectProject={setActiveProject} onCreateProject={()=>setNewChatModal(true)} onProjectDetail={p=>setProjectDetailModal(p)} user={user}/>
     <ShareModal open={!!shareModal} conversation={shareModal} onClose={()=>setShareModal(null)} onShare={shareConversation}/>
     <NewChatModal open={newChatModal} onClose={()=>setNewChatModal(false)} onCreate={(shared,projectId,projectName)=>{if(projectName){const pId=createProject(projectName);createConv(shared,pId)}else{createConv(shared,projectId)}}} projects={projects} onCreateProject={createProject}/>
