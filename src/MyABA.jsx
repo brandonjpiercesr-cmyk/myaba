@@ -34,7 +34,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Send, Mic, MicOff, Volume2, VolumeX, MessageSquare, Radio, Hand,
   Settings, X, Plus, Bell, Mail, Calendar, Phone, Headphones,
-  MessageCircle, Zap, Activity, Clock, CheckCircle, AlertTriangle,
+  MessageCircle, Zap, Activity, Home, ChevronLeft, Code, Clock, CheckCircle, AlertTriangle,
   Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock,
   Trash2, Archive, Search, WifiOff, Wifi, RefreshCw, Share2, Paperclip,
   FolderOpen, Image, File, FolderPlus, MoreVertical, Edit2, Copy, Briefcase,
@@ -204,12 +204,479 @@ async function airRequestStream({ message, userId, channel, conversationId, conv
 // ⬡B:aba_skins:COMPONENT:app_launcher:20260323⬡
 // CIP App Launcher — renders app grid from GET /api/apps
 // Zero hardcoded apps. Backend is source of truth.
-// ⬡B:ccwa.fix:COMP:drag_reorder_launcher:20260324⬡
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 6+7: ALL CIP APP VIEWS (Tasks, Notes, Calendar, Contacts, Journal,
+//   GUIDE, NURA, GMG-U) — added in one clean push
+// ═══════════════════════════════════════════════════════════════════════════
+
+
+// ⬡B:phase4b:mobile_editor:20260323⬡ Mobile Google Docs-style editor for cover letters/resumes
+function MobileDocEditor({ content: initialContent, docId, docType, onClose, onSave }) {
+  const [text, setText] = useState(initialContent || "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  
+  const save = async () => {
+    setSaving(true);
+    try {
+      const endpoint = docType === "resume" 
+        ? ABABASE + "/api/awa/resumes/" + docId
+        : ABABASE + "/api/awa/cover-letters/" + docId;
+      await fetch(endpoint, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: text, status: "edited" })
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      if (onSave) onSave(text);
+    } catch (e) { console.error("[Editor] Save failed:", e); }
+    setSaving(false);
+  };
+
+  const copy = () => { navigator.clipboard.writeText(text); };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:300,background:"rgba(5,3,15,.98)",display:"flex",flexDirection:"column"}}>
+      {/* Toolbar */}
+      <div style={{display:"flex",alignItems:"center",gap:8,padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,.08)",background:"rgba(10,8,20,.95)"}}>
+        <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",padding:4}}>
+          <ChevronLeft size={20} />
+        </button>
+        <span style={{flex:1,fontSize:13,fontWeight:600,color:"rgba(255,255,255,.7)"}}>{docType === "resume" ? "Edit Resume" : "Edit Cover Letter"}</span>
+        <button onClick={copy} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.5)",fontSize:11,cursor:"pointer"}}>Copy</button>
+        <button onClick={save} disabled={saving} style={{padding:"6px 14px",borderRadius:8,border:"none",background:saved?"rgba(34,197,94,.2)":"rgba(139,92,246,.25)",color:saved?"#22c55e":"#a78bfa",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+          {saving ? "Saving..." : saved ? "Saved" : "Save"}
+        </button>
+      </div>
+      {/* Editor area */}
+      <textarea
+        value={text}
+        onChange={e => setText(e.target.value)}
+        style={{
+          flex:1, padding:"20px 18px", background:"transparent", border:"none", outline:"none",
+          color:"rgba(255,255,255,.9)", fontSize:14, lineHeight:1.8, resize:"none",
+          fontFamily:"Georgia, 'Times New Roman', serif",
+          WebkitOverflowScrolling:"touch"
+        }}
+        autoFocus
+      />
+      {/* Word count */}
+      <div style={{padding:"8px 18px",borderTop:"1px solid rgba(255,255,255,.06)",display:"flex",justifyContent:"space-between"}}>
+        <span style={{fontSize:10,color:"rgba(255,255,255,.2)"}}>{text.split(/\s+/).filter(Boolean).length} words</span>
+        <span style={{fontSize:10,color:"rgba(255,255,255,.2)"}}>{text.length} characters</span>
+      </div>
+    </div>
+  );
+}
+
+function GMGUniversityView() {
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    <iframe src="https://gmg-university-v7.vercel.app" style={{flex:1,border:"none",width:"100%",height:"100%"}} allow="microphone; camera; autoplay" title="GMG University" />
+  </div>);
+}
+
+function TasksView({ userId }) {
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newTask, setNewTask] = useState("");
+  const [sending, setSending] = useState(false);
+  const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw";
+  const load = async () => {
+    try { const r = await fetch("https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory?memory_type=eq.scheduled_task&order=created_at.desc&limit=30", { headers: { apikey: ANON } }); if (r.ok) setTasks(await r.json()); } catch {}
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+  const add = async () => {
+    if (!newTask.trim()) return; setSending(true);
+    await fetch(ABABASE + "/api/air/process", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Create task: " + newTask, user_id: userId, channel: "cip" }) });
+    setNewTask(""); setSending(false); load();
+  };
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",padding:16}}>
+    <div style={{flex:1,overflowY:"auto"}}>{loading ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading...</p>
+    : tasks.length === 0 ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>No tasks yet</p>
+    : tasks.map((t,i) => <div key={t.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
+        <p style={{fontSize:13,color:"rgba(255,255,255,.8)"}}>{(typeof t.content==="string"?t.content:JSON.stringify(t.content)).substring(0,200)}</p>
+        <span style={{fontSize:10,color:"rgba(255,255,255,.2)"}}>{t.created_at?new Date(t.created_at).toLocaleDateString():""}</span></div>)}</div>
+    <div style={{display:"flex",gap:8,paddingTop:12}}>
+      <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} placeholder="Add a task..." style={{flex:1,padding:"10px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none"}} />
+      <button onClick={add} disabled={sending||!newTask.trim()} style={{padding:"10px 16px",borderRadius:12,border:"none",background:"rgba(139,92,246,.3)",color:"#a78bfa",cursor:"pointer"}}>{sending?"...":"+"}</button>
+    </div>
+  </div>);
+}
+
+function NotesView({ userId }) {
+  const [notes, setNotes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newNote, setNewNote] = useState("");
+  const [sending, setSending] = useState(false);
+  const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw";
+  const load = async () => {
+    try { const r = await fetch("https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory?memory_type=eq.note&order=created_at.desc&limit=30", { headers: { apikey: ANON } }); if (r.ok) setNotes(await r.json()); } catch {}
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+  const save = async () => {
+    if (!newNote.trim()) return; setSending(true);
+    await fetch(ABABASE + "/api/air/process", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Save this note: " + newNote, user_id: userId, channel: "cip" }) });
+    setNewNote(""); setSending(false); load();
+  };
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",padding:16}}>
+    <div style={{flex:1,overflowY:"auto"}}>{loading ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading...</p>
+    : notes.length === 0 ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>No notes yet</p>
+    : notes.map((n,i) => <div key={n.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
+        <p style={{fontSize:13,color:"rgba(255,255,255,.8)",whiteSpace:"pre-wrap"}}>{(typeof n.content==="string"?n.content:JSON.stringify(n.content)).substring(0,300)}</p>
+        <span style={{fontSize:10,color:"rgba(255,255,255,.2)"}}>{n.created_at?new Date(n.created_at).toLocaleDateString():""}</span></div>)}</div>
+    <div style={{display:"flex",gap:8,paddingTop:12}}>
+      <textarea value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder="Write a note..." rows={2} style={{flex:1,padding:"10px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none",resize:"none"}} />
+      <button onClick={save} disabled={sending||!newNote.trim()} style={{padding:"10px 16px",borderRadius:12,border:"none",background:"rgba(139,92,246,.3)",color:"#a78bfa",cursor:"pointer",alignSelf:"flex-end"}}>{sending?"...":"Save"}</button>
+    </div>
+  </div>);
+}
+
+function CalendarView({ userId }) {
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    (async () => { try { const r = await fetch(ABABASE + "/api/calendar/upcoming?userId=" + encodeURIComponent(userId)); if (r.ok) { const d = await r.json(); setEvents(d.events||d||[]); } } catch {} setLoading(false); })();
+  }, [userId]);
+  return (<div style={{flex:1,overflowY:"auto",padding:16}}>
+    {loading ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading calendar...</p>
+    : events.length === 0 ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>No upcoming events</p>
+    : events.map((e,i) => <div key={e.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
+        <p style={{fontSize:14,fontWeight:600,color:"rgba(255,255,255,.85)"}}>{e.title||e.subject||"Untitled"}</p>
+        {(e.start||e.when)&&<p style={{fontSize:11,color:"rgba(139,92,246,.6)",marginTop:4}}>{new Date(e.start||e.when?.start_time||"").toLocaleString()}</p>}
+        {e.location&&<p style={{fontSize:11,color:"rgba(255,255,255,.3)",marginTop:2}}>{e.location}</p>}
+      </div>)}
+  </div>);
+}
+
+function CRMView({ userId }) {
+  const [contacts, setContacts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw";
+  useEffect(() => {
+    (async () => { try { const r = await fetch("https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_contacts?select=*&order=name.asc&limit=100", { headers: { apikey: ANON } }); if (r.ok) setContacts(await r.json()); } catch {} setLoading(false); })();
+  }, []);
+  const f = contacts.filter(c => !search || (c.name||"").toLowerCase().includes(search.toLowerCase()) || (c.email||"").toLowerCase().includes(search.toLowerCase()));
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",padding:16}}>
+    <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search contacts..." style={{padding:"10px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none",marginBottom:12}} />
+    <div style={{flex:1,overflowY:"auto"}}>{loading ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading...</p>
+    : f.length === 0 ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>No contacts</p>
+    : f.map((c,i) => <div key={c.id||i} style={{padding:12,marginBottom:6,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",display:"flex",alignItems:"center",gap:12}}>
+        <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(139,92,246,.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:600,color:"#a78bfa"}}>{(c.name||"?")[0].toUpperCase()}</div>
+        <div><p style={{fontSize:13,fontWeight:500,color:"rgba(255,255,255,.85)"}}>{c.name}</p>
+          {c.email&&<p style={{fontSize:11,color:"rgba(255,255,255,.3)"}}>{c.email}</p>}
+          {c.phone&&<p style={{fontSize:11,color:"rgba(255,255,255,.3)"}}>{c.phone}</p>}</div>
+      </div>)}</div>
+  </div>);
+}
+
+function JournalView({ userId }) {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newEntry, setNewEntry] = useState("");
+  const [sending, setSending] = useState(false);
+  const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw";
+  const load = async () => {
+    try { const r = await fetch("https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory?memory_type=eq.journal&order=created_at.desc&limit=30", { headers: { apikey: ANON } }); if (r.ok) setEntries(await r.json()); } catch {}
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
+  const save = async () => {
+    if (!newEntry.trim()) return; setSending(true);
+    await fetch(ABABASE + "/api/air/process", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Journal entry: " + newEntry, user_id: userId, channel: "cip" }) });
+    setNewEntry(""); setSending(false); load();
+  };
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",padding:16}}>
+    <p style={{fontSize:13,color:"rgba(255,255,255,.3)",marginBottom:12}}>{today}</p>
+    <div style={{flex:1,overflowY:"auto"}}>{loading ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading...</p>
+    : entries.length === 0 ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>No journal entries yet</p>
+    : entries.map((e,i) => <div key={e.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
+        <p style={{fontSize:13,color:"rgba(255,255,255,.8)",whiteSpace:"pre-wrap",lineHeight:1.6}}>{(typeof e.content==="string"?e.content:JSON.stringify(e.content)).substring(0,400)}</p>
+        <span style={{fontSize:10,color:"rgba(255,255,255,.2)"}}>{e.created_at?new Date(e.created_at).toLocaleString():""}</span></div>)}</div>
+    <div style={{paddingTop:12}}>
+      <textarea value={newEntry} onChange={e=>setNewEntry(e.target.value)} placeholder="What is on your mind today?" rows={3} style={{width:"100%",padding:"12px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none",resize:"none",lineHeight:1.6,marginBottom:8}} />
+      <button onClick={save} disabled={sending||!newEntry.trim()} style={{width:"100%",padding:"10px",borderRadius:12,border:"none",background:"rgba(139,92,246,.3)",color:"#a78bfa",cursor:"pointer",fontSize:13,fontWeight:500}}>{sending?"Saving...":"Save Entry"}</button>
+    </div>
+  </div>);
+}
+
+function GuideView({ userId }) {
+  const [query, setQuery] = useState("");
+  const [response, setResponse] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState([]);
+  const search = async () => {
+    if (!query.trim()) return; setLoading(true);
+    setHistory(prev => [...prev, { role: "user", text: query }]); const userMsg = query; setQuery("");
+    try {
+      const res = await fetch(ABABASE + "/api/air/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: userMsg, user_id: userId, userId, channel: "cip", appScope: "guide" }) });
+      const reader = res.body.getReader(); const decoder = new TextDecoder(); let acc = "";
+      while (true) { const { done, value } = await reader.read(); if (done) break;
+        for (const line of decoder.decode(value, { stream: true }).split("\n").filter(l => l.startsWith("data: "))) {
+          try { const d = JSON.parse(line.slice(6)); if (d.type === "chunk") { acc += d.text; setResponse(acc); } else if (d.type === "done") { acc = d.fullResponse || acc; setResponse(acc); } } catch {} } }
+      setHistory(prev => [...prev, { role: "assistant", text: acc }]); setResponse(null);
+    } catch { setHistory(prev => [...prev, { role: "assistant", text: "Could not reach ABA. Try again." }]); }
+    setLoading(false);
+  };
+  return (<div style={{flex:1,display:"flex",flexDirection:"column"}}>
+    <div style={{flex:1,overflowY:"auto",padding:16}}>
+      {history.length === 0 && !response && <div style={{textAlign:"center",padding:"40px 20px"}}>
+        <MapPin size={40} style={{margin:"0 auto 12px",opacity:.3,color:"#10b981"}} />
+        <p style={{fontSize:15,color:"rgba(255,255,255,.6)",marginBottom:8}}>Where do you want to go?</p>
+        <p style={{fontSize:12,color:"rgba(255,255,255,.3)"}}>Ask ABA for directions, nearby places, or restaurant recommendations</p>
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:16}}>
+          {["Coffee near me","Directions to airport","Best restaurants nearby","Gas stations"].map(s => <button key={s} onClick={()=>{setQuery(s)}} style={{padding:"8px 14px",borderRadius:20,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.08)",color:"rgba(16,185,129,.7)",fontSize:11,cursor:"pointer"}}>{s}</button>)}
+        </div></div>}
+      {history.map((msg,i) => <div key={i} style={{marginBottom:12,display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
+        <div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:msg.role==="user"?"rgba(139,92,246,.2)":"rgba(255,255,255,.05)",border:"1px solid "+(msg.role==="user"?"rgba(139,92,246,.2)":"rgba(255,255,255,.08)")}}>
+          <p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{msg.text}</p></div></div>)}
+      {response && <div style={{marginBottom:12}}><div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:"rgba(255,255,255,.05)",border:"1px solid rgba(16,185,129,.15)"}}>
+        <p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{response}</p></div></div>}
+    </div>
+    <div style={{display:"flex",gap:8,padding:"10px 16px 16px"}}>
+      <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&search()} placeholder="Ask GUIDE about places..." style={{flex:1,padding:"12px 14px",borderRadius:14,border:"1px solid rgba(16,185,129,.15)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none"}} />
+      <button onClick={search} disabled={loading||!query.trim()} style={{padding:"12px 18px",borderRadius:14,border:"none",background:loading?"rgba(16,185,129,.15)":"rgba(16,185,129,.25)",color:"#10b981",cursor:"pointer"}}>{loading?<Loader2 size={16} className="animate-spin"/>:<Search size={16}/>}</button>
+    </div>
+  </div>);
+}
+
+function NURAView({ userId, onScan }) {
+  const [query, setQuery] = useState("");
+  const [response, setResponse] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState([]);
+  const ask = async (text) => {
+    const msg = text || query; if (!msg.trim()) return; setLoading(true);
+    setHistory(prev => [...prev, { role: "user", text: msg }]); setQuery("");
+    try {
+      const res = await fetch(ABABASE + "/api/air/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg, user_id: userId, userId, channel: "cip", appScope: "nura" }) });
+      const reader = res.body.getReader(); const decoder = new TextDecoder(); let acc = "";
+      while (true) { const { done, value } = await reader.read(); if (done) break;
+        for (const line of decoder.decode(value, { stream: true }).split("\n").filter(l => l.startsWith("data: "))) {
+          try { const d = JSON.parse(line.slice(6)); if (d.type === "chunk") { acc += d.text; setResponse(acc); } else if (d.type === "done") { acc = d.fullResponse || acc; setResponse(acc); } } catch {} } }
+      setHistory(prev => [...prev, { role: "assistant", text: acc }]); setResponse(null);
+    } catch { setHistory(prev => [...prev, { role: "assistant", text: "Could not reach ABA." }]); }
+    setLoading(false);
+  };
+  return (<div style={{flex:1,display:"flex",flexDirection:"column"}}>
+    <div style={{padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,.06)",display:"flex",gap:8,flexWrap:"wrap"}}>
+      <button onClick={onScan} style={{display:"flex",alignItems:"center",gap:6,padding:"10px 16px",borderRadius:14,border:"1px solid rgba(6,182,212,.2)",background:"rgba(6,182,212,.1)",color:"#06b6d4",fontSize:12,cursor:"pointer"}}><Camera size={16}/> Scan Barcode</button>
+      {["Is this healthy?","Low sugar alternatives","Meal plan for today"].map(s => <button key={s} onClick={()=>ask(s)} style={{padding:"8px 12px",borderRadius:12,border:"1px solid rgba(6,182,212,.12)",background:"rgba(6,182,212,.05)",color:"rgba(6,182,212,.6)",fontSize:11,cursor:"pointer"}}>{s}</button>)}
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:16}}>
+      {history.length === 0 && !response && <div style={{textAlign:"center",padding:"30px 20px"}}><p style={{fontSize:14,color:"rgba(255,255,255,.5)"}}>Scan a barcode or ask about any food</p><p style={{fontSize:11,color:"rgba(255,255,255,.25)",marginTop:6}}>NURA uses Open Food Facts and USDA databases</p></div>}
+      {history.map((msg,i) => <div key={i} style={{marginBottom:12,display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
+        <div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:msg.role==="user"?"rgba(6,182,212,.15)":"rgba(255,255,255,.05)",border:"1px solid "+(msg.role==="user"?"rgba(6,182,212,.2)":"rgba(255,255,255,.08)")}}>
+          <p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{msg.text}</p></div></div>)}
+      {response && <div style={{marginBottom:12}}><div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:"rgba(255,255,255,.05)",border:"1px solid rgba(6,182,212,.1)"}}>
+        <p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{response}</p></div></div>}
+    </div>
+    <div style={{display:"flex",gap:8,padding:"10px 16px 16px"}}>
+      <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&ask()} placeholder="Ask about food, nutrition..." style={{flex:1,padding:"12px 14px",borderRadius:14,border:"1px solid rgba(6,182,212,.15)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none"}} />
+      <button onClick={()=>ask()} disabled={loading||!query.trim()} style={{padding:"12px 18px",borderRadius:14,border:"none",background:loading?"rgba(6,182,212,.1)":"rgba(6,182,212,.2)",color:"#06b6d4",cursor:"pointer"}}>{loading?"...":"Ask"}</button>
+    </div>
+  </div>);
+}
+
+
+// ⬡B:phase5:CARA:unified_interface:20260323⬡
+// CARA (Communications And Reach Agent) — floating ABA button + mini chat
+// Appears on all app views. Sends scoped messages through AIR.
+function CARAButton({ appScope, userId, onFullChat }) {
+  const [open, setOpen] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [response, setResponse] = useState(null);
+  const [loading, setLoading] = useState(false);
+  
+  const ask = async () => {
+    if (!msg.trim()) return;
+    setLoading(true); setResponse(null);
+    try {
+      const res = await fetch(ABABASE + "/api/air/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg, user_id: userId, userId, channel: "cip", appScope })
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let acc = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value, { stream: true });
+        for (const line of text.split("\n").filter(l => l.startsWith("data: "))) {
+          try {
+            const d = JSON.parse(line.slice(6));
+            if (d.type === "chunk") { acc += d.text; setResponse(acc); }
+            else if (d.type === "done") { setResponse(d.fullResponse || acc); }
+          } catch {}
+        }
+      }
+    } catch (e) { setResponse("Could not reach ABA. Try again."); }
+    setLoading(false); setMsg("");
+  };
+  
+  if (!open) return (
+    <button onClick={() => setOpen(true)} style={{
+      position: "fixed", bottom: 90, right: 16, width: 52, height: 52, borderRadius: "50%",
+      background: "linear-gradient(135deg, rgba(139,92,246,.9), rgba(99,102,241,.9))",
+      border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+      boxShadow: "0 4px 20px rgba(139,92,246,.4)", zIndex: 100,
+      animation: "pulse 3s infinite"
+    }}>
+      <MessageSquare size={22} color="#fff" />
+    </button>
+  );
+  
+  return (
+    <div style={{
+      position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200,
+      background: "rgba(10,8,20,.97)", backdropFilter: "blur(24px)",
+      borderTop: "1px solid rgba(139,92,246,.2)", borderRadius: "20px 20px 0 0",
+      maxHeight: "60vh", display: "flex", flexDirection: "column"
+    }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(139,92,246,.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <MessageSquare size={14} color="#a78bfa" />
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,.8)" }}>Ask ABA</span>
+          {appScope && <span style={{ fontSize: 10, color: "rgba(139,92,246,.5)", padding: "2px 8px", background: "rgba(139,92,246,.1)", borderRadius: 8 }}>{appScope}</span>}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onFullChat} style={{ fontSize: 11, color: "rgba(139,92,246,.6)", background: "none", border: "none", cursor: "pointer" }}>Full Chat</button>
+          <button onClick={() => { setOpen(false); setResponse(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.3)" }}>
+            <X size={16} />
+          </button>
+        </div>
+      </div>
+      
+      {/* Response */}
+      {response && (
+        <div style={{ padding: "12px 16px", flex: 1, overflowY: "auto", maxHeight: "40vh" }}>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,.8)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{response}</p>
+        </div>
+      )}
+      
+      {/* Input */}
+      <div style={{ display: "flex", gap: 8, padding: "10px 16px 16px", borderTop: response ? "1px solid rgba(255,255,255,.06)" : "none" }}>
+        <input type="text" value={msg} onChange={e => setMsg(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && ask()}
+          placeholder="Ask ABA anything..."
+          style={{ flex: 1, padding: "10px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "#fff", fontSize: 13, outline: "none" }}
+        />
+        <button onClick={ask} disabled={loading || !msg.trim()} style={{
+          padding: "10px 16px", borderRadius: 12, border: "none", cursor: "pointer",
+          background: loading ? "rgba(139,92,246,.2)" : "rgba(139,92,246,.3)", color: "#a78bfa"
+        }}>
+          {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+
+function CCWAView({ userId }) {
+  const [query, setQuery] = useState("");
+  const [response, setResponse] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState([]);
+  const ask = async () => {
+    if (!query.trim()) return; setLoading(true);
+    setHistory(prev => [...prev, { role: "user", text: query }]); const msg = query; setQuery("");
+    try {
+      const res = await fetch(ABABASE + "/api/air/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg, user_id: userId, userId, channel: "ccwa", appScope: "ccwa" }) });
+      const reader = res.body.getReader(); const decoder = new TextDecoder(); let acc = "";
+      while (true) { const { done, value } = await reader.read(); if (done) break;
+        for (const line of decoder.decode(value, { stream: true }).split("\n").filter(l => l.startsWith("data: "))) {
+          try { const d = JSON.parse(line.slice(6)); if (d.type === "chunk") { acc += d.text; setResponse(acc); } else if (d.type === "done") { acc = d.fullResponse || acc; setResponse(acc); } } catch {} } }
+      setHistory(prev => [...prev, { role: "assistant", text: acc }]); setResponse(null);
+    } catch { setHistory(prev => [...prev, { role: "assistant", text: "Could not reach ABA." }]); }
+    setLoading(false);
+  };
+  return (<div style={{flex:1,display:"flex",flexDirection:"column"}}>
+    <div style={{flex:1,overflowY:"auto",padding:16}}>
+      {history.length === 0 && !response && <div style={{textAlign:"center",padding:"40px 20px"}}>
+        <Code size={40} style={{margin:"0 auto 12px",opacity:.3,color:"#f59e0b"}} />
+        <p style={{fontSize:15,color:"rgba(255,255,255,.6)",marginBottom:8}}>Code with ABA</p>
+        <p style={{fontSize:12,color:"rgba(255,255,255,.3)"}}>Build, debug, audit, or deploy code across the ABA ecosystem</p>
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:16}}>
+          {["Audit last deploy","Check Render status","Agent roster","Show recent errors"].map(s => <button key={s} onClick={()=>setQuery(s)} style={{padding:"8px 14px",borderRadius:20,border:"1px solid rgba(245,158,11,.2)",background:"rgba(245,158,11,.08)",color:"rgba(245,158,11,.7)",fontSize:11,cursor:"pointer"}}>{s}</button>)}
+        </div></div>}
+      {history.map((m,i) => <div key={i} style={{marginBottom:12,display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}><div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:m.role==="user"?"rgba(245,158,11,.15)":"rgba(255,255,255,.05)",border:"1px solid "+(m.role==="user"?"rgba(245,158,11,.2)":"rgba(255,255,255,.08)")}}><p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{m.text}</p></div></div>)}
+      {response && <div style={{marginBottom:12}}><div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:"rgba(255,255,255,.05)",border:"1px solid rgba(245,158,11,.15)"}}><p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{response}</p></div></div>}
+    </div>
+    <div style={{display:"flex",gap:8,padding:"10px 16px 16px"}}>
+      <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&ask()} placeholder="Code with ABA..." style={{flex:1,padding:"12px 14px",borderRadius:14,border:"1px solid rgba(245,158,11,.15)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none"}} />
+      <button onClick={ask} disabled={loading||!query.trim()} style={{padding:"12px 18px",borderRadius:14,border:"none",background:loading?"rgba(245,158,11,.1)":"rgba(245,158,11,.2)",color:"#f59e0b",cursor:"pointer"}}>{loading?<Loader2 size={16} className="animate-spin"/>:<Send size={16}/>}</button>
+    </div>
+  </div>);
+}
+
+function AOAView({ userId }) {
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    Promise.all([fetch(ABABASE+"/api/team").then(r=>r.json()),fetch(ABABASE+"/api/apps?userId="+encodeURIComponent(userId)).then(r=>r.json())])
+      .then(([t,a]) => setStats({members:t.members||[],apps:a.apps||[],trust:a.trust})).catch(()=>{}).finally(()=>setLoading(false));
+  }, [userId]);
+  return (<div style={{flex:1,overflowY:"auto",padding:16}}>
+    {loading?<p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading AOA...</p>
+    :!stats?<p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Could not load</p>
+    :<>
+      <p style={{fontSize:11,color:"rgba(255,255,255,.3)",marginBottom:8}}>TEAM ({stats.members.length} HAMs)</p>
+      {stats.members.map((m,i)=><div key={i} style={{padding:10,marginBottom:4,borderRadius:10,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div><p style={{fontSize:13,color:"rgba(255,255,255,.8)"}}>{m.name}</p><p style={{fontSize:10,color:"rgba(255,255,255,.3)"}}>{m.email}</p></div>
+        <div style={{display:"flex",gap:6}}><span style={{fontSize:10,padding:"2px 8px",borderRadius:8,background:m.has_nylas?"rgba(34,197,94,.15)":"rgba(239,68,68,.15)",color:m.has_nylas?"#22c55e":"#ef4444"}}>{m.has_nylas?"Email":"No Email"}</span></div>
+      </div>)}
+      <p style={{fontSize:11,color:"rgba(255,255,255,.3)",margin:"16px 0 8px"}}>APPS ({stats.apps.length})</p>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+        {stats.apps.map((a,i)=><div key={i} style={{padding:8,borderRadius:8,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)"}}><p style={{fontSize:12,color:"rgba(255,255,255,.7)"}}>{a.name}</p><p style={{fontSize:10,color:"rgba(255,255,255,.2)"}}>{a.id}</p></div>)}
+      </div>
+    </>}
+  </div>);
+}
+
+function ProactiveTip({ tip, onDismiss }) {
+  if (!tip) return null;
+  return (<div style={{margin:"0 16px 8px",padding:"10px 14px",borderRadius:12,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.12)",display:"flex",alignItems:"flex-start",gap:10}}>
+    <Sparkles size={14} style={{color:"#f59e0b",flexShrink:0,marginTop:2}} />
+    <p style={{flex:1,fontSize:12,color:"rgba(245,158,11,.8)",lineHeight:1.5}}>{tip}</p>
+    <button onClick={onDismiss} style={{background:"none",border:"none",color:"rgba(255,255,255,.2)",cursor:"pointer",flexShrink:0}}><X size={14}/></button>
+  </div>);
+}
+
+// ⬡B:transcript_item:closed_captions:20260323⬡ Closed captions bar
+// Brandon: "every time she talks she also does closed caption, in case you don't want the sound on"
+function ClosedCaptions({ text, visible }) {
+  if (!visible || !text) return null;
+  return (
+    <div style={{
+      position: "fixed", bottom: 70, left: 16, right: 16, zIndex: 150,
+      padding: "10px 16px", borderRadius: 12,
+      background: "rgba(0,0,0,.85)", backdropFilter: "blur(12px)",
+      border: "1px solid rgba(255,255,255,.08)",
+      pointerEvents: "none"
+    }}>
+      <p style={{ fontSize: 13, color: "rgba(255,255,255,.9)", lineHeight: 1.5, margin: 0, textAlign: "center" }}>{text}</p>
+    </div>
+  );
+}
+
 function AppLauncher({ userId, onAppSelect, currentApp }) {
   const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [dragging, setDragging] = useState(null); // index of dragged app
-  const [dragOver, setDragOver] = useState(null); // index being hovered
+  const [dragging, setDragging] = useState(null);
+  const [dragOver, setDragOver] = useState(null);
   const longPressTimer = useRef(null);
   const touchStart = useRef(null);
   
@@ -219,7 +686,6 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
         const res = await fetch(ABABASE + "/api/apps?userId=" + encodeURIComponent(userId));
         if (res.ok) {
           const data = await res.json();
-          // Load saved order from localStorage, fallback to backend order
           const saved = (() => { try { return JSON.parse(localStorage.getItem("myaba_app_order")||"null") } catch { return null } })();
           const backendApps = data.apps || [];
           if (saved && Array.isArray(saved)) {
@@ -235,7 +701,7 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
       finally { setLoading(false); }
     })();
   }, [userId]);
-  
+
   const handleTouchStart = (idx, e) => {
     touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     longPressTimer.current = setTimeout(() => { setDragging(idx); }, 500);
@@ -262,64 +728,95 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
     }
     setDragging(null); setDragOver(null);
   };
+
+  // App icon color map — each app gets a distinct accent
+  const APP_COLORS = {
+    chat: "#a78bfa", briefing: "#f59e0b", jobs: "#f97316", email: "#3b82f6",
+    memos: "#84cc16", nura: "#06b6d4", guide: "#10b981", approve: "#8b5cf6",
+    phone: "#22c55e", settings: "#6b7280", gmg_university: "#ec4899", incidents: "#ef4444"
+  };
+
+  if (loading) return (
+    <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{width:32,height:32,borderRadius:"50%",border:"2px solid rgba(139,92,246,.3)",borderTopColor:"rgba(139,92,246,.8)",animation:"spin 1s linear infinite"}}/>
+    </div>
+  );
   
-  if (loading) return null;
-  
+  const now = new Date();
+  const hour = now.getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const dateStr = now.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+
   return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: "repeat(4, 1fr)",
-      gap: 12,
-      padding: "12px 8px"
-    }}
-    onTouchMove={handleTouchMove}
-    onTouchEnd={handleTouchEnd}
-    >
-      {apps.map((app, idx) => {
-        const IconComponent = ICON_MAP[app.icon] || Sparkles;
-        const isActive = currentApp === app.id;
-        const isDragged = dragging === idx;
-        const isTarget = dragOver === idx && dragging !== null && dragging !== idx;
-        return (
-          <button
-            key={app.id}
-            data-app-idx={idx}
-            onTouchStart={(e) => handleTouchStart(idx, e)}
-            onClick={() => { if (dragging === null) onAppSelect(app); }}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 6,
-              padding: "14px 4px",
-              borderRadius: 16,
-              border: isTarget ? "2px dashed rgba(139,92,246,.6)" : isActive ? "1px solid rgba(139,92,246,.5)" : "1px solid transparent",
-              background: isDragged ? "rgba(139,92,246,.25)" : isActive ? "rgba(139,92,246,.15)" : "rgba(255,255,255,.04)",
-              cursor: "pointer",
-              transition: "all .2s",
-              opacity: isDragged ? 0.6 : 1,
-              transform: isDragged ? "scale(1.1)" : "scale(1)"
-            }}
-          >
-            <div style={{
-              width: 48, height: 48, borderRadius: 14,
-              background: isActive ? "rgba(139,92,246,.25)" : "rgba(255,255,255,.06)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: isActive ? "0 0 12px rgba(139,92,246,.2)" : "none"
-            }}>
-              <IconComponent size={22} color={isActive ? "#a78bfa" : "rgba(255,255,255,.5)"} />
-            </div>
-            <span style={{
-              fontSize: 11, fontWeight: 500, textAlign: "center",
-              color: isActive ? "#c4b5fd" : "rgba(255,255,255,.45)",
-              lineHeight: 1.2, maxWidth: 72, overflow: "hidden",
-              textOverflow: "ellipsis", whiteSpace: "nowrap"
-            }}>
-              {app.name}
-            </span>
-          </button>
-        );
-      })}
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 4px" }}>
+      {/* Time + greeting header */}
+      <div style={{ textAlign: "center", padding: "24px 0 20px", userSelect: "none" }}>
+        <div style={{ fontSize: 44, fontWeight: 200, color: "rgba(255,255,255,.85)", letterSpacing: -1, lineHeight: 1 }}>{timeStr}</div>
+        <div style={{ fontSize: 14, color: "rgba(255,255,255,.4)", marginTop: 4 }}>{dateStr}</div>
+      </div>
+
+      {/* App grid */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(4, 1fr)",
+        gap: 16,
+        padding: "8px 12px",
+        flex: 1,
+        alignContent: "start"
+      }}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      >
+        {apps.map((app, idx) => {
+          const IconComponent = ICON_MAP[app.icon] || Sparkles;
+          const accent = APP_COLORS[app.id] || "#a78bfa";
+          const isDragged = dragging === idx;
+          const isTarget = dragOver === idx && dragging !== null && dragging !== idx;
+          return (
+            <button
+              key={app.id}
+              data-app-idx={idx}
+              onTouchStart={(e) => handleTouchStart(idx, e)}
+              onClick={() => { if (dragging === null) onAppSelect(app); }}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 8,
+                padding: "12px 4px",
+                borderRadius: 20,
+                border: isTarget ? "2px dashed rgba(139,92,246,.6)" : "none",
+                background: isDragged ? "rgba(139,92,246,.15)" : "transparent",
+                cursor: "pointer",
+                WebkitTapHighlightColor: "transparent",
+                opacity: isDragged ? 0.6 : 1,
+                transform: isDragged ? "scale(1.08)" : "scale(1)",
+                transition: "all .15s"
+              }}
+            >
+              <div style={{
+                width: 58, height: 58, borderRadius: 16,
+                background: `linear-gradient(135deg, ${accent}22, ${accent}11)`,
+                border: `1px solid ${accent}33`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "transform .15s",
+                backdropFilter: "blur(8px)"
+              }}>
+                <IconComponent size={26} color={accent} strokeWidth={1.8} />
+              </div>
+              <span style={{
+                fontSize: 11, fontWeight: 500, textAlign: "center",
+                color: "rgba(255,255,255,.6)",
+                lineHeight: 1.2, maxWidth: 76, overflow: "hidden",
+                textOverflow: "ellipsis", whiteSpace: "nowrap"
+              }}>
+                {app.name}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -411,101 +908,6 @@ function BarcodeScanner({ onScan, onClose }) {
       <p style={{color:"rgba(255,255,255,.3)",fontSize:11,marginTop:24,fontFamily:"system-ui"}}>
         Powered by NURA (Nutritional Understanding and Research Agent)
       </p>
-    </div>
-  );
-}
-
-// ⬡B:ccwa.fix:COMP:mobile_doc_editor:20260324⬡
-// MobileDocEditor — mobile-friendly rich text editor for cover letters/resumes
-// Inspired by Google Docs mobile. Toolbar at top, editable area below.
-function MobileDocEditor({ content, onSave, onClose, title }) {
-  const [text, setText] = useState(content || "");
-  const [saved, setSaved] = useState(false);
-  const editorRef = useRef(null);
-  
-  const handleSave = () => {
-    if (onSave) onSave(text);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-  
-  const handleCopy = () => {
-    navigator.clipboard.writeText(text).catch(() => {});
-  };
-  
-  const handleExport = async (format) => {
-    try {
-      const res = await fetch(`${ABABASE}/api/awa/export/${format}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: text, title: title || "Document" })
-      });
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${(title || "document").replace(/\s+/g, "_")}.${format}`;
-        a.click();
-        URL.revokeObjectURL(url);
-      }
-    } catch (e) { console.error("[EDITOR] Export failed:", e); }
-  };
-  
-  return (
-    <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(8,8,13,.98)",display:"flex",flexDirection:"column"}}>
-      {/* Toolbar */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,.08)",flexShrink:0}}>
-        <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",padding:8,display:"flex",alignItems:"center",gap:4,fontSize:13}}>
-          <ChevronRight size={16} style={{transform:"rotate(180deg)"}}/>Back
-        </button>
-        <span style={{color:"rgba(255,255,255,.8)",fontSize:14,fontWeight:600}}>{title || "Editor"}</span>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={handleCopy} style={{background:"rgba(255,255,255,.06)",border:"none",borderRadius:8,color:"rgba(255,255,255,.5)",cursor:"pointer",padding:"6px 10px",fontSize:11,display:"flex",alignItems:"center",gap:4}}>
-            <Copy size={12}/>Copy
-          </button>
-          <button onClick={handleSave} style={{background:saved?"rgba(16,185,129,.2)":"rgba(139,92,246,.2)",border:"none",borderRadius:8,color:saved?"#10B981":"rgba(139,92,246,.9)",cursor:"pointer",padding:"6px 12px",fontSize:11,fontWeight:600}}>
-            {saved?"Saved":"Save"}
-          </button>
-        </div>
-      </div>
-      {/* Export bar */}
-      <div style={{display:"flex",gap:8,padding:"8px 16px",borderBottom:"1px solid rgba(255,255,255,.05)",flexShrink:0}}>
-        <button onClick={()=>handleExport("pdf")} style={{background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.15)",borderRadius:6,color:"rgba(239,68,68,.7)",cursor:"pointer",padding:"4px 10px",fontSize:10}}>PDF</button>
-        <button onClick={()=>handleExport("docx")} style={{background:"rgba(59,130,246,.1)",border:"1px solid rgba(59,130,246,.15)",borderRadius:6,color:"rgba(59,130,246,.7)",cursor:"pointer",padding:"4px 10px",fontSize:10}}>DOCX</button>
-      </div>
-      {/* Editor area */}
-      <div style={{flex:1,overflow:"auto",padding:16}}>
-        <textarea
-          ref={editorRef}
-          value={text}
-          onChange={e => setText(e.target.value)}
-          style={{
-            width:"100%",minHeight:"100%",background:"transparent",border:"none",
-            color:"rgba(255,255,255,.85)",fontSize:14,lineHeight:1.8,
-            fontFamily:"'Georgia',serif",outline:"none",resize:"none",
-            caretColor:"#8B5CF6"
-          }}
-          autoFocus
-        />
-      </div>
-    </div>
-  );
-}
-
-// ⬡B:ccwa.fix:COMP:closed_captions:20260324⬡
-// ClosedCaptions — displays subtitle text from voice responses
-function ClosedCaptions({ text }) {
-  if (!text) return null;
-  return (
-    <div style={{
-      position:"fixed",bottom:"calc(80px + env(safe-area-inset-bottom,0px))",left:"50%",transform:"translateX(-50%)",
-      maxWidth:360,width:"90%",padding:"10px 16px",borderRadius:12,
-      background:"rgba(0,0,0,.85)",backdropFilter:"blur(8px)",
-      border:"1px solid rgba(255,255,255,.1)",zIndex:150,
-      pointerEvents:"none"
-    }}>
-      <p style={{color:"rgba(255,255,255,.9)",fontSize:13,margin:0,textAlign:"center",lineHeight:1.5}}>{text}</p>
     </div>
   );
 }
@@ -2977,7 +3379,7 @@ function JobsView({userId}){
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
             <span style={{color:"rgba(255,255,255,.5)",fontSize:11}}>Generated Output</span>
             <div style={{display:"flex",gap:6}}>
-              <button onClick={()=>{setEditorContent(output);setEditorOpen(true)}} style={{background:"rgba(139,92,246,.15)",border:"1px solid rgba(139,92,246,.2)",borderRadius:6,cursor:"pointer",padding:"3px 8px",display:"flex",alignItems:"center",gap:4,color:"rgba(139,92,246,.8)",fontSize:10,fontWeight:500}}><Edit2 size={10}/>Edit</button>
+              <button onClick={()=>{setEditorDoc({content:output,type:generating==="cover"?"Cover Letter":"Resume"});}} style={{background:"rgba(139,92,246,.15)",border:"1px solid rgba(139,92,246,.2)",borderRadius:6,cursor:"pointer",padding:"3px 8px",display:"flex",alignItems:"center",gap:4,color:"rgba(139,92,246,.8)",fontSize:10,fontWeight:500}}><Edit2 size={10}/>Edit</button>
               <button onClick={()=>navigator.clipboard.writeText(output)} style={{background:"none",border:"none",cursor:"pointer",padding:2}}><Copy size={14} style={{color:"rgba(139,92,246,.6)"}}/></button>
             </div>
           </div>
@@ -3646,7 +4048,7 @@ export default function MyABA(){
   const[settingsLoaded,setSettingsLoaded]=useState(false);
   
   const[settingsOpen,setSettingsOpen]=useState(false);const[sidebarOpen,setSidebarOpen]=useState(false);
-  const[mainTab,setMainTab]=useState("chat"); // ⬡B:aba_skins:STATE:chat_default_safe:20260323⬡ (apps grid via grid button)
+  const[mainTab,setMainTab]=useState("home"); // ⬡B:phase3:CIP_LAUNCHER:home_default:20260323⬡
   const[appScope,setAppScope]=useState(null); // Current app agent scope for AIR calls
   const[briefingData,setBriefingData]=useState(null);
   const[briefingLoading,setBriefingLoading]=useState(false);
@@ -3663,12 +4065,25 @@ export default function MyABA(){
   const[proactiveItems,setProactiveItems]=useState([]);
   const[toast,setToast]=useState(null);
   const[online,setOnline]=useState(navigator.onLine);
+  // ⬡B:transcript_item:cc_listener:20260323⬡ Closed caption event listener
+  useEffect(()=>{
+    const handler=(e)=>{setCaptionText(e.detail?.text||"");setCaptionVisible(true);setTimeout(()=>setCaptionVisible(false),8000);};
+    window.addEventListener("vara-caption",handler);
+    return()=>window.removeEventListener("vara-caption",handler);
+  },[]);
   // v2.15.0: Admin mode for HAM users
   const[adminPanelOpen,setAdminPanelOpen]=useState(false);
   const[commandCenterOpen,setCommandCenterOpen]=useState(false);
   const[lastABAResponse,setLastABAResponse]=useState(null);
   // ⬡B:snap.quick_question:STATE:20260317⬡
   const[snapOpen,setSnapOpen]=useState(false);
+  const[proactiveTip,setProactiveTip]=useState(null);
+  useEffect(()=>{
+    fetch("https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory?tags=cs.%7Bhunch%7D&tags=cs.%7Bunread%7D&order=created_at.desc&limit=1",{headers:{apikey:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw"}})
+      .then(r=>r.json()).then(d=>{if(d&&d[0]){try{const c=JSON.parse(d[0].content);setProactiveTip(c.hint||c.message||null)}catch{}}}).catch(()=>{});
+  },[]);
+  const[captionText,setCaptionText]=useState("");const[captionVisible,setCaptionVisible]=useState(false);
+  const[editorDoc,setEditorDoc]=useState(null); // {content, type} for MobileDocEditor from Jobs
   const[snapMessages,setSnapMessages]=useState([]);
   const[snapInput,setSnapInput]=useState("");
   const[snapLoading,setSnapLoading]=useState(false);
@@ -3676,10 +4091,6 @@ export default function MyABA(){
   // ⬡B:clipboard.history:STATE:20260320⬡
   const[clipboardOpen,setClipboardOpen]=useState(false);
   const[clipboardItems,setClipboardItems]=useState(()=>{try{return JSON.parse(localStorage.getItem("myaba_clipboard")||"[]")}catch{return[]}});
-  // ⬡B:ccwa.fix:STATE:captions_and_editor:20260324⬡
-  const[captionText,setCaptionText]=useState("");
-  const[editorOpen,setEditorOpen]=useState(false);
-  const[editorContent,setEditorContent]=useState("");
   // v2.16.0: Projects now load from backend
   const[projectsLoading,setProjectsLoading]=useState(false);
   const scrollRef=useRef(null);const recorderRef=useRef(null);const liveRef=useRef(false);
@@ -3826,9 +4237,7 @@ export default function MyABA(){
 
   // v2.16.0: Create conversation via backend
   const createConv=useCallback(async(shared=false,projectId=null)=>{
-    // ⬡B:fix:null_userid_conversations:20260323⬡ Wait for auth before creating conversations
-    const userId=user?.email||user?.uid||null;
-    if(!userId){console.warn("[CHAT] Cannot create conversation — user not loaded yet");return null;}
+    const userId=user?.email||user?.uid||"unknown";
     const result=await airCreateConversation(userId,"New Chat",projectId,shared);
     if(result.success&&result.conversation){
       const conv={
@@ -3860,8 +4269,7 @@ export default function MyABA(){
     setConvos(p=>p.map(c=>c.id===activeId?{...c,messages:[...c.messages,msg],updatedAt:Date.now()}:c));
     // ⬡B:FIX:chat_persistence:always_save:20260321⬡
     // Always sync to backend. If conv- prefix (local fallback), create it on backend first then save.
-    const msgUserId=user?.email||user?.uid||null;
-    if(activeId&&msgUserId){
+    if(activeId){
       let backendId=activeId;
       if(String(activeId).startsWith('conv-')){
         // Retry creating on backend
@@ -4078,7 +4486,6 @@ export default function MyABA(){
   const startListeningRef=useRef(null);
 
   const sendMessage=useCallback(async(text,isVoice=false)=>{
-    if(!user?.email&&!user?.uid){showToast("Please wait for login to complete","warning");return;}
     if(!text.trim()&&attachments.length===0)return;
     
     // Upload files FIRST if any
@@ -4202,16 +4609,17 @@ export default function MyABA(){
 
   // SPURT 6: Speak any text (for replay button)
   const speakText=useCallback(async(text)=>{
+    // ⬡B:transcript_item:speak_caption:20260323⬡ Show closed caption when ABA speaks
+    window.dispatchEvent(new CustomEvent("vara-caption",{detail:{text:text.substring(0,200),source:"ABA"}}));
     if(!text)return;
     setAbaState("speaking");
-    setCaptionText(text); // ⬡B:ccwa.fix:captions_on_speak:20260324⬡
     const url=await reachSynthesize(text);
     if(url){
       const audio=new Audio(url);
-      audio.onended=()=>{setAbaState("idle");setCaptionText("")};
-      audio.play().catch(()=>{setAbaState("idle");setCaptionText("")});
+      audio.onended=()=>setAbaState("idle");
+      audio.play().catch(()=>setAbaState("idle"));
     }else{
-      setAbaState("idle");setCaptionText("");
+      setAbaState("idle");
     }
   },[]);
 
@@ -4347,8 +4755,12 @@ export default function MyABA(){
       {/* F5/F6: Main Tab Switcher - Chat | Briefing | Approve */}
       {/* ⬡B:aba_skins:NAV:home_button_plus_tabs:20260323⬡ */}
       {mainTab!=="apps"?<div style={{display:"flex",alignItems:"center",gap:4,padding:"4px 0"}}>
-        <button onClick={()=>{setMainTab("apps");setAppScope(null)}} style={{width:40,height:40,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(139,92,246,.12)",color:"rgba(139,92,246,.7)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title="All Apps"><GripVertical size={16}/></button>
-        <div style={{flex:1,overflow:"hidden"}}><MainTabSwitcher tab={mainTab} setTab={async(t)=>{
+        <div style={{display:"flex",alignItems:"center",gap:8,width:"100%"}}>
+          {mainTab!=="home"&&<button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(139,92,246,.12)",color:"rgba(139,92,246,.7)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title="Home"><Home size={16}/></button>}
+          {mainTab!=="home"&&<span style={{fontSize:14,fontWeight:600,color:"rgba(255,255,255,.7)"}}>{mainTab==="chat"?"ABA":mainTab==="briefing"?"DAWN":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"CeeCee":mainTab==="nura"?"NURA":mainTab==="phone"?"ABA Dials":mainTab==="settings"?"Settings":mainTab==="gmg_university"?"GMG-U":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"GUIDE":mainTab==="ccwa"?"CCWA":mainTab==="aoa"?"AOA":mainTab}</span>}
+        </div>
+        {/* Legacy tab switcher hidden — launcher is the new nav */}
+        <div style={{display:"none"}}><MainTabSwitcher tab={mainTab} setTab={async(t)=>{
           setMainTab(t);
           if(t==="briefing"&&!briefingData&&!briefingLoading){
             setBriefingLoading(true);
@@ -4360,7 +4772,7 @@ export default function MyABA(){
       </div>:null}
       
       {/* ⬡B:aba_skins:RENDER:app_launcher_view:20260323⬡ */}
-      {mainTab==="apps"&&<div style={{flex:1,overflowY:"auto",padding:"8px 4px"}}>
+      {(mainTab==="home"||mainTab==="apps")&&<div style={{flex:1,overflowY:"auto",padding:"16px 8px",display:"flex",flexDirection:"column"}}>
         <AppLauncher 
           userId={user?.email||user?.uid||"unknown"} 
           currentApp={null}
@@ -4369,14 +4781,23 @@ export default function MyABA(){
             if(app.id==="chat"){setMainTab("chat")}
             else if(app.id==="briefing"){setMainTab("briefing");if(!briefingData&&!briefingLoading){setBriefingLoading(true);fetchBriefing(user?.email||user?.uid||"unknown").then(d=>{setBriefingData(d);setBriefingLoading(false)})}}
             else if(app.id==="jobs"){setMainTab("jobs")}
+            else if(app.id==="pipeline"){setMainTab("pipeline")}
             else if(app.id==="email"){setMainTab("email")}
             else if(app.id==="memos"){setMainTab("memos")}
             else if(app.id==="approve"){setMainTab("approve")}
             else if(app.id==="settings"){setSettingsOpen(true)}
-            else if(app.id==="gmg_university"){window.open("https://gmg-university-v7.vercel.app","_blank")}
+            else if(app.id==="ccwa"){setMainTab("ccwa")}
+            else if(app.id==="aoa"){setMainTab("aoa")}
+            else if(app.id==="gmg_university"){setMainTab("gmg_university")}
             else if(app.id==="phone"){setMainTab("chat");setVoiceMode("talk")}
-            else if(app.id==="nura"){setMainTab("nura");setScannerOpen(true)}
+            else if(app.id==="nura"){setMainTab("nura")}
             else if(app.id==="incidents"){setMainTab("chat");setInput("I want to report a bug: ")}
+            else if(app.id==="tasks"){setMainTab("tasks")}
+            else if(app.id==="notes"){setMainTab("notes")}
+            else if(app.id==="calendar"){setMainTab("calendar")}
+            else if(app.id==="crm"){setMainTab("crm")}
+            else if(app.id==="journal"){setMainTab("journal")}
+            else if(app.id==="guide"){setMainTab("guide")}
             else{setMainTab(app.id)}
           }}
         />
@@ -4453,6 +4874,17 @@ export default function MyABA(){
       
       {/* Approve Mode */}
       {mainTab==="approve"&&<ApproveView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="gmg_university"&&<GMGUniversityView/>}
+      {mainTab==="tasks"&&<TasksView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="notes"&&<NotesView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="calendar"&&<CalendarView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="crm"&&<CRMView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="journal"&&<JournalView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="guide"&&<GuideView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="ccwa"&&<CCWAView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="aoa"&&<AOAView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="nura"&&<NURAView userId={user?.email||user?.uid||"unknown"} onScan={()=>setScannerOpen(true)}/>}
+
       
       {/* ⬡B:aba_skins:RENDER:app_scoped_chat:20260323⬡ */}
       {/* Catch-all: apps from launcher that aren't native tabs get scoped chat */}
@@ -4477,14 +4909,13 @@ export default function MyABA(){
         </div>
       </>}
     </div>
-    {/* ⬡B:ccwa.fix:RENDER:captions_and_editor:20260324⬡ */}
-    {voiceOut&&<ClosedCaptions text={captionText}/>}
-    {editorOpen&&<MobileDocEditor content={editorContent} title="Cover Letter" onSave={(t)=>{setEditorContent(t);setOutput&&setOutput(t)}} onClose={()=>setEditorOpen(false)}/>}
     <Sidebar open={sidebarOpen} convos={convos} activeId={activeId} onSelect={setActiveId} onCreate={()=>setNewChatModal(true)} onClose={()=>setSidebarOpen(false)} onDelete={deleteConv} onArchive={archiveConv} onShare={c=>setShareModal(c)} projects={projects} activeProject={activeProject} onSelectProject={setActiveProject} onCreateProject={()=>setNewChatModal(true)} onProjectDetail={p=>setProjectDetailModal(p)} user={user}/>
     <ShareModal open={!!shareModal} conversation={shareModal} onClose={()=>setShareModal(null)} onShare={shareConversation}/>
     <NewChatModal open={newChatModal} onClose={()=>setNewChatModal(false)} onCreate={(shared,projectId,projectName)=>{if(projectName){const pId=createProject(projectName);createConv(shared,pId)}else{createConv(shared,projectId)}}} projects={projects} onCreateProject={createProject}/>
     <ProjectDetailModal open={!!projectDetailModal} project={projectDetailModal} onClose={()=>setProjectDetailModal(null)} onRename={renameProject} onDelete={deleteProject} onAddFile={addFileToProject} onRemoveFile={removeFileFromProject}/>
     <Queue open={queueOpen} onToggle={()=>setQueueOpen(!queueOpen)} items={proactiveItems}/>
+    <ClosedCaptions text={captionText} visible={captionVisible} />
+    {editorDoc&&<MobileDocEditor content={editorDoc.content} docType={editorDoc.type} onClose={()=>setEditorDoc(null)} onSave={(text)=>{setOutput&&setOutput(text);setEditorDoc(null)}}/>}
     <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} voiceOut={voiceOut} setVoiceOut={setVoiceOut} user={user} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
     {/* ⬡B:snap.quick_question:FAB_AND_PANEL:20260317⬡ */}
     {/* ⬡B:clipboard.history:FAB:20260320⬡ Clipboard History Button */}
@@ -4536,7 +4967,8 @@ export default function MyABA(){
     </div>}
     
     {/* SNAP Quick Question - Floating Action Button */}
-    {!snapOpen&&mainTab==="chat"&&<button onClick={()=>{setSnapOpen(true);setSnapMigrate(false)}} style={{
+    {mainTab!=="home"&&mainTab!=="chat"&&<CARAButton appScope={appScope} userId={user?.email||user?.uid||"unknown"} onFullChat={()=>{setMainTab("chat")}} />}
+      {!snapOpen&&mainTab==="chat"&&<button onClick={()=>{setSnapOpen(true);setSnapMigrate(false)}} style={{
       position:"fixed",bottom:"calc(24px + env(safe-area-inset-bottom, 0px))",right:24,width:56,height:56,borderRadius:99,
       background:"linear-gradient(135deg,#8B5CF6,#6366F1)",border:"none",cursor:"pointer",
       display:"flex",alignItems:"center",justifyContent:"center",
