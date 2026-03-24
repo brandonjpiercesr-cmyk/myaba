@@ -5690,5 +5690,4 @@ export default function MyABA(){
     {/* v2.15.0: Admin Panel for HAM users */}
     {isHAM(user?.email)&&<AdminPanel open={adminPanelOpen} onClose={()=>setAdminPanelOpen(false)} lastResponse={lastABAResponse}/>}
     {toast&&<Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)}/>}
-    </div>{/* close content wrapper */}
   </div>)}
