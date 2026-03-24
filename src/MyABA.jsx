@@ -896,18 +896,17 @@ function MeetingModeView({ userId }) {
       let mimeType = "";
       for (const mt of mimeTypes) { if (!mt || MediaRecorder.isTypeSupported(mt)) { mimeType = mt; break; } }
       const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      const chunks = [];
-      rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-      rec.onstop = async () => {
-        const blob = new Blob(chunks, { type: mimeType || "audio/webm" });
-        const text = await reachTranscribe(blob);
-        if (text) {
-          const entry = { text, time: fmt(seconds), ts: Date.now() };
-          setTranscript(prev => [...prev, entry]);
-          processTranscript(text);
+      rec.ondataavailable = async (e) => {
+        if (e.data.size > 0) {
+          const blob = new Blob([e.data], { type: mimeType || "audio/webm" });
+          const text = await reachTranscribe(blob);
+          if (text && text.trim()) {
+            setTranscript(prev => [...prev, { text, time: fmt(seconds), ts: Date.now() }]);
+            processTranscript(text);
+          }
         }
       };
-      rec.start();
+      rec.start(5000); // 5s continuous chunks — each chunk transcribes immediately
       recRef.current = rec;
       setRecording(true);
       if (!running) setRunning(true);
@@ -1183,24 +1182,24 @@ function InterviewModeView({ userId }) {
       let mimeType = "";
       for (const mt of mimeTypes) { if (!mt || MediaRecorder.isTypeSupported(mt)) { mimeType = mt; break; } }
       const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      const chunks = [];
-      rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-      rec.onstop = async () => {
-        const blob = new Blob(chunks, { type: mimeType || "audio/webm" });
-        const text = await reachTranscribe(blob);
-        if (text) {
-          setTranscript(prev => [...prev, { text, time: fmt(seconds) }]);
-          if (mode === "mock") { setMockAnswer(prev => prev ? prev + " " + text : text); }
-          else {
-            const res = await fetch(`${ABABASE}/api/air/process`, {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ message: `During a live interview, I just said: "${text}". Brief coaching tip (1 sentence) on how that sounded.`, user_id: userId, userId, channel: "cip", appScope: "interview" })
-            });
-            if (res.ok) { const d = await res.json(); setCoaching(prev => [...prev, { tip: d.response || "", time: fmt(seconds) }]); }
+      rec.ondataavailable = async (e) => {
+        if (e.data.size > 0) {
+          const blob = new Blob([e.data], { type: mimeType || "audio/webm" });
+          const text = await reachTranscribe(blob);
+          if (text && text.trim()) {
+            setTranscript(prev => [...prev, { text, time: fmt(seconds) }]);
+            if (mode === "mock") { setMockAnswer(prev => prev ? prev + " " + text : text); }
+            else {
+              const res = await fetch(`${ABABASE}/api/air/process`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: `During a live interview, I just said: "${text}". Brief coaching tip (1 sentence) on how that sounded.`, user_id: userId, userId, channel: "cip", appScope: "interview" })
+              });
+              if (res.ok) { const d = await res.json(); setCoaching(prev => [...prev, { tip: d.response || "", time: fmt(seconds) }]); }
+            }
           }
         }
       };
-      rec.start(); recRef.current = rec; setRecording(true);
+      rec.start(5000); recRef.current = rec; setRecording(true); // 5s continuous chunks
       if (!running) setRunning(true);
     } catch (e) { console.error("[INTERVIEW] Mic error:", e); }
   };
