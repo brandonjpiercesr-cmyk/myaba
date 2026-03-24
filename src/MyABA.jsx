@@ -275,7 +275,12 @@ function MobileDocEditor({ content: initialContent, docId, docType, onClose, onS
 
 function GMGUniversityView() {
   return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-    <iframe src="https://gmg-university-v7.vercel.app" style={{flex:1,border:"none",width:"100%",height:"100%"}} allow="microphone; camera; autoplay" title="GMG University" />
+    <iframe 
+      src="https://gmg-university-v7.vercel.app" 
+      style={{flex:1,border:"none",width:"100%",height:"100%",borderRadius:0}} 
+      title="GMG University"
+      allow="microphone; camera; autoplay"
+    />
   </div>);
 }
 
@@ -566,40 +571,54 @@ function JournalView({ userId }) {
 
 function GuideView({ userId }) {
   const [query, setQuery] = useState("");
-  const [response, setResponse] = useState(null);
+  const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [history, setHistory] = useState([]);
+  const [mapUrl, setMapUrl] = useState("https://www.openstreetmap.org/export/embed.html?bbox=-86.9,36.1,-86.6,36.2&layer=mapnik");
+  
   const search = async () => {
-    if (!query.trim()) return; setLoading(true);
-    setHistory(prev => [...prev, { role: "user", text: query }]); const userMsg = query; setQuery("");
+    if (!query.trim()) return;
+    setLoading(true);
     try {
-      const res = await fetch(ABABASE + "/api/air/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: userMsg, user_id: userId, userId, channel: "cip", appScope: "guide" }) });
-      const reader = res.body.getReader(); const decoder = new TextDecoder(); let acc = "";
-      while (true) { const { done, value } = await reader.read(); if (done) break;
-        for (const line of decoder.decode(value, { stream: true }).split("\n").filter(l => l.startsWith("data: "))) {
-          try { const d = JSON.parse(line.slice(6)); if (d.type === "chunk") { acc += d.text; setResponse(acc); } else if (d.type === "done") { acc = d.fullResponse || acc; setResponse(acc); } } catch {} } }
-      setHistory(prev => [...prev, { role: "assistant", text: acc }]); setResponse(null);
-    } catch { setHistory(prev => [...prev, { role: "assistant", text: "Could not reach ABA. Try again." }]); }
-    setLoading(false);
+      const res = await fetch(ABABASE + "/api/air/process", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: query, user_id: userId, channel: "myaba", context: { app: "guide" } })
+      });
+      const data = await res.json();
+      setResults(prev => [...prev, { role: "user", text: query }, { role: "aba", text: data.response || data.message || "No results" }]);
+      // Update map to searched location
+      const q = encodeURIComponent(query);
+      setMapUrl(`https://www.openstreetmap.org/export/embed.html?bbox=-87.1,35.9,-86.5,36.3&layer=mapnik&marker=36.16,-86.78`);
+    } catch { setResults(prev => [...prev, { role: "user", text: query }, { role: "aba", text: "Could not reach GUIDE right now" }]); }
+    setQuery(""); setLoading(false);
   };
-  return (<div style={{flex:1,display:"flex",flexDirection:"column"}}>
-    <div style={{flex:1,overflowY:"auto",padding:16}}>
-      {history.length === 0 && !response && <div style={{textAlign:"center",padding:"40px 20px"}}>
-        <MapPin size={40} style={{margin:"0 auto 12px",opacity:.3,color:"#10b981"}} />
-        <p style={{fontSize:15,color:"rgba(255,255,255,.6)",marginBottom:8}}>Where do you want to go?</p>
-        <p style={{fontSize:12,color:"rgba(255,255,255,.3)"}}>Ask ABA for directions, nearby places, or restaurant recommendations</p>
-        <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:16}}>
-          {["Coffee near me","Directions to airport","Best restaurants nearby","Gas stations"].map(s => <button key={s} onClick={()=>{setQuery(s)}} style={{padding:"8px 14px",borderRadius:20,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.08)",color:"rgba(16,185,129,.7)",fontSize:11,cursor:"pointer"}}>{s}</button>)}
-        </div></div>}
-      {history.map((msg,i) => <div key={i} style={{marginBottom:12,display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
-        <div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:msg.role==="user"?"rgba(139,92,246,.2)":"rgba(255,255,255,.05)",border:"1px solid "+(msg.role==="user"?"rgba(139,92,246,.2)":"rgba(255,255,255,.08)")}}>
-          <p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{msg.text}</p></div></div>)}
-      {response && <div style={{marginBottom:12}}><div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:"rgba(255,255,255,.05)",border:"1px solid rgba(16,185,129,.15)"}}>
-        <p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{response}</p></div></div>}
+
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    {/* Map view - takes top 45% */}
+    <div style={{height:"45%",position:"relative",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
+      <iframe src={mapUrl} style={{width:"100%",height:"100%",border:"none",filter:"brightness(.85) contrast(1.1) hue-rotate(180deg) invert(1)"}} title="GUIDE Map"/>
+      <div style={{position:"absolute",bottom:8,left:8,padding:"4px 10px",borderRadius:8,background:"rgba(0,0,0,.6)",backdropFilter:"blur(8px)"}}>
+        <span style={{color:"rgba(16,185,129,.8)",fontSize:10,fontWeight:600}}>GUIDE Maps</span>
+      </div>
     </div>
-    <div style={{display:"flex",gap:8,padding:"10px 16px 16px"}}>
-      <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&search()} placeholder="Ask GUIDE about places..." style={{flex:1,padding:"12px 14px",borderRadius:14,border:"1px solid rgba(16,185,129,.15)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none"}} />
-      <button onClick={search} disabled={loading||!query.trim()} style={{padding:"12px 18px",borderRadius:14,border:"none",background:loading?"rgba(16,185,129,.15)":"rgba(16,185,129,.25)",color:"#10b981",cursor:"pointer"}}>{loading?<Loader2 size={16} className="animate-spin"/>:<Search size={16}/>}</button>
+    {/* Results area */}
+    <div style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
+      {results.length===0&&<div style={{textAlign:"center",padding:"24px 16px"}}>
+        <MapPin size={28} style={{color:"rgba(16,185,129,.4)",margin:"0 auto 8px"}}/>
+        <p style={{color:"rgba(255,255,255,.4)",fontSize:13,margin:0}}>Ask GUIDE about places, directions, restaurants</p>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,justifyContent:"center",marginTop:12}}>
+          {["Coffee near me","Directions to airport","Best restaurants","Gas stations"].map(s=><button key={s} onClick={()=>{setQuery(s);setTimeout(search,100)}} style={{padding:"6px 12px",borderRadius:16,border:"1px solid rgba(16,185,129,.15)",background:"rgba(16,185,129,.06)",color:"rgba(16,185,129,.6)",fontSize:11,cursor:"pointer"}}>{s}</button>)}
+        </div>
+      </div>}
+      {results.map((msg,i)=><div key={i} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start",marginBottom:6}}>
+        <div style={{maxWidth:"85%",padding:"8px 12px",borderRadius:14,background:msg.role==="user"?"rgba(16,185,129,.15)":"rgba(255,255,255,.04)",border:"1px solid "+(msg.role==="user"?"rgba(16,185,129,.15)":"rgba(255,255,255,.06)")}}>
+          <span style={{color:"rgba(255,255,255,.85)",fontSize:13,lineHeight:1.5}}>{typeof msg.text==="string"?msg.text:JSON.stringify(msg.text)}</span>
+        </div>
+      </div>)}
+    </div>
+    {/* Search bar at bottom */}
+    <div style={{flexShrink:0,padding:"8px 12px 12px",display:"flex",gap:8}}>
+      <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&search()} placeholder="Ask GUIDE about places..." style={{flex:1,padding:"10px 14px",borderRadius:14,border:"1px solid rgba(16,185,129,.12)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none"}}/>
+      <button onClick={search} disabled={loading||!query.trim()} style={{padding:"10px 18px",borderRadius:14,border:"none",background:loading?"rgba(16,185,129,.1)":"rgba(16,185,129,.2)",color:"#10b981",cursor:"pointer"}}>{loading?<Loader2 size={16} className="animate-spin"/>:<Search size={16}/>}</button>
     </div>
   </div>);
 }
@@ -5383,51 +5402,36 @@ export default function MyABA(){
   if(!tourComplete)return <FirstLoginTour user={user} onComplete={()=>{try{localStorage.setItem("myaba_tour_complete","true")}catch{};window.location.reload()}}/>;
 
   return(<div style={{width:"100%",height:"100dvh",minHeight:`${viewportHeight}px`,position:"relative",overflow:"hidden",fontFamily:"'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:"linear-gradient(165deg, #0a0a1a 0%, #1a0a2e 30%, #0d1117 60%, #0a0a1a 100%)",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)",boxSizing:"border-box"}}>
-    {/* ⬡B:FIX:phone_wallpaper:20260324⬡ Persistent background that shows through on home screen */}
-    <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 30% 20%, rgba(139,92,246,.08) 0%, transparent 50%), radial-gradient(ellipse at 70% 80%, rgba(99,102,241,.06) 0%, transparent 50%)",pointerEvents:"none",zIndex:0}}/>
-    {/* App content container — sits on top of wallpaper */}
-    <div style={{position:"relative",zIndex:1,display:"flex",flexDirection:"column",height:"100%"}}>
+    {/* Ken Burns backgrounds show through — NO gradient overlay */}
     <style>{`@keyframes mp{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}@keyframes mf{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes mb{0%,100%{opacity:.6}50%{opacity:1}}@keyframes ml{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 12px rgba(239,68,68,0)}}@keyframes kenBurns{0%{transform:scale(1) translate(0,0)}25%{transform:scale(1.08) translate(-1%,-1%)}50%{transform:scale(1.12) translate(1%,0)}75%{transform:scale(1.06) translate(-0.5%,1%)}100%{transform:scale(1) translate(0,0)}}@keyframes pulse{0%{transform:scale(1);opacity:1}100%{transform:scale(1.5);opacity:0}}@keyframes breathe{0%,100%{transform:scale(1);box-shadow:0 0 40px rgba(139,92,246,.3)}50%{transform:scale(1.05);box-shadow:0 0 60px rgba(139,92,246,.5)}}@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(139,92,246,.15);border-radius:99px}`}</style>
     <div style={{position:"absolute",inset:"-10%",zIndex:0,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.4) saturate(.7)",animation:"kenBurns 30s ease-in-out infinite",willChange:"transform",WebkitBackfaceVisibility:"hidden"}}/>
     <div style={{position:"absolute",inset:0,zIndex:1,background:"radial-gradient(ellipse at center,rgba(0,0,0,0) 0%,rgba(0,0,0,.55) 100%)"}}/>
     <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",height:"100%",maxWidth:480,margin:"0 auto",padding:"0 14px"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 2px 4px",flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <button onClick={()=>setSidebarOpen(true)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.5)",padding:0,display:"flex",minWidth:44,minHeight:44,alignItems:"center",justifyContent:"center"}}><MessageSquare size={18}/></button>
-          <div style={{width:8,height:8,borderRadius:99,background:`rgba(${sc},.9)`,boxShadow:`0 0 10px rgba(${sc},.6)`,animation:"mb 3s ease infinite"}}/>
-          <div style={{width:22,height:22,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",marginRight:4,boxShadow:"0 0 8px rgba(139,92,246,.4)"}}><Sparkles size={11} style={{color:"white"}}/></div>
-          <span style={{color:"rgba(255,255,255,.75)",fontSize:14,fontWeight:700,letterSpacing:.5}}>MyABA</span>
-          {liveActive&&<span style={{background:"rgba(239,68,68,.2)",color:"#EF4444",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99,animation:"ml 2s infinite",letterSpacing:1}}>LIVE</span>}
-          <span style={{color:"rgba(255,255,255,.2)",fontSize:10}}>{abaState!=="idle"?(abaState==="thinking"?"thinking...":abaState==="speaking"?"speaking...":"listening..."):""}</span>
+      {/* ⬡B:CIP:STATUS_BAR:phone_like:20260324⬡ Phone status bar */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 16px 2px",flexShrink:0,height:28}}>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span style={{color:"rgba(255,255,255,.75)",fontSize:12,fontWeight:600}}>{new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span>
+          <div style={{width:6,height:6,borderRadius:99,background:`rgba(${sc},.8)`,boxShadow:`0 0 6px rgba(${sc},.5)`}}/>
         </div>
-        <div style={{display:"flex",gap:4}}>
-          {/* v2.15.0: Admin button for HAM users */}
-          {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{background:lastABAResponse?"rgba(34,197,94,.15)":"rgba(255,255,255,.04)",border:`1px solid ${lastABAResponse?"rgba(34,197,94,.2)":"rgba(255,255,255,.06)"}`,color:lastABAResponse?"rgba(34,197,94,.85)":"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} title="Admin Mode"><Activity size={15}/></button>}
-          <button onClick={()=>setVoiceOut(!voiceOut)} style={{background:voiceOut?"rgba(139,92,246,.15)":"rgba(255,255,255,.04)",border:`1px solid ${voiceOut?"rgba(139,92,246,.2)":"rgba(255,255,255,.06)"}`,color:voiceOut?"rgba(139,92,246,.85)":"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={15}/>:<VolumeX size={15}/>}</button>
-          <button onClick={()=>setSettingsOpen(true)} style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)",color:"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><Settings size={15}/></button>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {liveActive&&<span style={{background:"rgba(239,68,68,.2)",color:"#EF4444",fontSize:8,fontWeight:700,padding:"1px 6px",borderRadius:99,letterSpacing:1}}>LIVE</span>}
+          <div style={{display:"flex",gap:2,alignItems:"flex-end"}}>{[3,5,7,9].map((h,i)=><div key={i} style={{width:3,height:h,borderRadius:1,background:"rgba(255,255,255,.4)"}}/>)}</div>
+          <svg width="18" height="10" viewBox="0 0 18 10"><rect x="0" y="0" width="15" height="10" rx="2" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="1"/><rect x="16" y="3" width="2" height="4" rx="1" fill="rgba(255,255,255,.3)"/><rect x="1" y="1" width="10" height="8" rx="1" fill="rgba(34,197,94,.7)"/></svg>
         </div>
       </div>
-      {/* F5/F6: Main Tab Switcher - Chat | Briefing | Approve */}
-      {/* ⬡B:aba_skins:NAV:home_button_plus_tabs:20260323⬡ */}
-      {mainTab!=="apps"?<div style={{display:"flex",alignItems:"center",gap:4,padding:"4px 0"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,width:"100%"}}>
-          {mainTab!=="home"&&<button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(139,92,246,.12)",color:"rgba(139,92,246,.7)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title="Home"><Home size={16}/></button>}
-          {mainTab!=="home"&&<span style={{fontSize:14,fontWeight:600,color:"rgba(255,255,255,.7)"}}>{mainTab==="chat"?"ABA":mainTab==="briefing"?"DAWN":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"CeeCee":mainTab==="nura"?"NURA":mainTab==="phone"?"ABA Dials":mainTab==="settings"?"Settings":mainTab==="gmg_university"?"GMG-U":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"GUIDE":mainTab==="ccwa"?"CCWA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"Meeting Mode":mainTab==="interview"?"Interview Prep":mainTab}</span>}
+      {/* App title bar — only shows when NOT on home */}
+      {mainTab!=="home"&&mainTab!=="apps"&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 12px 4px",flexShrink:0}}>
+        <button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ChevronLeft size={18}/></button>
+        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"ABA":mainTab==="briefing"?"DAWN Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"CeeCee":mainTab==="nura"?"NURA":mainTab==="phone"?"ABA Dials":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"GUIDE Maps":mainTab==="ccwa"?"CCWA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"Meeting Mode":mainTab==="interview"?"Interview Prep":mainTab.replace(/_/g," ")}</span>
+        <div style={{display:"flex",gap:4}}>
+          {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:lastABAResponse?"rgba(34,197,94,.1)":"rgba(255,255,255,.04)",color:lastABAResponse?"rgba(34,197,94,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}><Activity size={14}/></button>}
+          <button onClick={()=>setVoiceOut(!voiceOut)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:voiceOut?"rgba(139,92,246,.1)":"rgba(255,255,255,.04)",color:voiceOut?"rgba(139,92,246,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={13}/>:<VolumeX size={13}/>}</button>
+          <button onClick={()=>setSettingsOpen(true)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}><Settings size={13}/></button>
         </div>
-        {/* Legacy tab switcher hidden — launcher is the new nav */}
-        <div style={{display:"none"}}><MainTabSwitcher tab={mainTab} setTab={async(t)=>{
-          setMainTab(t);
-          if(t==="briefing"&&!briefingData&&!briefingLoading){
-            setBriefingLoading(true);
-            const data=await fetchBriefing(user?.email||user?.uid||"unknown");
-            setBriefingData(data);
-            setBriefingLoading(false);
-          }
-        }}/></div>
-      </div>:null}
-      
+      </div>}
+            
       {/* ⬡B:aba_skins:RENDER:app_launcher_view:20260323⬡ */}
-      {(mainTab==="home"||mainTab==="apps")&&<div style={{flex:1,overflowY:"auto",padding:"16px 8px",display:"flex",flexDirection:"column"}}>
+      {(mainTab==="home"||mainTab==="apps")&&<div style={{flex:1,overflowY:"auto",padding:"8px 8px calc(56px + env(safe-area-inset-bottom, 0px))",display:"flex",flexDirection:"column"}}>
         <AppLauncher 
           userId={user?.email||user?.uid||"unknown"} 
           currentApp={null}
@@ -5466,7 +5470,7 @@ export default function MyABA(){
       </div>}
       
       {/* Chat Mode */}
-      {mainTab==="chat"&&<>
+      {mainTab==="chat"&&<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",paddingBottom:"calc(48px + env(safe-area-inset-bottom, 0px))"}}>
       <div style={{flexShrink:0,padding:"4px 0"}}><VoiceMode mode={voiceMode} setMode={m=>{setVoiceMode(m);if(m!=="talk"&&liveActive){liveRef.current=false;setLiveActive(false);stopListening()}}}/></div>
       
       {/* Hide chat elements when in Talk mode */}
@@ -5512,12 +5516,12 @@ export default function MyABA(){
           <TalkToABA userId={user?.email||user?.uid||"unknown"}/>
         </div>}
       </div>
-      </>}
+      </div>}
       
       {/* Jobs Mode - AWA Integration */}
-      {/* ⬡B:FIX:phone_app_card:20260324⬡ All non-home apps render in a glass card over wallpaper */}
+      {/* ⬡B:CIP:APP_CARD:fullscreen_glass:20260324⬡ Apps render fullscreen in glass over wallpaper */}
       {mainTab!=="home"&&mainTab!=="apps"&&mainTab!=="chat"&&(
-        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"rgba(8,8,13,.88)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderRadius:"16px 16px 0 0",marginTop:4}}>
+        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"rgba(8,8,13,.82)",backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"20px 20px 0 0",marginTop:2,paddingBottom:"calc(52px + env(safe-area-inset-bottom, 0px))"}}>
       {mainTab==="jobs"&&<JobsView userId={user?.email||user?.uid||"unknown"}/>}
       
       {/* Pipeline Mode - Kanban ⬡B:AWA.v3:Phase6:pipeline_tab:20260315⬡ */}
@@ -5550,30 +5554,17 @@ export default function MyABA(){
       )}
 
       
-      {/* ⬡B:aba_skins:RENDER:app_scoped_chat:20260323⬡ */}
-      {/* Catch-all: apps from launcher that aren't native tabs get scoped chat */}
-      {!["apps","chat","briefing","jobs","pipeline","memos","email","approve"].includes(mainTab)&&<>
-        <div style={{padding:"8px 12px",background:"rgba(139,92,246,.08)",borderRadius:12,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
-          <div style={{width:8,height:8,borderRadius:4,background:"rgba(139,92,246,.6)"}}/>
-          <span style={{color:"rgba(139,92,246,.8)",fontSize:13,fontWeight:500}}>{mainTab.replace(/_/g," ").toUpperCase()}</span>
-          <span style={{color:"rgba(255,255,255,.3)",fontSize:11,marginLeft:"auto"}}>{appScope||"full"} scope</span>
-        </div>
-        <div style={{flexShrink:0,display:"flex",justifyContent:"center",padding:"2px 0"}}><Blob state={abaState} size={messages.length<=1?80:40}/></div>
-        <div ref={scrollRef} style={{flex:1,overflowY:"auto",padding:"4px 2px",display:"flex",flexDirection:"column",gap:2,maskImage:"linear-gradient(transparent 0%,black 2%,black 96%,transparent 100%)",WebkitMaskImage:"linear-gradient(transparent 0%,black 2%,black 96%,transparent 100%)"}}>
-          {messages.map(msg=><div key={msg.id} style={{animation:"mf .3s ease"}}><Bubble msg={msg} userPhoto={user?.photoURL} onSpeak={speakText}/></div>)}
-          {isTyping&&<Typing/>}
-        </div>
-        <div style={{flexShrink:0,padding:"6px 0 14px",display:"flex",flexDirection:"column"}}>
-          <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-            <div style={{flex:1,display:"flex",alignItems:"flex-end",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:20,padding:"4px 4px 4px 14px",minHeight:48}}>
-              <textarea value={input} onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px"}} onKeyDown={handleKey} placeholder={"Ask about "+mainTab.replace(/_/g," ")+"..."} rows={1} style={{flex:1,background:"transparent",border:"none",color:"white",fontSize:15,outline:"none",resize:"none",lineHeight:"22px",maxHeight:120,fontFamily:"system-ui"}}/>
-            </div>
-            <button onClick={()=>sendMessage(input)} disabled={!input.trim()} style={{width:48,height:48,borderRadius:99,border:"none",cursor:input.trim()?"pointer":"default",background:input.trim()?"rgba(139,92,246,.4)":"rgba(255,255,255,.04)",color:input.trim()?"white":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Send size={18}/></button>
-          </div>
-        </div>
-      </>}
+      {/* Catch-all chat REMOVED — apps are their own views, chat is just an app */}
     </div>
-    <Sidebar open={sidebarOpen} convos={convos} activeId={activeId} onSelect={setActiveId} onCreate={()=>setNewChatModal(true)} onClose={()=>setSidebarOpen(false)} onDelete={deleteConv} onArchive={archiveConv} onShare={c=>setShareModal(c)} projects={projects} activeProject={activeProject} onSelectProject={setActiveProject} onCreateProject={()=>setNewChatModal(true)} onProjectDetail={p=>setProjectDetailModal(p)} user={user}/>
+    {/* ⬡B:CIP:BOTTOM_NAV:android_style:20260324⬡ Android-style gesture nav */}
+    <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:"8px 0 calc(6px + env(safe-area-inset-bottom, 0px))",background:"linear-gradient(transparent, rgba(0,0,0,.6) 30%)",pointerEvents:"none"}}>
+      <div style={{display:"flex",alignItems:"center",gap:32,pointerEvents:"auto"}}>
+        {mainTab!=="home"&&<button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:40,height:40,borderRadius:99,background:"rgba(255,255,255,.08)",backdropFilter:"blur(8px)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><Home size={18}/></button>}
+        <div style={{width:96,height:4,borderRadius:99,background:"rgba(255,255,255,.25)"}}/>
+        {mainTab!=="home"&&<button onClick={()=>setSidebarOpen(true)} style={{width:40,height:40,borderRadius:99,background:"rgba(255,255,255,.08)",backdropFilter:"blur(8px)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><MessageSquare size={16}/></button>}
+      </div>
+    </div>
+        <Sidebar open={sidebarOpen} convos={convos} activeId={activeId} onSelect={setActiveId} onCreate={()=>setNewChatModal(true)} onClose={()=>setSidebarOpen(false)} onDelete={deleteConv} onArchive={archiveConv} onShare={c=>setShareModal(c)} projects={projects} activeProject={activeProject} onSelectProject={setActiveProject} onCreateProject={()=>setNewChatModal(true)} onProjectDetail={p=>setProjectDetailModal(p)} user={user}/>
     <ShareModal open={!!shareModal} conversation={shareModal} onClose={()=>setShareModal(null)} onShare={shareConversation}/>
     <NewChatModal open={newChatModal} onClose={()=>setNewChatModal(false)} onCreate={(shared,projectId,projectName)=>{if(projectName){const pId=createProject(projectName);createConv(shared,pId)}else{createConv(shared,projectId)}}} projects={projects} onCreateProject={createProject}/>
     <ProjectDetailModal open={!!projectDetailModal} project={projectDetailModal} onClose={()=>setProjectDetailModal(null)} onRename={renameProject} onDelete={deleteProject} onAddFile={addFileToProject} onRemoveFile={removeFileFromProject}/>
