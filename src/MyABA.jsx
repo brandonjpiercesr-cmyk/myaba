@@ -1311,17 +1311,17 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 4px" }}>
       {/* Time + greeting header */}
-      <div style={{ textAlign: "center", padding: "24px 0 20px", userSelect: "none" }}>
-        <div style={{ fontSize: 44, fontWeight: 200, color: "rgba(255,255,255,.85)", letterSpacing: -1, lineHeight: 1 }}>{timeStr}</div>
-        <div style={{ fontSize: 14, color: "rgba(255,255,255,.4)", marginTop: 4 }}>{dateStr}</div>
+      <div style={{ textAlign: "center", padding: "32px 0 16px", userSelect: "none" }}>
+        <div style={{ fontSize: 56, fontWeight: 100, color: "rgba(255,255,255,.9)", letterSpacing: -2, lineHeight: 1, fontFamily: "'SF Pro Display',-apple-system,sans-serif" }}>{timeStr}</div>
+        <div style={{ fontSize: 13, color: "rgba(255,255,255,.35)", marginTop: 6, fontWeight: 400, letterSpacing: .5 }}>{dateStr}</div>
       </div>
 
       {/* App grid */}
       <div style={{
         display: "grid",
         gridTemplateColumns: "repeat(4, 1fr)",
-        gap: 16,
-        padding: "8px 12px",
+        gap: 10,
+        padding: "4px 8px",
         flex: 1,
         alignContent: "start"
       }}
@@ -1357,7 +1357,7 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
               }}
             >
               <div style={{
-                width: 58, height: 58, borderRadius: 16,
+                width: 52, height: 52, borderRadius: 14,
                 background: `linear-gradient(135deg, ${accent}22, ${accent}11)`,
                 border: `1px solid ${accent}33`,
                 display: "flex", alignItems: "center", justifyContent: "center",
@@ -5567,7 +5567,7 @@ export default function MyABA(){
     <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:"8px 0 calc(6px + env(safe-area-inset-bottom, 0px))",background:"linear-gradient(transparent, rgba(0,0,0,.6) 30%)",pointerEvents:"none"}}>
       <div style={{display:"flex",alignItems:"center",gap:32,pointerEvents:"auto"}}>
         {mainTab!=="home"&&<button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:40,height:40,borderRadius:99,background:"rgba(255,255,255,.08)",backdropFilter:"blur(8px)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><Home size={18}/></button>}
-        <div style={{width:96,height:4,borderRadius:99,background:"rgba(255,255,255,.25)"}}/>
+        <div style={{width:120,height:5,borderRadius:99,background:"rgba(255,255,255,.3)"}}/>
         {mainTab!=="home"&&<button onClick={()=>setSidebarOpen(true)} style={{width:40,height:40,borderRadius:99,background:"rgba(255,255,255,.08)",backdropFilter:"blur(8px)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><MessageSquare size={16}/></button>}
       </div>
     </div>
