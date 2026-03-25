@@ -351,7 +351,7 @@ function CalendarView({ userId }) {
   return (<div style={{flex:1,overflowY:"auto",padding:16}}>
     {loading ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading calendar...</p>
     : events.length === 0 ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>No upcoming events</p>
-    : events.map((e,i) => <div key={e.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
+    : (Array.isArray(events)?events:[]).map((e,i) => <div key={e.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
         <p style={{fontSize:14,fontWeight:600,color:"rgba(255,255,255,.85)"}}>{e.title||e.subject||"Untitled"}</p>
         {(e.start||e.when)&&<p style={{fontSize:11,color:"rgba(139,92,246,.6)",marginTop:4}}>{new Date(e.start||e.when?.start_time||"").toLocaleString()}</p>}
         {e.location&&<p style={{fontSize:11,color:"rgba(255,255,255,.3)",marginTop:2}}>{e.location}</p>}
@@ -574,6 +574,20 @@ function GuideView({ userId }) {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [mapUrl, setMapUrl] = useState("https://www.openstreetmap.org/export/embed.html?bbox=-86.9,36.1,-86.6,36.2&layer=mapnik");
+  const [userLoc, setUserLoc] = useState(null);
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude, lng = pos.coords.longitude;
+          setUserLoc({ lat, lng });
+          const d = 0.02;
+          setMapUrl(`https://www.openstreetmap.org/export/embed.html?bbox=${lng-d},${lat-d},${lng+d},${lat+d}&layer=mapnik&marker=${lat},${lng}`);
+        },
+        () => {} // Permission denied — keep Nashville default
+      );
+    }
+  }, []);
   
   const search = async () => {
     if (!query.trim()) return;
@@ -4955,7 +4969,8 @@ export default function MyABA(){
           }
         }catch(e){console.error("[CHAT] Backend create retry failed:",e)}
       }
-      airAddMessage(backendId,msg.role,msg.content).catch(e=>console.error("[CHAT] Save message failed:",e));
+      // Skip saving empty streaming placeholders — final content saved in onDone
+      if(msg.content)airAddMessage(backendId,msg.role,msg.content).catch(e=>console.error("[CHAT] Save message failed:",e));
     }
   },[activeId,user,convos]);
 
@@ -5228,9 +5243,11 @@ export default function MyABA(){
         setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:m.content+(m.content?"\n":"")+"_Checking "+tool+"..._"}:m));
       },
       onDone:(data)=>{
-        // Finalize: remove streaming flag, set final content
-        setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:data.fullResponse||m.content,streaming:false}:m));
+        const finalText=data.fullResponse||data.response||"";
+        setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:finalText||m.content,streaming:false}:m));
         setLastABAResponse(data);
+        // Save the finalized ABA response to backend
+        if(finalText&&activeId)airAddMessage(activeId,"aba",finalText).catch(()=>{});
         console.log("[STREAM] Done. Tools:",data.toolsExecuted,"Duration:",data.duration+"ms");
       },
       onError:(err)=>{
@@ -5421,7 +5438,7 @@ export default function MyABA(){
       {/* App title bar — only shows when NOT on home */}
       {mainTab!=="home"&&mainTab!=="apps"&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 12px 4px",flexShrink:0}}>
         <button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ChevronLeft size={18}/></button>
-        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"ABA":mainTab==="briefing"?"DAWN Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"CeeCee":mainTab==="nura"?"NURA":mainTab==="phone"?"ABA Dials":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"GUIDE Maps":mainTab==="ccwa"?"CCWA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"Meeting Mode":mainTab==="interview"?"Interview Prep":mainTab.replace(/_/g," ")}</span>
+        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"Talk to ABA":mainTab==="briefing"?"DAWN Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"CeeCee":mainTab==="nura"?"NURA":mainTab==="phone"?"ABA Dials":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"GUIDE Maps":mainTab==="ccwa"?"CCWA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"Meeting Mode":mainTab==="interview"?"Interview Prep":mainTab.replace(/_/g," ")}</span>
         <div style={{display:"flex",gap:4}}>
           {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:lastABAResponse?"rgba(34,197,94,.1)":"rgba(255,255,255,.04)",color:lastABAResponse?"rgba(34,197,94,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}><Activity size={14}/></button>}
           <button onClick={()=>setVoiceOut(!voiceOut)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:voiceOut?"rgba(139,92,246,.1)":"rgba(255,255,255,.04)",color:voiceOut?"rgba(139,92,246,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={13}/>:<VolumeX size={13}/>}</button>
