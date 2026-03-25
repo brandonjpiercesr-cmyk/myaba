@@ -181,7 +181,11 @@ async function airRequestStream({ message, userId, channel, conversationId, conv
           const data = JSON.parse(line.slice(6));
           if (data.type === "chunk") {
             accumulated += data.text;
-            onChunk?.(accumulated, data.text);
+            onChunk?.(accumulated, data.text, "chunk");
+          } else if (data.type === "filler") {
+            onChunk?.(null, data.text, "filler");
+          } else if (data.type === "filler_end") {
+            onChunk?.(null, null, "filler_end");
           } else if (data.type === "tool_start") {
             onToolStart?.(data.tool);
           } else if (data.type === "done") {
@@ -2321,6 +2325,7 @@ function ABALogo({size=24,color="#a78bfa",glow=false}){
   </svg>);
 }
 
+
 function Blob({state="idle",size=160}){
   return <ABAPresence state={state} size={size} />;
 }
@@ -2434,7 +2439,13 @@ function TalkToABA({userId}){
     onError:(msg)=>{console.error("[TALK] ElevenLabs error:",msg);setOrbState("error");setErrorMsg(String(msg));setStatusText("Error. Tap to retry.")},
     onMessage:({message,source})=>{
       if(source==="user"){setOrbState("thinking");setStatusText("ABA is thinking...");setLastMsg("")}
-      if(source==="ai")setLastMsg(prev=>prev+message)
+      if(source==="ai"){
+        setLastMsg(prev=>{const next=prev+message;
+          // Fire real-time caption event so ClosedCaptions overlay shows during speech
+          window.dispatchEvent(new CustomEvent("vara-caption",{detail:{text:next.slice(-150),source:"ABA"}}));
+          return next;
+        });
+      }
     },
     onModeChange:({mode})=>{
       clearTimeout(thinkTimerRef.current);
@@ -5274,9 +5285,17 @@ export default function MyABA(){
       conversationId:activeId,
       conversationHistory:recentHistory,
       images:imagePayloads,
-      onChunk:(accumulated)=>{
-        // Update the ABA message content in real-time
-        setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:accumulated}:m));
+      onChunk:(accumulated, chunkText, chunkType)=>{
+        if (chunkType === "filler") {
+          // Show filler as temporary italic text in the ABA bubble
+          setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:"_"+chunkText+"_",isFiller:true}:m));
+        } else if (chunkType === "filler_end") {
+          // Clear filler, prepare for real content
+          setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:"",isFiller:false}:m));
+        } else {
+          // Real content chunk
+          setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:accumulated,isFiller:false}:m));
+        }
       },
       onToolStart:(tool)=>{
         setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:m.content+(m.content?"\n":"")+"_Checking "+tool+"..._"}:m));
