@@ -1445,6 +1445,7 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
                 background: isDragged ? "rgba(139,92,246,.15)" : "transparent",
                 cursor: "pointer",
                 WebkitTapHighlightColor: "transparent",
+                WebkitUserSelect: "none",
                 opacity: isDragged ? 0.6 : 1,
                 transform: isDragged ? "scale(1.08)" : "scale(1)",
                 transition: "all .15s"
@@ -2661,16 +2662,11 @@ function EmailDetail({email,onBack,userId}){
   const[askLoading,setAskLoading]=useState(false);
   const ABABASE="https://abacia-services.onrender.com";
 
-  // Mark as read after 3 seconds
+  // Mark as read after 3 seconds via direct Nylas PATCH (not AIR)
   useEffect(()=>{
     if(!email?.id||!email.unread)return;
     const timer=setTimeout(async()=>{
-      try{
-        await fetch(`${ABABASE}/api/air/process`,{
-          method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({message:`Mark email ${email.id} as read`,user_id:userId,channel:"myaba",context:{tool_hint:"mark_email_read",email_id:email.id}})
-        });
-      }catch{}
+      try{ await fetch(`${ABABASE}/api/email/${email.id}/read?userId=${encodeURIComponent(userId)}`,{method:"PATCH"}); }catch{}
     },3000);
     return()=>clearTimeout(timer);
   },[email?.id]);
@@ -5477,7 +5473,7 @@ export default function MyABA(){
 
   return(<div style={{width:"100%",height:"100dvh",minHeight:`${viewportHeight}px`,position:"relative",overflow:"hidden",fontFamily:"'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:"linear-gradient(165deg, #0a0a1a 0%, #1a0a2e 30%, #0d1117 60%, #0a0a1a 100%)",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)",boxSizing:"border-box"}}>
     {/* Ken Burns backgrounds show through — NO gradient overlay */}
-    <style>{`@keyframes mp{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}@keyframes mf{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes mb{0%,100%{opacity:.6}50%{opacity:1}}@keyframes ml{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 12px rgba(239,68,68,0)}}@keyframes kenBurns{0%{transform:scale(1) translate(0,0)}25%{transform:scale(1.08) translate(-1%,-1%)}50%{transform:scale(1.12) translate(1%,0)}75%{transform:scale(1.06) translate(-0.5%,1%)}100%{transform:scale(1) translate(0,0)}}@keyframes pulse{0%{transform:scale(1);opacity:1}100%{transform:scale(1.5);opacity:0}}@keyframes breathe{0%,100%{transform:scale(1);box-shadow:0 0 40px rgba(139,92,246,.3)}50%{transform:scale(1.05);box-shadow:0 0 60px rgba(139,92,246,.5)}}@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(139,92,246,.15);border-radius:99px}`}</style>
+    <style>{`@keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes mp{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}@keyframes mf{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes mb{0%,100%{opacity:.6}50%{opacity:1}}@keyframes ml{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 12px rgba(239,68,68,0)}}@keyframes kenBurns{0%{transform:scale(1) translate(0,0)}25%{transform:scale(1.08) translate(-1%,-1%)}50%{transform:scale(1.12) translate(1%,0)}75%{transform:scale(1.06) translate(-0.5%,1%)}100%{transform:scale(1) translate(0,0)}}@keyframes pulse{0%{transform:scale(1);opacity:1}100%{transform:scale(1.5);opacity:0}}@keyframes breathe{0%,100%{transform:scale(1);box-shadow:0 0 40px rgba(139,92,246,.3)}50%{transform:scale(1.05);box-shadow:0 0 60px rgba(139,92,246,.5)}}@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(139,92,246,.15);border-radius:99px}`}</style>
     <div style={{position:"absolute",inset:"-10%",zIndex:0,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.4) saturate(.7)",animation:"kenBurns 30s ease-in-out infinite",willChange:"transform",WebkitBackfaceVisibility:"hidden"}}/>
     <div style={{position:"absolute",inset:0,zIndex:1,background:"radial-gradient(ellipse at center,rgba(0,0,0,0) 0%,rgba(0,0,0,.55) 100%)"}}/>
     <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",height:"100%",maxWidth:480,margin:"0 auto",padding:"0 14px"}}>
@@ -5595,7 +5591,7 @@ export default function MyABA(){
       {/* Jobs Mode - AWA Integration */}
       {/* ⬡B:CIP:APP_CARD:fullscreen_glass:20260324⬡ Apps render fullscreen in glass over wallpaper */}
       {mainTab!=="home"&&mainTab!=="apps"&&mainTab!=="chat"&&(
-        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"rgba(8,8,13,.82)",backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"20px 20px 0 0",marginTop:2,paddingBottom:"calc(52px + env(safe-area-inset-bottom, 0px))"}}>
+        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"rgba(8,8,13,.82)",backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"20px 20px 0 0",marginTop:2,paddingBottom:"calc(52px + env(safe-area-inset-bottom, 0px))",animation:"slideUp .25s ease-out"}}>
       {mainTab==="jobs"&&<JobsView userId={user?.email||user?.uid||"unknown"}/>}
       
       {/* Pipeline Mode - Kanban ⬡B:AWA.v3:Phase6:pipeline_tab:20260315⬡ */}
@@ -5624,6 +5620,21 @@ export default function MyABA(){
       {mainTab==="briefing"&&<BriefingView data={briefingData} loading={briefingLoading} userId={user?.email||user?.uid||"unknown"} onRefresh={async()=>{
         setBriefingLoading(true);const data=await fetchBriefing(user?.email||user?.uid||"unknown");setBriefingData(data);setBriefingLoading(false);
       }}/>}
+
+      {/* ⬡B:CIP:ASK_ABA:floating_context:20260325⬡ Floating Ask ABA on every app screen */}
+      <button onClick={()=>{
+        const currentContext = mainTab.replace(/_/g, " ");
+        setMainTab("chat");
+        setInput("I'm looking at " + currentContext + " and need help: ");
+      }} style={{
+        position:"absolute",bottom:16,right:16,display:"flex",alignItems:"center",gap:6,
+        padding:"10px 16px",borderRadius:99,
+        background:"linear-gradient(135deg,rgba(139,92,246,.9),rgba(99,102,241,.85))",
+        border:"none",color:"white",fontSize:12,fontWeight:600,cursor:"pointer",
+        boxShadow:"0 4px 20px rgba(139,92,246,.4)",zIndex:10
+      }}>
+        <ABALogo size={16} color="white"/>Ask ABA
+      </button>
         </div>
       )}
 
