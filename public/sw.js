@@ -1,7 +1,7 @@
 // ⬡B:myaba.pwa:SW:v2.16.2:20260315⬡
 // MyABA Service Worker - Offline support + Background sync
 
-const CACHE_NAME = 'myaba-v6-full-fixes';
+const CACHE_NAME = 'myaba-v6-meeting-interview';
 const ABABASE_URL = 'https://abacia-services.onrender.com';
 
 // Assets to cache for offline
