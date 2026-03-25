@@ -875,34 +875,26 @@ function MeetingModeView({ userId }) {
   const [transcript, setTranscript] = useState([]);
   const [answers, setAnswers] = useState([]);
   const [glossary, setGlossary] = useState([]);
+  const [panel, setPanel] = useState("transcript");
   const [recording, setRecording] = useState(false);
-  const [activePanel, setActivePanel] = useState("transcript");
   const [askInput, setAskInput] = useState("");
   const [askLoading, setAskLoading] = useState(false);
+  const [summary, setSummary] = useState(null);
   const recRef = useRef(null);
   const streamRef = useRef(null);
   const intervalRef = useRef(null);
+  const secondsRef = useRef(0);
   const scrollRef = useRef(null);
 
   useEffect(() => {
-    if (running) {
-      intervalRef.current = setInterval(() => setSeconds(s => s + 1), 1000);
-    } else { clearInterval(intervalRef.current); }
+    if (running) { intervalRef.current = setInterval(() => { setSeconds(s => { secondsRef.current = s + 1; return s + 1; }); }, 1000); }
+    else { clearInterval(intervalRef.current); }
     return () => clearInterval(intervalRef.current);
   }, [running]);
 
-  const fmt = (s) => {
-    const m = Math.floor(s / 60); const sec = s % 60;
-    return `${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
-  };
+  const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 
-  const toggleRecord = async () => {
-    if (recording) {
-      recRef.current?.stop();
-      streamRef.current?.getTracks().forEach(t => t.stop());
-      setRecording(false);
-      return;
-    }
+  const startMeeting = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -915,43 +907,43 @@ function MeetingModeView({ userId }) {
           const blob = new Blob([e.data], { type: mimeType || "audio/webm" });
           const text = await reachTranscribe(blob);
           if (text && text.trim()) {
-            setTranscript(prev => [...prev, { text, time: fmt(seconds), ts: Date.now() }]);
-            processTranscript(text);
+            setTranscript(prev => [...prev, { text, time: fmt(secondsRef.current) }]);
+            processSegment(text);
           }
         }
       };
-      rec.start(5000); // 5s continuous chunks — each chunk transcribes immediately
+      rec.start(5000);
       recRef.current = rec;
       setRecording(true);
-      if (!running) setRunning(true);
-    } catch (e) { console.error("[MEETING] Mic error:", e); }
+      setRunning(true);
+    } catch { alert("Microphone access needed for Meeting Mode"); }
   };
 
-  const processTranscript = async (text) => {
+  const processSegment = async (text) => {
     try {
       const res = await fetch(`${ABABASE}/api/air/process`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: `Meeting transcript segment: "${text}"\n\nAnalyze this for: 1) Any questions asked that need answers 2) Key terms or acronyms to define 3) Action items mentioned. Return JSON: {"answers":[{"q":"question","a":"answer"}], "terms":[{"term":"word","definition":"meaning"}], "actions":[]}`,
-          user_id: userId, userId, channel: "cip", appScope: "meeting"
+          message: `Meeting transcript segment: "${text}"\n\nAnalyze for: 1) Questions needing answers 2) Key terms/acronyms 3) Action items. Return JSON: {"answers":[{"q":"question","a":"answer"}], "terms":[{"term":"word","definition":"meaning"}]}`,
+          user_id: userId, channel: "myaba", appScope: "meeting"
         })
       });
       if (res.ok) {
-        const data = await res.json();
-        const responseText = data.response || "";
+        const d = await res.json();
+        const resp = d.response || d.message || "";
         try {
-          const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
+          const match = resp.match(/\{[\s\S]*\}/);
+          if (match) {
+            const parsed = JSON.parse(match[0]);
             if (parsed.answers?.length) setAnswers(prev => [...prev, ...parsed.answers]);
             if (parsed.terms?.length) setGlossary(prev => {
               const existing = prev.map(t => t.term.toLowerCase());
               return [...prev, ...parsed.terms.filter(t => !existing.includes(t.term.toLowerCase()))];
             });
           }
-        } catch { setAnswers(prev => [...prev, { q: "Meeting note", a: responseText.substring(0, 300) }]); }
+        } catch { if (resp) setAnswers(prev => [...prev, { q: "Note", a: resp.substring(0, 300) }]); }
       }
-    } catch (e) { console.error("[MEETING] AIR failed:", e); }
+    } catch {}
   };
 
   const askABA = async () => {
@@ -961,134 +953,110 @@ function MeetingModeView({ userId }) {
     try {
       const res = await fetch(`${ABABASE}/api/air/process`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: `During a live meeting, the user asks: "${q}"\n\nMeeting context so far: ${transcript.map(t => t.text).join(" ").substring(0, 1500)}\n\nAnswer concisely (2-3 sentences max).`,
-          user_id: userId, userId, channel: "cip", appScope: "meeting"
-        })
+        body: JSON.stringify({ message: `During a meeting: "${q}"\n\nContext: ${transcript.map(t=>t.text).join(" ").substring(0,1500)}`, user_id: userId, channel: "myaba", appScope: "meeting" })
       });
-      if (res.ok) {
-        const data = await res.json();
-        setAnswers(prev => [...prev, { q, a: data.response || "No answer generated." }]);
-      }
-    } catch (e) { console.error("[MEETING] Ask failed:", e); }
+      if (res.ok) { const d = await res.json(); setAnswers(prev => [...prev, { q, a: d.response || "No answer" }]); }
+    } catch {}
     setAskLoading(false);
   };
 
   const endMeeting = async () => {
-    setRunning(false); setRecording(false);
     recRef.current?.stop();
     streamRef.current?.getTracks().forEach(t => t.stop());
-    await fetch(`${ABABASE}/api/air/process`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: `Meeting ended. Duration: ${fmt(seconds)}. Full transcript: ${transcript.map(t => `[${t.time}] ${t.text}`).join(" ")}. Generate a MARS-style meeting summary.`,
-        user_id: userId, userId, channel: "cip", appScope: "meeting"
-      })
-    });
+    setRunning(false); setRecording(false);
+    if (transcript.length > 0) {
+      try {
+        const res = await fetch(`${ABABASE}/api/air/process`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: `Meeting ended. Duration: ${fmt(seconds)}. Transcript: ${transcript.map(t=>`[${t.time}] ${t.text}`).join(" ")}. Generate a summary with key decisions, action items, and follow-ups.`, user_id: userId, channel: "myaba", appScope: "meeting" })
+        });
+        if (res.ok) { const d = await res.json(); setSummary(d.response || ""); }
+      } catch {}
+    }
   };
 
   const PANELS = [
-    { id: "transcript", label: "Transcript", icon: Mic },
-    { id: "answers", label: "Answers", icon: Sparkles },
-    { id: "glossary", label: "Glossary", icon: BookOpen }
+    { id: "transcript", label: "Transcript", count: transcript.length },
+    { id: "answers", label: "Answers", count: answers.length },
+    { id: "glossary", label: "Glossary", count: glossary.length }
   ];
 
-  return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-      {/* Timer bar */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Timer size={16} style={{ color: running ? "#06b6d4" : "rgba(255,255,255,.3)" }} />
-          <span style={{ fontFamily: "monospace", fontSize: 20, color: running ? "#fff" : "rgba(255,255,255,.4)", fontWeight: 300 }}>{fmt(seconds)}</span>
-        </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={toggleRecord} style={{
-            padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
-            display: "flex", alignItems: "center", gap: 5, transition: "all .2s",
-            background: recording ? "rgba(239,68,68,.25)" : "rgba(6,182,212,.2)",
-            color: recording ? "#fca5a5" : "#67e8f9"
-          }}>{recording ? <><MicOff size={13}/> Stop</> : <><Mic size={13}/> Record</>}</button>
-          {seconds > 0 && <button onClick={endMeeting} style={{
-            padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
-            background: "rgba(239,68,68,.15)", color: "#f87171", display: "flex", alignItems: "center", gap: 5
-          }}><Square size={13}/> End</button>}
-        </div>
+  return (<div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    {/* Timer bar */}
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: "1px solid rgba(255,255,255,.06)", flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {recording && <div style={{width:8,height:8,borderRadius:4,background:"#ef4444",animation:"mb 1s ease infinite"}}/>}
+        <span style={{ fontFamily: "monospace", fontSize: 18, color: running ? "#fff" : "rgba(255,255,255,.3)" }}>{fmt(seconds)}</span>
       </div>
-
-      {/* Panel toggle */}
-      <div style={{ display: "flex", gap: 2, padding: "6px 12px", borderBottom: "1px solid rgba(255,255,255,.04)" }}>
-        {PANELS.map(p => {
-          const Icon = p.icon;
-          const count = p.id === "transcript" ? transcript.length : p.id === "answers" ? answers.length : glossary.length;
-          return (
-            <button key={p.id} onClick={() => setActivePanel(p.id)} style={{
-              flex: 1, padding: "6px 0", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 500,
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 4, transition: "all .15s",
-              background: activePanel === p.id ? "rgba(6,182,212,.2)" : "transparent",
-              color: activePanel === p.id ? "#67e8f9" : "rgba(255,255,255,.3)"
-            }}><Icon size={12}/> {p.label} {count > 0 && <span style={{ fontSize: 9, background: "rgba(6,182,212,.3)", padding: "1px 5px", borderRadius: 8 }}>{count}</span>}</button>
-          );
-        })}
-      </div>
-
-      {/* Active panel content */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: 12 }}>
-        {activePanel === "transcript" && (
-          transcript.length === 0
-            ? <p style={{ textAlign: "center", padding: 40, color: "rgba(255,255,255,.2)", fontSize: 13 }}>Tap Record to capture meeting audio. ABA will transcribe and analyze in real time.</p>
-            : transcript.map((t, i) => (
-              <div key={i} style={{ padding: "8px 10px", marginBottom: 6, borderRadius: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.05)" }}>
-                <span style={{ fontSize: 10, color: "rgba(6,182,212,.5)", marginRight: 6 }}>[{t.time}]</span>
-                <span style={{ fontSize: 13, color: "rgba(255,255,255,.75)", lineHeight: 1.5 }}>{t.text}</span>
-              </div>
-            ))
-        )}
-        {activePanel === "answers" && (
-          answers.length === 0
-            ? <p style={{ textAlign: "center", padding: 40, color: "rgba(255,255,255,.2)", fontSize: 13 }}>ABA will surface answers to questions mentioned in the meeting. You can also ask directly below.</p>
-            : answers.map((a, i) => (
-              <div key={i} style={{ padding: 10, marginBottom: 8, borderRadius: 10, background: "rgba(139,92,246,.06)", border: "1px solid rgba(139,92,246,.12)" }}>
-                <p style={{ fontSize: 12, color: "#a78bfa", fontWeight: 500, margin: "0 0 4px" }}>{a.q}</p>
-                <p style={{ fontSize: 13, color: "rgba(255,255,255,.7)", margin: 0, lineHeight: 1.5 }}>{a.a}</p>
-              </div>
-            ))
-        )}
-        {activePanel === "glossary" && (
-          glossary.length === 0
-            ? <p style={{ textAlign: "center", padding: 40, color: "rgba(255,255,255,.2)", fontSize: 13 }}>Key terms and acronyms from the meeting will appear here as ABA identifies them.</p>
-            : glossary.map((g, i) => (
-              <div key={i} style={{ padding: "8px 10px", marginBottom: 6, borderRadius: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.05)" }}>
-                <span style={{ fontSize: 12, color: "#67e8f9", fontWeight: 600 }}>{g.term}</span>
-                <p style={{ fontSize: 12, color: "rgba(255,255,255,.55)", margin: "2px 0 0", lineHeight: 1.4 }}>{g.definition}</p>
-              </div>
-            ))
-        )}
-      </div>
-
-      {/* Ask ABA bar (answers panel) */}
-      {activePanel === "answers" && (
-        <div style={{ padding: "8px 12px", borderTop: "1px solid rgba(255,255,255,.06)", display: "flex", gap: 6 }}>
-          <input value={askInput} onChange={e => setAskInput(e.target.value)} onKeyDown={e => e.key === "Enter" && askABA()}
-            placeholder="Ask ABA a question during the meeting..."
-            style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", color: "#fff", fontSize: 12, outline: "none" }} />
-          <button onClick={askABA} disabled={askLoading || !askInput.trim()} style={{
-            padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer",
-            background: askInput.trim() ? "rgba(139,92,246,.25)" : "rgba(255,255,255,.04)",
-            color: askInput.trim() ? "#c4b5fd" : "rgba(255,255,255,.2)", fontSize: 12
-          }}>{askLoading ? <Loader2 size={13} className="animate-spin"/> : <Send size={13}/>}</button>
-        </div>
-      )}
+      {!running && !summary && <button onClick={startMeeting} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: "rgba(6,182,212,.2)", color: "#06b6d4", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Start Meeting</button>}
+      {running && <button onClick={endMeeting} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: "rgba(239,68,68,.15)", color: "#f87171", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>End Meeting</button>}
     </div>
-  );
+    {/* Panel tabs */}
+    <div style={{ display: "flex", gap: 2, padding: "4px 8px", borderBottom: "1px solid rgba(255,255,255,.04)", flexShrink: 0 }}>
+      {PANELS.map(p => (
+        <button key={p.id} onClick={() => setPanel(p.id)} style={{
+          flex: 1, padding: "6px 0", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 500,
+          background: panel === p.id ? "rgba(6,182,212,.2)" : "transparent",
+          color: panel === p.id ? "#06b6d4" : "rgba(255,255,255,.3)"
+        }}>{p.label} {p.count > 0 && <span style={{ fontSize: 9, background: "rgba(6,182,212,.25)", padding: "1px 5px", borderRadius: 8, marginLeft: 4 }}>{p.count}</span>}</button>
+      ))}
+    </div>
+    {/* Panel content */}
+    <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
+      {panel === "transcript" && (
+        !running && transcript.length === 0 && !summary
+        ? <div style={{ textAlign: "center", padding: "40px 16px", color: "rgba(255,255,255,.2)" }}>
+            <Mic size={28} style={{ margin: "0 auto 8px", display: "block", opacity: .4 }}/>
+            <p style={{ fontSize: 13, margin: 0 }}>Tap Start Meeting to begin</p>
+            <p style={{ fontSize: 11, margin: "4px 0 0", color: "rgba(255,255,255,.12)" }}>Audio transcribes every 5 seconds</p>
+          </div>
+        : recording && transcript.length === 0
+        ? <div style={{ textAlign: "center", padding: "30px 0", color: "rgba(255,255,255,.2)" }}>
+            <div style={{width:10,height:10,borderRadius:5,background:"#ef4444",margin:"0 auto 10px",animation:"mb 1.5s ease infinite"}}/>
+            <p style={{ fontSize: 12 }}>Listening...</p>
+          </div>
+        : transcript.map((t, i) => (
+          <div key={i} style={{ padding: "8px 10px", marginBottom: 4, borderRadius: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.05)" }}>
+            <span style={{ color: "rgba(6,182,212,.5)", fontSize: 10, marginRight: 6 }}>[{t.time}]</span>
+            <span style={{ color: "rgba(255,255,255,.75)", fontSize: 12, lineHeight: 1.5 }}>{t.text}</span>
+          </div>
+        ))
+      )}
+      {panel === "answers" && (answers.length === 0
+        ? <div style={{ textAlign: "center", padding: "40px 0", color: "rgba(255,255,255,.2)" }}>
+            <ABALogo size={28}/><p style={{ fontSize: 12, marginTop: 8 }}>ABA answers appear as the meeting progresses</p>
+          </div>
+        : answers.map((a, i) => (
+          <div key={i} style={{ padding: 10, marginBottom: 6, borderRadius: 10, background: "rgba(139,92,246,.06)", border: "1px solid rgba(139,92,246,.1)" }}>
+            <p style={{ color: "#a78bfa", fontSize: 11, fontWeight: 600, margin: "0 0 3px" }}>{a.q}</p>
+            <p style={{ color: "rgba(255,255,255,.7)", fontSize: 12, margin: 0, lineHeight: 1.5 }}>{a.a}</p>
+          </div>
+        ))
+      )}
+      {panel === "glossary" && (glossary.length === 0
+        ? <div style={{ textAlign: "center", padding: "40px 0", color: "rgba(255,255,255,.2)" }}>
+            <BookOpen size={28} style={{ margin: "0 auto", display: "block", opacity: .4 }}/><p style={{ fontSize: 12, marginTop: 8 }}>Key terms will appear here</p>
+          </div>
+        : glossary.map((g, i) => (
+          <div key={i} style={{ padding: 8, marginBottom: 4, borderRadius: 8, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.05)" }}>
+            <span style={{ color: "#06b6d4", fontSize: 11, fontWeight: 600 }}>{g.term}</span>
+            <p style={{ color: "rgba(255,255,255,.5)", fontSize: 11, margin: "2px 0 0", lineHeight: 1.4 }}>{g.definition}</p>
+          </div>
+        ))
+      )}
+      {summary && <div style={{ padding: 12, borderRadius: 12, background: "rgba(16,185,129,.06)", border: "1px solid rgba(16,185,129,.12)", marginTop: 8 }}>
+        <p style={{ color: "#34d399", fontSize: 11, fontWeight: 600, margin: "0 0 4px" }}>Meeting Summary</p>
+        <p style={{ color: "rgba(255,255,255,.7)", fontSize: 12, margin: 0, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{summary}</p>
+      </div>}
+    </div>
+    {/* Ask ABA — always visible when running */}
+    {running && <div style={{ flexShrink: 0, padding: "6px 10px", borderTop: "1px solid rgba(255,255,255,.06)", display: "flex", gap: 6 }}>
+      <input value={askInput} onChange={e => setAskInput(e.target.value)} onKeyDown={e => e.key === "Enter" && askABA()} placeholder="Ask ABA about this meeting..." style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", color: "#fff", fontSize: 12, outline: "none" }}/>
+      <button onClick={askABA} disabled={askLoading || !askInput.trim()} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: askInput.trim() ? "rgba(139,92,246,.2)" : "rgba(255,255,255,.04)", color: "#a78bfa", cursor: "pointer", fontSize: 12 }}>{askLoading ? "..." : "Ask"}</button>
+    </div>}
+  </div>);
 }
 
-// ═══════════════════════════════════════════════════════════
-// INTERVIEW MODE — 3-panel: Transcript | ABA Coach | Job Context
-// ⬡B:cip.interview_mode:VIEW:3_panel:20260324⬡
-// JOBA (Job Opportunity Bot Assistant) + HUNTER (Headhunting Unified Network Tracking)
-// Mock interview mode: ABA acts as interviewer, scores responses
-// 90/10: All processing through AIR. Frontend is display only.
-// ═══════════════════════════════════════════════════════════
 function InterviewModeView({ userId }) {
   const [mode, setMode] = useState("prep"); // "prep" | "live" | "mock"
   const [jobs, setJobs] = useState([]);
@@ -2335,6 +2303,24 @@ async function fetchBriefing(userId) {
 import { ABAPresence } from './ABAPresence.jsx';
 
 // Alias for backward compatibility
+
+// ⬡B:CIP:ABA_LOGO:brand_mark:20260325⬡ Real ABA logo SVG component
+function ABALogo({size=24,color="#a78bfa",glow=false}){
+  return(<svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="abaGlow" cx="50%" cy="40%" r="50%">
+        <stop offset="0%" stopColor={color} stopOpacity=".9"/>
+        <stop offset="100%" stopColor="#6D28D9" stopOpacity=".4"/>
+      </radialGradient>
+      <filter id="abaBlur"><feGaussianBlur stdDeviation="1.5"/></filter>
+    </defs>
+    {glow&&<circle cx="16" cy="16" r="14" fill={color} opacity=".15" filter="url(#abaBlur)"/>}
+    <circle cx="16" cy="16" r="12" fill="url(#abaGlow)"/>
+    <path d="M16 8L11 22H13.5L14.5 19H17.5L18.5 22H21L16 8ZM15.2 17L16 14.2L16.8 17H15.2Z" fill="white" opacity=".95"/>
+    <circle cx="16" cy="11" r="1.5" fill="white" opacity=".6"/>
+  </svg>);
+}
+
 function Blob({state="idle",size=160}){
   return <ABAPresence state={state} size={size} />;
 }
@@ -2387,7 +2373,7 @@ function OutputCard({output}){const[exp,setExp]=useState(false);const icons={ema
 function Bubble({msg,userPhoto,onSpeak}){const isU=msg.role==="user";const time=msg.timestamp?new Date(msg.timestamp).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):"";
   const isImg=t=>(t||"").startsWith("image/");
   return(<div style={{display:"flex",justifyContent:isU?"flex-end":"flex-start",padding:"4px 0",gap:10,alignItems:"flex-end"}}>
-    {!isU&&<div style={{width:28,height:28,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 2px 8px rgba(139,92,246,.3)"}}><Sparkles size={14} style={{color:"white"}}/></div>}
+    {!isU&&<div style={{width:28,height:28,borderRadius:99,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ABALogo size={28} glow/></div>}
     <div style={{maxWidth:"80%"}}><div style={{padding:"12px 16px",borderRadius:isU?"20px 20px 6px 20px":"20px 20px 20px 6px",background:isU?"linear-gradient(135deg,rgba(139,92,246,.35),rgba(99,102,241,.3))":"rgba(255,255,255,.08)",backdropFilter:"blur(12px)",border:`1px solid ${isU?"rgba(139,92,246,.3)":"rgba(255,255,255,.1)"}`,boxShadow:isU?"0 4px 16px rgba(139,92,246,.15)":"inset 0 1px 1px rgba(255,255,255,.08), 0 4px 12px rgba(0,0,0,.15)"}}>{msg.output?<OutputCard output={msg.output}/>:<div>{renderMd(msg.content)}</div>}
       {/* ⬡B:MYABA:FILE_ATTACHMENTS_DISPLAY:20260319⬡ */}
       {msg.attachments&&msg.attachments.length>0&&(
@@ -2424,7 +2410,7 @@ function Bubble({msg,userPhoto,onSpeak}){const isU=msg.role==="user";const time=
     {isU&&<div style={{width:28,height:28,borderRadius:99,overflow:"hidden",flexShrink:0,background:"linear-gradient(135deg,rgba(139,92,246,.4),rgba(99,102,241,.3))",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(139,92,246,.2)"}}>{userPhoto?<img src={userPhoto} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<User size={13} style={{color:"rgba(255,255,255,.7)"}}/>}</div>}
   </div>)}
 
-function Typing(){return(<div style={{display:"flex",justifyContent:"flex-start",padding:"3px 0",gap:8,alignItems:"flex-end"}}><div style={{width:26,height:26,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Sparkles size={12} style={{color:"white"}}/></div><div style={{padding:"12px 18px",borderRadius:"18px 18px 18px 4px",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.08)",display:"flex",gap:5,alignItems:"center"}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:99,background:"rgba(139,92,246,.6)",animation:`mp 1.4s ease-in-out ${i*.2}s infinite`}}/>)}</div></div>)}
+function Typing(){return(<div style={{display:"flex",justifyContent:"flex-start",padding:"3px 0",gap:8,alignItems:"flex-end"}}><div style={{width:26,height:26,borderRadius:99,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ABALogo size={26} glow/></div><div style={{padding:"12px 18px",borderRadius:"18px 18px 18px 4px",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.08)",display:"flex",gap:5,alignItems:"center"}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:99,background:"rgba(139,92,246,.6)",animation:`mp 1.4s ease-in-out ${i*.2}s infinite`}}/>)}</div></div>)}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ELEVENLABS CONVERSATIONAL AI - Talk to ABA
@@ -2506,7 +2492,7 @@ function TalkToABA({userId}){
         animation:orbState==="listening"?"breathe 1s ease-in-out infinite":orbState==="speaking"?"breathe 1.5s ease-in-out infinite":"breathe 3s ease-in-out infinite",
         transition:"all .3s"
       }}>
-        {orbState==="thinking"||orbState==="connecting"?<div style={{animation:"spin 1s linear infinite"}}><Sparkles size={44}/></div>:<Icon size={44}/>}
+        {orbState==="thinking"||orbState==="connecting"?<div style={{animation:"spin 1s linear infinite"}}><ABALogo size={44} color="white"/></div>:<Icon size={44}/>}
         <span style={{fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>{labels[orbState]}</span>
       </button>
 
@@ -2522,12 +2508,13 @@ function TalkToABA({userId}){
       </div>
 
       {/* Last response */}
-      {lastMsg&&orbState==="idle"&&<div style={{position:"absolute",bottom:20,left:16,right:16,padding:"12px 16px",background:"rgba(0,0,0,.5)",backdropFilter:"blur(12px)",borderRadius:16,border:"1px solid rgba(139,92,246,.15)"}}>
+      {lastMsg&&<div style={{position:"absolute",bottom:20,left:16,right:16,padding:"12px 16px",background:"rgba(0,0,0,.6)",backdropFilter:"blur(12px)",borderRadius:16,border:`1px solid rgba(${c},.2)`,transition:"all .3s",maxHeight:120,overflow:"hidden"}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-          <Sparkles size={10} style={{color:"rgba(139,92,246,.7)"}}/>
-          <span style={{color:"rgba(139,92,246,.6)",fontSize:9,fontWeight:600}}>ABA SAID</span>
+          <ABALogo size={14}/>
+          <span style={{color:`rgba(${c},.7)`,fontSize:9,fontWeight:600}}>{orbState==="speaking"?"ABA IS SAYING":orbState==="thinking"?"ABA IS THINKING":"ABA SAID"}</span>
+          {orbState==="speaking"&&<div style={{width:6,height:6,borderRadius:3,background:`rgba(${c},.8)`,animation:"mb 1s ease infinite"}}/>}
         </div>
-        <p style={{color:"rgba(255,255,255,.7)",fontSize:12,margin:0,lineHeight:1.4,maxHeight:60,overflow:"hidden"}}>{lastMsg.substring(0,180)}{lastMsg.length>180?"...":""}</p>
+        <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:0,lineHeight:1.5,maxHeight:80,overflow:"auto"}}>{lastMsg}</p>
       </div>}
     </div>
   );
@@ -2601,7 +2588,7 @@ function FirstLoginTour({user,onComplete}){
     <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"rgba(8,8,13,.95)",backdropFilter:"blur(20px)",padding:20}}>
       {/* ABA orb */}
       <div style={{width:100,height:100,borderRadius:"50%",background:`radial-gradient(circle at 30% 30%, ${color}66, ${color}33)`,boxShadow:`0 0 60px ${color}44`,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:24,animation:speaking?"breathe 1.5s ease-in-out infinite":"breathe 3s ease-in-out infinite"}}>
-        {speaking?<Volume2 size={36} style={{color:"white"}}/>:<Sparkles size={36} style={{color:"white"}}/>}
+        {speaking?<Volume2 size={36} style={{color:"white"}}/>:<ABALogo size={40} color="white"/>}
       </div>
 
       {/* Step indicator */}
@@ -2654,6 +2641,66 @@ function VoiceMode({mode,setMode}){const modes=[{k:"chat",i:MessageSquare,l:"Cha
 // ⬡B:MYABA:EMAIL_VIEW:20260321⬡
 // Calls backend which calls Nylas. 90% backend, 10% frontend.
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ⬡B:CIP:EMAIL_DETAIL:mark_read_ask_aba:20260325⬡
+function EmailDetail({email,onBack,userId}){
+  const[askOpen,setAskOpen]=useState(false);
+  const[askInput,setAskInput]=useState("");
+  const[askResult,setAskResult]=useState("");
+  const[askLoading,setAskLoading]=useState(false);
+  const ABABASE="https://abacia-services.onrender.com";
+
+  // Mark as read after 3 seconds
+  useEffect(()=>{
+    if(!email?.id||!email.unread)return;
+    const timer=setTimeout(async()=>{
+      try{
+        await fetch(`${ABABASE}/api/air/process`,{
+          method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({message:`Mark email ${email.id} as read`,user_id:userId,channel:"myaba",context:{tool_hint:"mark_email_read",email_id:email.id}})
+        });
+      }catch{}
+    },3000);
+    return()=>clearTimeout(timer);
+  },[email?.id]);
+
+  const askABA=async()=>{
+    if(!askInput.trim())return;
+    setAskLoading(true);
+    const q=askInput; setAskInput("");
+    try{
+      const r=await fetch(`${ABABASE}/api/air/process`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({message:`About this email from ${email.from?.[0]?.name||"someone"} with subject "${email.subject||""}": ${q}\n\nEmail content: ${(email.snippet||email.body||"").substring(0,500)}`,user_id:userId,channel:"myaba"})
+      });
+      if(r.ok){const d=await r.json();setAskResult(d.response||d.message||"");}
+    }catch{setAskResult("Could not reach ABA right now")}
+    setAskLoading(false);
+  };
+
+  return(<div style={{flex:1,overflowY:"auto",padding:8}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:11}}><ChevronRight size={12} style={{transform:"rotate(180deg)"}}/>Back</button>
+      <button onClick={()=>setAskOpen(!askOpen)} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:8,border:"1px solid rgba(139,92,246,.2)",background:askOpen?"rgba(139,92,246,.15)":"rgba(139,92,246,.06)",color:"rgba(139,92,246,.8)",cursor:"pointer",fontSize:11,fontWeight:500}}>
+        <ABALogo size={14}/>Ask ABA
+      </button>
+    </div>
+    <div style={{padding:14,borderRadius:14,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)"}}>
+      <p style={{color:"rgba(255,255,255,.9)",fontSize:14,fontWeight:600,margin:"0 0 4px"}}>{email.subject||"(no subject)"}</p>
+      <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"0 0 2px"}}>From: {email.from?.[0]?.name||email.from?.[0]?.email||"Unknown"}</p>
+      <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"0 0 12px"}}>{email.date?new Date(email.date*1000).toLocaleString():""}</p>
+      <div style={{color:"rgba(255,255,255,.7)",fontSize:12,lineHeight:1.6}} dangerouslySetInnerHTML={{__html:email.body||email.snippet||"No content"}}/>
+    </div>
+    {askOpen&&<div style={{marginTop:8,padding:12,borderRadius:12,background:"rgba(139,92,246,.06)",border:"1px solid rgba(139,92,246,.12)"}}>
+      <div style={{display:"flex",gap:6,marginBottom:askResult?8:0}}>
+        <input value={askInput} onChange={e=>setAskInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&askABA()} placeholder="Ask ABA about this email..." style={{flex:1,padding:"8px 12px",borderRadius:8,border:"1px solid rgba(139,92,246,.15)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:12,outline:"none"}}/>
+        <button onClick={askABA} disabled={askLoading||!askInput.trim()} style={{padding:"8px 14px",borderRadius:8,border:"none",background:"rgba(139,92,246,.2)",color:"#a78bfa",cursor:"pointer",fontSize:12}}>{askLoading?"...":"Ask"}</button>
+      </div>
+      {askResult&&<div style={{padding:10,borderRadius:8,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)"}}><p style={{color:"rgba(255,255,255,.7)",fontSize:12,margin:0,lineHeight:1.5}}>{askResult}</p></div>}
+    </div>}
+  </div>);
+}
+
 function EmailView({userId}){
   const ABABASE="https://abacia-services.onrender.com";
   const[emails,setEmails]=useState([]);
@@ -2685,15 +2732,7 @@ function EmailView({userId}){
     </div>
 
     {/* Selected email detail */}
-    {selectedEmail&&<div style={{flex:1,overflowY:"auto",padding:8}}>
-      <button onClick={()=>setSelectedEmail(null)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:11,marginBottom:8}}><ChevronRight size={12} style={{transform:"rotate(180deg)"}}/>Back</button>
-      <div style={{padding:14,borderRadius:14,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)"}}>
-        <p style={{color:"rgba(255,255,255,.9)",fontSize:14,fontWeight:600,margin:"0 0 4px"}}>{selectedEmail.subject||"(no subject)"}</p>
-        <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"0 0 2px"}}>From: {selectedEmail.from?.[0]?.name||selectedEmail.from?.[0]?.email||"Unknown"}</p>
-        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"0 0 12px"}}>{selectedEmail.date?new Date(selectedEmail.date*1000).toLocaleString():""}</p>
-        <div style={{color:"rgba(255,255,255,.7)",fontSize:12,lineHeight:1.6}} dangerouslySetInnerHTML={{__html:selectedEmail.body||selectedEmail.snippet||"No content"}}/>
-      </div>
-    </div>}
+    {selectedEmail&&<EmailDetail email={selectedEmail} onBack={()=>setSelectedEmail(null)} userId={userId}/>}
 
     {/* Email list */}
     {!selectedEmail&&<div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:2,padding:"4px 0"}}>
@@ -2797,7 +2836,7 @@ function BriefingSetup({userId,onRefresh}){
 
   return(<div style={{flex:1,overflowY:"auto",padding:"8px 4px"}}>
     <div style={{textAlign:"center",marginBottom:16}}>
-      <Sparkles size={32} style={{color:"rgba(139,92,246,.6)",marginBottom:8}}/>
+      <ABALogo size={36} glow/>
       <p style={{color:"rgba(255,255,255,.8)",fontSize:16,fontWeight:600,margin:"0 0 4px"}}>Set up your briefing</p>
       <p style={{color:"rgba(255,255,255,.4)",fontSize:12,margin:0}}>What do you want ABA to keep you updated on?</p>
     </div>
@@ -5572,7 +5611,24 @@ export default function MyABA(){
       
       {/* Catch-all chat REMOVED — apps are their own views, chat is just an app */}
     </div>
-    {/* ⬡B:CIP:BOTTOM_NAV:android_style:20260324⬡ Android-style gesture nav */}
+    {/* ⬡B:CIP:ASK_ABA_FAB:context_button:20260325⬡ Floating Ask ABA button on every screen */}
+    {mainTab!=="chat"&&mainTab!=="home"&&mainTab!=="apps"&&!snapOpen&&(
+      <button onClick={()=>{
+        const context=mainTab.replace(/_/g," ");
+        setMainTab("chat");
+        setInput("I have a question about "+context+": ");
+      }} style={{
+        position:"fixed",bottom:"calc(64px + env(safe-area-inset-bottom, 0px))",right:16,
+        width:48,height:48,borderRadius:99,
+        background:"linear-gradient(135deg,#8B5CF6,#6366F1)",
+        border:"none",boxShadow:"0 4px 20px rgba(139,92,246,.4)",
+        cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+        zIndex:40,animation:"breathe 3s ease-in-out infinite"
+      }}>
+        <ABALogo size={24} color="white"/>
+      </button>
+    )}
+        {/* ⬡B:CIP:BOTTOM_NAV:android_style:20260324⬡ Android-style gesture nav */}
     <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:"8px 0 calc(6px + env(safe-area-inset-bottom, 0px))",background:"linear-gradient(transparent, rgba(0,0,0,.6) 30%)",pointerEvents:"none"}}>
       <div style={{display:"flex",alignItems:"center",gap:32,pointerEvents:"auto"}}>
         {mainTab!=="home"&&<button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:40,height:40,borderRadius:99,background:"rgba(255,255,255,.08)",backdropFilter:"blur(8px)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><Home size={18}/></button>}
