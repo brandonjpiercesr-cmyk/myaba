@@ -307,7 +307,7 @@ function TasksView({ userId }) {
   return (<div style={{flex:1,display:"flex",flexDirection:"column",padding:16}}>
     <div style={{flex:1,overflowY:"auto"}}>{loading ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading...</p>
     : tasks.length === 0 ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>No tasks yet</p>
-    : tasks.map((t,i) => <div key={t.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
+    : (tasks||[]).map((t,i) => <div key={t.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
         <p style={{fontSize:13,color:"rgba(255,255,255,.8)"}}>{(typeof t.content==="string"?t.content:JSON.stringify(t.content)).substring(0,200)}</p>
         <span style={{fontSize:10,color:"rgba(255,255,255,.2)"}}>{t.created_at?new Date(t.created_at).toLocaleDateString():""}</span></div>)}</div>
     <div style={{display:"flex",gap:8,paddingTop:12}}>
@@ -336,7 +336,7 @@ function NotesView({ userId }) {
   return (<div style={{flex:1,display:"flex",flexDirection:"column",padding:16}}>
     <div style={{flex:1,overflowY:"auto"}}>{loading ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading...</p>
     : notes.length === 0 ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>No notes yet</p>
-    : notes.map((n,i) => <div key={n.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
+    : (notes||[]).map((n,i) => <div key={n.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
         <p style={{fontSize:13,color:"rgba(255,255,255,.8)",whiteSpace:"pre-wrap"}}>{(typeof n.content==="string"?n.content:JSON.stringify(n.content)).substring(0,300)}</p>
         <span style={{fontSize:10,color:"rgba(255,255,255,.2)"}}>{n.created_at?new Date(n.created_at).toLocaleDateString():""}</span></div>)}</div>
     <div style={{display:"flex",gap:8,paddingTop:12}}>
@@ -551,7 +551,7 @@ function JournalView({ userId }) {
           <p style={{ textAlign: "center", padding: 40, color: "rgba(255,255,255,.25)", fontSize: 13 }}>
             {mode === "capture" ? "No captures yet. Speak or type a quick thought." : "No journal entries yet. How was your day?"}
           </p>
-        ) : entries.map((e, i) => {
+        ) : (entries||[]).map((e, i) => {
           const content = typeof e.raw === "string" ? e.raw : typeof e.content === "string" ? e.content : JSON.stringify(e);
           const tone = e.emotionalTone || "";
           const summary = e.summary || "";
@@ -1010,7 +1010,7 @@ function MeetingModeView({ userId }) {
       )}
       {panel==="glossary" && (glossary.length===0
         ? <div style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.2)"}}><p style={{fontSize:12,margin:0}}>Key terms will appear here</p></div>
-        : glossary.map((g,i) => <div key={i} style={{padding:8,marginBottom:4,borderRadius:8,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.05)"}}><span style={{color:"#22d3ee",fontSize:11,fontWeight:600}}>{g.term}</span><p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"2px 0 0",lineHeight:1.4}}>{g.definition}</p></div>)
+        : (glossary||[]).map((g,i) => <div key={i} style={{padding:8,marginBottom:4,borderRadius:8,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.05)"}}><span style={{color:"#22d3ee",fontSize:11,fontWeight:600}}>{g.term}</span><p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"2px 0 0",lineHeight:1.4}}>{g.definition}</p></div>)
       )}
       {summary && <div style={{padding:12,borderRadius:12,background:"rgba(16,185,129,.06)",border:"1px solid rgba(16,185,129,.12)",marginTop:8}}><p style={{color:"#34d399",fontSize:11,fontWeight:600,margin:"0 0 4px"}}>Meeting Summary</p><p style={{color:"rgba(255,255,255,.7)",fontSize:12,margin:0,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{summary}</p></div>}
     </div>
@@ -1169,7 +1169,7 @@ function InterviewModeView({ userId }) {
       {modeTab("prep","Prep")}{modeTab("live","Live")}{modeTab("mock","Mock")}
     </div>
     <div style={{flex:1,overflowY:"auto"}}>
-      {mockHistory.map((h,i) => <div key={i} style={{marginBottom:10}}>
+      {(mockHistory||[]).map((h,i) => <div key={i} style={{marginBottom:10}}>
         <div style={{padding:8,borderRadius:"10px 10px 2px 10px",background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.12)",marginBottom:3}}>
           <p style={{fontSize:10,color:"#fbbf24",fontWeight:500,margin:0}}>Interviewer</p>
           <p style={{fontSize:12,color:"rgba(255,255,255,.75)",margin:"3px 0 0",lineHeight:1.5}}>{h.q}</p>
@@ -1224,7 +1224,7 @@ function InterviewModeView({ userId }) {
       )}
       {panel==="coaching" && (coaching.length===0
         ? <div style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.2)"}}><p style={{fontSize:12,margin:0}}>Coaching tips appear in real-time</p></div>
-        : coaching.map((c,i) => <div key={i} style={{padding:8,marginBottom:4,borderRadius:8,background:"rgba(16,185,129,.06)",border:"1px solid rgba(16,185,129,.1)"}}><span style={{color:"rgba(16,185,129,.4)",fontSize:9}}>[{c.time}]</span><p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"2px 0 0",lineHeight:1.4}}>{c.tip}</p></div>)
+        : (coaching||[]).map((c,i) => <div key={i} style={{padding:8,marginBottom:4,borderRadius:8,background:"rgba(16,185,129,.06)",border:"1px solid rgba(16,185,129,.1)"}}><span style={{color:"rgba(16,185,129,.4)",fontSize:9}}>[{c.time}]</span><p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"2px 0 0",lineHeight:1.4}}>{c.tip}</p></div>)
       )}
     </div>
   </div>);
@@ -2456,7 +2456,7 @@ function FirstLoginTour({user,onComplete}){
     (async()=>{
       setSpeaking(true);
       try{
-        const res=await fetch("https://abacia-services.onrender.com/api/voice/synthesize",{
+        const res=await fetch(`${ABABASE}/api/voice/synthesize`,{
           method:"POST",headers:{"Content-Type":"application/json"},
           body:JSON.stringify({text:currentStep.voice,voiceId:"6aDn1KB0hjpdcocrUkmq"})
         });
@@ -2780,7 +2780,7 @@ function BriefingSetup({userId,onRefresh}){
     try{
       await fetch(`${ABABASE}/api/air/process`,{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({message:`Save my news interests for DAWN briefings: ${interests.join(", ")}`,user_id:userId,channel:"myaba"})
+        body:JSON.stringify({message:`Save my news interests for DAWN briefings: ${interests.join(", ")}`,user_id:userId,channel:"cip",appScope:"email"})
       });
       // Also save directly to brain as HAM preference
       await fetch(`https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory`,{
@@ -2997,7 +2997,7 @@ function ApproveView({userId,onAction}){
               <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
                 <span style={{color:"rgba(255,255,255,.6)",fontSize:11}}>{c.type} ({c.approvalRate}% in {c.avgResponseMins}m)</span>
                 <button onClick={async()=>{
-                  try{await fetch("https://abacia-services.onrender.com/api/awa/decisions/auto-approve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,type:c.type,enabled:true})})}catch{}
+                  try{await fetch(`${ABABASE}/api/awa/decisions/auto-approve`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,type:c.type,enabled:true})})}catch{}
                 }} style={{padding:"3px 8px",borderRadius:4,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.1)",color:"#10B981",cursor:"pointer",fontSize:9,fontWeight:600}}>Enable</button>
               </div>
             ))}
