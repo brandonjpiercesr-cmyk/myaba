@@ -1728,6 +1728,11 @@ async function uploadAttachmentsBatch(files, userId, conversationId) {
 
 async function reachTranscribe(audioBlob) {
   try {
+    if (!audioBlob || audioBlob.size < 1000) { 
+      console.log("[VOICE] Audio chunk too small:", audioBlob?.size, "bytes — skipping"); 
+      return null; 
+    }
+    console.log("[VOICE] Transcribing", audioBlob.size, "bytes,", audioBlob.type);
     const contentType = audioBlob.type || "audio/webm";
     const res = await fetch(`${ABABASE}/api/voice/transcribe`, { 
       method: "POST", 
@@ -1735,7 +1740,11 @@ async function reachTranscribe(audioBlob) {
       body: audioBlob 
     });
     if (!res.ok) { console.error("[VOICE] Transcribe HTTP", res.status); return null; }
-    return (await res.json()).transcript || null;
+    const data = await res.json();
+    const text = data.transcript || data.text || null;
+    if (text) console.log("[VOICE] Got:", text.substring(0, 80));
+    else console.log("[VOICE] Empty transcript from Deepgram");
+    return text;
   } catch (e) { console.error("[VOICE] Transcribe error:", e); return null; }
 }
 
