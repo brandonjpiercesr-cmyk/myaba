@@ -2216,19 +2216,7 @@ import { ABAPresence } from './ABAPresence.jsx';
 
 // ⬡B:CIP:ABA_LOGO:brand_mark:20260325⬡ Real ABA logo SVG component
 function ABALogo({size=24,color="#a78bfa",glow=false}){
-  return(<svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <radialGradient id="abaGlow" cx="50%" cy="40%" r="50%">
-        <stop offset="0%" stopColor={color} stopOpacity=".9"/>
-        <stop offset="100%" stopColor="#6D28D9" stopOpacity=".4"/>
-      </radialGradient>
-      <filter id="abaBlur"><feGaussianBlur stdDeviation="1.5"/></filter>
-    </defs>
-    {glow&&<circle cx="16" cy="16" r="14" fill={color} opacity=".15" filter="url(#abaBlur)"/>}
-    <circle cx="16" cy="16" r="12" fill="url(#abaGlow)"/>
-    <path d="M16 8L11 22H13.5L14.5 19H17.5L18.5 22H21L16 8ZM15.2 17L16 14.2L16.8 17H15.2Z" fill="white" opacity=".95"/>
-    <circle cx="16" cy="11" r="1.5" fill="white" opacity=".6"/>
-  </svg>);
+  return <img src="https://i.imgur.com/0be7HCF.png" alt="ABA" style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",filter:glow?"drop-shadow(0 0 6px rgba(139,92,246,.5))":"none"}} />;
 }
 
 
