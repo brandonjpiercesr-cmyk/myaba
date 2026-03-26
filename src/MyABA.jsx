@@ -641,6 +641,165 @@ function GuideView({ userId }) {
   </div>);
 }
 
+// ⬡B:NASH:SPORTS_VIEW:CIP:20260325⬡
+// Sports app — NASH (Notable Athletic Scores and Highlights)
+// Calls /api/nash/scores, renders team cards with warm VARA-style scores
+function SportsView({ userId }) {
+  const [scores, setScores] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [searchResult, setSearchResult] = useState(null);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(ABABASE + "/api/nash/briefing?userId=" + encodeURIComponent(userId));
+        if (res.ok) { const d = await res.json(); setScores(d.scores || []); }
+      } catch (e) { console.error("[SPORTS]", e); }
+      setLoading(false);
+    })();
+  }, [userId]);
+
+  const doSearch = async () => {
+    if (!search.trim()) return;
+    setSearching(true); setSearchResult(null);
+    try {
+      const res = await fetch(ABABASE + "/api/nash/scores?team=" + encodeURIComponent(search) + "&userId=" + encodeURIComponent(userId));
+      if (res.ok) { const d = await res.json(); setSearchResult(d); }
+    } catch (e) { console.error("[SPORTS]", e); }
+    setSearching(false);
+  };
+
+  return (<div style={{flex:1,overflowY:"auto",padding:"8px 4px"}}>
+    {/* Search bar */}
+    <div style={{display:"flex",gap:8,marginBottom:12}}>
+      <input value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")doSearch()}}
+        placeholder="Search team (Lakers, Duke, Saints...)"
+        style={{flex:1,padding:"10px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.9)",fontSize:14,outline:"none"}}/>
+      <button onClick={doSearch} disabled={searching}
+        style={{padding:"10px 16px",borderRadius:12,border:"none",background:"rgba(139,92,246,.25)",color:"#a78bfa",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+        {searching?"...":"Go"}
+      </button>
+    </div>
+
+    {/* Search result */}
+    {searchResult && <div style={{padding:16,borderRadius:14,background:"rgba(139,92,246,.08)",border:"1px solid rgba(139,92,246,.15)",marginBottom:12}}>
+      <p style={{color:"rgba(255,255,255,.9)",fontSize:14,lineHeight:1.6,margin:0}}>{searchResult.spoken || searchResult.type}</p>
+      {searchResult.type==="result" && <div style={{marginTop:8,display:"flex",gap:12,justifyContent:"center"}}>
+        <span style={{fontSize:24,fontWeight:700,color:"rgba(34,197,94,.9)"}}>{searchResult.winScore}</span>
+        <span style={{fontSize:14,color:"rgba(255,255,255,.3)",alignSelf:"center"}}>vs</span>
+        <span style={{fontSize:24,fontWeight:700,color:"rgba(239,68,68,.7)"}}>{searchResult.loseScore}</span>
+      </div>}
+    </div>}
+
+    {/* Followed teams scores */}
+    <div style={{fontSize:11,color:"rgba(255,255,255,.3)",marginBottom:8,fontWeight:600,letterSpacing:1}}>YOUR TEAMS</div>
+    {loading ? <p style={{color:"rgba(255,255,255,.3)",textAlign:"center",padding:20}}>Loading scores...</p>
+    : scores.length === 0 ? <p style={{color:"rgba(255,255,255,.3)",textAlign:"center",padding:20}}>No recent scores for your followed teams. Add teams in your profile.</p>
+    : scores.map((s, i) => (
+      <div key={i} style={{padding:14,borderRadius:12,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",marginBottom:8}}>
+        <p style={{color:"rgba(255,255,255,.85)",fontSize:14,margin:0,lineHeight:1.5}}>{s.spoken || JSON.stringify(s)}</p>
+        {s.date && <p style={{color:"rgba(255,255,255,.25)",fontSize:11,margin:"6px 0 0"}}>{s.date}</p>}
+      </div>
+    ))}
+  </div>);
+}
+
+// ⬡B:ARIA:MUSIC_VIEW:CIP:20260325⬡
+// Music app — ARIA (Adaptive Rhythmic Intelligence Agent)
+// Calls /api/aria/search, renders YouTube music results
+function MusicView({ userId }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [mood, setMood] = useState(null);
+  const [recs, setRecs] = useState([]);
+  const [recsLoading, setRecsLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(ABABASE + "/api/aria/recommend?userId=" + encodeURIComponent(userId) + "&mood=chill");
+        if (res.ok) { const d = await res.json(); setRecs(d.results || []); }
+      } catch (e) { console.error("[MUSIC]", e); }
+      setRecsLoading(false);
+    })();
+  }, [userId]);
+
+  const doSearch = async () => {
+    if (!query.trim()) return;
+    setLoading(true); setResults([]);
+    try {
+      const res = await fetch(ABABASE + "/api/aria/search?q=" + encodeURIComponent(query));
+      if (res.ok) { const d = await res.json(); setResults(d.results || []); }
+    } catch (e) { console.error("[MUSIC]", e); }
+    setLoading(false);
+  };
+
+  const moods = ["Chill", "Worship", "Hype", "Study", "Throwback"];
+
+  const loadMood = async (m) => {
+    setMood(m); setRecsLoading(true);
+    try {
+      const res = await fetch(ABABASE + "/api/aria/recommend?userId=" + encodeURIComponent(userId) + "&mood=" + encodeURIComponent(m.toLowerCase()));
+      if (res.ok) { const d = await res.json(); setRecs(d.results || []); }
+    } catch (e) { console.error("[MUSIC]", e); }
+    setRecsLoading(false);
+  };
+
+  const TrackCard = ({ track }) => (
+    <div style={{padding:12,borderRadius:12,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",marginBottom:8,display:"flex",gap:12,alignItems:"center"}}>
+      {track.thumbnail && <img src={track.thumbnail} alt="" style={{width:56,height:56,borderRadius:8,objectFit:"cover",flexShrink:0}}/>}
+      <div style={{flex:1,minWidth:0}}>
+        <p style={{color:"rgba(255,255,255,.85)",fontSize:13,margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} dangerouslySetInnerHTML={{__html:track.title}}/>
+        <p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:"4px 0 0"}}>{track.artist}</p>
+      </div>
+      <a href={track.url} target="_blank" rel="noopener noreferrer"
+        style={{width:36,height:36,borderRadius:99,background:"rgba(239,68,68,.15)",color:"rgba(239,68,68,.8)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,textDecoration:"none"}}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+      </a>
+    </div>
+  );
+
+  return (<div style={{flex:1,overflowY:"auto",padding:"8px 4px"}}>
+    {/* Search bar */}
+    <div style={{display:"flex",gap:8,marginBottom:12}}>
+      <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")doSearch()}}
+        placeholder="Search songs, artists..."
+        style={{flex:1,padding:"10px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.9)",fontSize:14,outline:"none"}}/>
+      <button onClick={doSearch} disabled={loading}
+        style={{padding:"10px 16px",borderRadius:12,border:"none",background:"rgba(139,92,246,.25)",color:"#a78bfa",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+        {loading?"...":"Search"}
+      </button>
+    </div>
+
+    {/* Search results */}
+    {results.length > 0 && <>
+      <div style={{fontSize:11,color:"rgba(255,255,255,.3)",marginBottom:8,fontWeight:600,letterSpacing:1}}>RESULTS</div>
+      {results.map((t, i) => <TrackCard key={i} track={t}/>)}
+    </>}
+
+    {/* Mood filters */}
+    <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+      {moods.map(m => (
+        <button key={m} onClick={()=>loadMood(m)}
+          style={{padding:"6px 14px",borderRadius:20,border:"1px solid " + (mood===m?"rgba(139,92,246,.4)":"rgba(255,255,255,.1)"),
+            background:mood===m?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",
+            color:mood===m?"#a78bfa":"rgba(255,255,255,.5)",fontSize:12,cursor:"pointer"}}>{m}</button>
+      ))}
+    </div>
+
+    {/* Recommendations */}
+    <div style={{fontSize:11,color:"rgba(255,255,255,.3)",marginBottom:8,fontWeight:600,letterSpacing:1}}>
+      {mood ? mood.toUpperCase() + " VIBES" : "RECOMMENDED FOR YOU"}
+    </div>
+    {recsLoading ? <p style={{color:"rgba(255,255,255,.3)",textAlign:"center",padding:20}}>Finding music...</p>
+    : recs.length === 0 ? <p style={{color:"rgba(255,255,255,.3)",textAlign:"center",padding:20}}>No recommendations yet. Try searching above.</p>
+    : recs.map((t, i) => <TrackCard key={i} track={t}/>)}
+  </div>);
+}
+
 function NURAView({ userId, onScan }) {
   const [query, setQuery] = useState("");
   const [response, setResponse] = useState(null);
@@ -5458,7 +5617,7 @@ export default function MyABA(){
       {/* App title bar — only shows when NOT on home */}
       {mainTab!=="home"&&mainTab!=="apps"&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 12px 4px",flexShrink:0}}>
         <button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ChevronLeft size={18}/></button>
-        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"Talk to ABA":mainTab==="briefing"?"DAWN Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"CeeCee":mainTab==="nura"?"NURA":mainTab==="phone"?"ABA Dials":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"GUIDE Maps":mainTab==="ccwa"?"CCWA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"Meeting Mode":mainTab==="interview"?"Interview Prep":mainTab.replace(/_/g," ")}</span>
+        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"Talk to ABA":mainTab==="briefing"?"DAWN Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"CeeCee":mainTab==="nura"?"NURA":mainTab==="phone"?"ABA Dials":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"GUIDE Maps":mainTab==="sports"?"NASH Sports":mainTab==="music"?"ARIA Music":mainTab==="ccwa"?"CCWA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"Meeting Mode":mainTab==="interview"?"Interview Prep":mainTab.replace(/_/g," ")}</span>
         <div style={{display:"flex",gap:4}}>
           {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:lastABAResponse?"rgba(34,197,94,.1)":"rgba(255,255,255,.04)",color:lastABAResponse?"rgba(34,197,94,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}><Activity size={14}/></button>}
           <button onClick={()=>setVoiceOut(!voiceOut)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:voiceOut?"rgba(139,92,246,.1)":"rgba(255,255,255,.04)",color:voiceOut?"rgba(139,92,246,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={13}/>:<VolumeX size={13}/>}</button>
@@ -5498,6 +5657,8 @@ export default function MyABA(){
             else if(app.id==="crm"){setMainTab("crm")}
             else if(app.id==="journal"){setMainTab("journal")}
             else if(app.id==="guide"){setMainTab("guide")}
+            else if(app.id==="sports"){setMainTab("sports")}
+            else if(app.id==="music"){setMainTab("music")}
             else if(app.id==="meeting"){setMainTab("meeting")}
             else if(app.id==="interview"){setMainTab("interview")}
             else{setMainTab(app.id)}
@@ -5578,6 +5739,8 @@ export default function MyABA(){
       {mainTab==="crm"&&<CRMView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="journal"&&<JournalView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="guide"&&<GuideView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="sports"&&<SportsView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="music"&&<MusicView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="ccwa"&&<CCWAView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="aoa"&&<AOAView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="meeting"&&<MeetingModeView userId={user?.email||user?.uid||"unknown"}/>}
