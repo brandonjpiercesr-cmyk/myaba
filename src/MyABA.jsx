@@ -1028,26 +1028,30 @@ function ClosedCaptions({ text, visible }) {
 
 // ═══════════════════════════════════════════════════════════
 // MEETING MODE — 3-panel: Transcript | ABA Answers | Glossary
-// ⬡B:cip.meeting_mode:VIEW:3_panel:20260324⬡
-// TIM (Temporary Interim Model) + COOK (Conversational Optimization) pipeline
-// 90/10: All processing through AIR. Frontend is display only.
+// ⬡B:cip.meeting_mode:VIEW:tim_cook_v2:20260326⬡
+// TIM (Temporary Interim Model) quick cues via Groq + COOK (Conversational Optimization) polished answers via Sonnet
+// Visually upgraded: dark glass panels, cyan accents, TIM cue banner, COOK streaming answers
 // ═══════════════════════════════════════════════════════════
 function MeetingModeView({ userId }) {
   const [running, setRunning] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [transcript, setTranscript] = useState([]);
-  const [answers, setAnswers] = useState([]);
+  const [timCues, setTimCues] = useState([]);
+  const [cookAnswers, setCookAnswers] = useState([]);
   const [glossary, setGlossary] = useState([]);
   const [panel, setPanel] = useState("transcript");
   const [recording, setRecording] = useState(false);
   const [askInput, setAskInput] = useState("");
   const [askLoading, setAskLoading] = useState(false);
   const [summary, setSummary] = useState(null);
+  const [activeCue, setActiveCue] = useState(null);
+  const [cookStreaming, setCookStreaming] = useState(false);
   const recRef = useRef(null);
   const streamRef = useRef(null);
   const intervalRef = useRef(null);
   const secondsRef = useRef(0);
-  const ABABASE = "https://abacia-services.onrender.com";
+  const cueTimeoutRef = useRef(null);
+  const transcriptRef = useRef([]);
 
   useEffect(() => {
     if (running) { intervalRef.current = setInterval(() => { setSeconds(s => { secondsRef.current = s + 1; return s + 1; }); }, 1000); }
@@ -1056,6 +1060,62 @@ function MeetingModeView({ userId }) {
   }, [running]);
 
   const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+
+  // TIM quick cue fetcher
+  const fetchTimCue = async (text) => {
+    try {
+      const res = await fetch(`${ABABASE}/api/tim/cue`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "meeting", userId })
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.cue) {
+          const cue = { text: d.cue, type: d.type, time: fmt(secondsRef.current), latency: d.latency_ms };
+          setTimCues(prev => [...prev, cue]);
+          setActiveCue(cue);
+          clearTimeout(cueTimeoutRef.current);
+          cueTimeoutRef.current = setTimeout(() => setActiveCue(null), 8000);
+        }
+      }
+    } catch {}
+  };
+
+  // COOK polished answer fetcher (SSE streaming)
+  const fetchCookAnswer = async (question) => {
+    setCookStreaming(true);
+    let fullText = "";
+    try {
+      const res = await fetch(`${ABABASE}/api/cook/answer`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "meeting", userId })
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n").filter(l => l.startsWith("data: "));
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line.slice(6));
+            if (parsed.type === "text") { fullText += parsed.text; setCookAnswers(prev => { const updated = [...prev]; if (updated.length > 0 && updated[updated.length-1].streaming) { updated[updated.length-1].text = fullText; } else { updated.push({ q: question.substring(0, 80), text: fullText, time: fmt(secondsRef.current), streaming: true }); } return updated; }); }
+            if (parsed.type === "done") { setCookAnswers(prev => { const updated = [...prev]; if (updated.length > 0) updated[updated.length-1].streaming = false; return updated; }); }
+          } catch {}
+        }
+      }
+    } catch { if (fullText) setCookAnswers(prev => { const u = [...prev]; if (u.length > 0) u[u.length-1].streaming = false; return u; }); }
+    setCookStreaming(false);
+  };
+
+  const processSegment = async (text) => {
+    fetchTimCue(text);
+    // Detect if segment contains a question (for COOK)
+    if (text.includes("?") || text.length > 80) {
+      setTimeout(() => fetchCookAnswer(text), 2000); // Delay to let TIM fire first
+    }
+  };
 
   const startMeeting = async () => {
     try {
@@ -1070,7 +1130,9 @@ function MeetingModeView({ userId }) {
           const blob = new Blob([e.data], { type: mime || "audio/webm" });
           const text = await reachTranscribe(blob);
           if (text && text.trim()) {
-            setTranscript(prev => [...prev, { text, time: fmt(secondsRef.current) }]);
+            const entry = { text, time: fmt(secondsRef.current) };
+            setTranscript(prev => [...prev, entry]);
+            transcriptRef.current = [...transcriptRef.current, entry];
             processSegment(text);
           }
         }
@@ -1082,101 +1144,112 @@ function MeetingModeView({ userId }) {
     } catch { alert("Microphone access denied"); }
   };
 
-  const processSegment = async (text) => {
-    try {
-      const res = await fetch(`${ABABASE}/api/air/process`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: `Meeting transcript segment: "${text}". Analyze for: 1) Questions needing answers 2) Key terms. Return JSON: {"answers":[{"q":"question","a":"answer"}],"terms":[{"term":"word","definition":"meaning"}]}`, user_id: userId, channel: "myaba", appScope: "meeting" })
-      });
-      if (res.ok) {
-        const d = await res.json();
-        const r = d.response || "";
-        try {
-          const m = r.match(/\{[\s\S]*\}/);
-          if (m) {
-            const p = JSON.parse(m[0]);
-            if (p.answers?.length) setAnswers(prev => [...prev, ...p.answers]);
-            if (p.terms?.length) setGlossary(prev => { const ex = prev.map(t => t.term.toLowerCase()); return [...prev, ...p.terms.filter(t => !ex.includes(t.term.toLowerCase()))]; });
-          }
-        } catch { if (r) setAnswers(prev => [...prev, { q: "Note", a: r.substring(0, 200) }]); }
-      }
-    } catch {}
+  const endMeeting = async () => {
+    recRef.current?.stop();
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    setRunning(false);
+    setRecording(false);
+    if (transcriptRef.current.length > 0) {
+      try {
+        const res = await fetch(`${ABABASE}/api/meeting/summary`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcript: transcriptRef.current.map(t=>`[${t.time}] ${t.text}`).join("\n"), duration: fmt(seconds), mode: "meeting", userId })
+        });
+        if (res.ok) { const d = await res.json(); setSummary(d.summary || ""); }
+      } catch {}
+    }
   };
 
   const askABA = async () => {
     if (!askInput.trim()) return;
     setAskLoading(true);
     const q = askInput; setAskInput("");
-    try {
-      const res = await fetch(`${ABABASE}/api/air/process`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: `During a live meeting, user asks: "${q}". Context: ${transcript.map(t=>t.text).join(" ").substring(0,1500)}. Answer concisely.`, user_id: userId, channel: "myaba", appScope: "meeting" })
-      });
-      if (res.ok) { const d = await res.json(); setAnswers(prev => [...prev, { q, a: d.response || "No answer" }]); }
-    } catch {}
+    fetchCookAnswer(q);
     setAskLoading(false);
   };
 
-  const endMeeting = async () => {
-    recRef.current?.stop();
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    setRunning(false);
-    setRecording(false);
-    if (transcript.length > 0) {
-      try {
-        const res = await fetch(`${ABABASE}/api/air/process`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: `Meeting ended. Duration: ${fmt(seconds)}. Transcript: ${transcript.map(t=>`[${t.time}] ${t.text}`).join(" ")}. Generate a summary with key decisions, action items, and follow-ups.`, user_id: userId, channel: "myaba", appScope: "meeting" })
-        });
-        if (res.ok) { const d = await res.json(); setSummary(d.response || ""); }
-      } catch {}
-    }
-  };
-
   const panels = [
-    { id: "transcript", label: "Transcript", count: transcript.length },
-    { id: "answers", label: "Answers", count: answers.length },
-    { id: "glossary", label: "Glossary", count: glossary.length }
+    { id: "transcript", label: "Transcript", count: transcript.length, icon: "📝" },
+    { id: "coaching", label: "Coaching", count: cookAnswers.length, icon: "🧠" },
+    { id: "glossary", label: "Glossary", count: glossary.length, icon: "📖" }
   ];
 
-  return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-    {/* Header with timer */}
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 12px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
-      <div style={{display:"flex",alignItems:"center",gap:10}}>
-        {recording && <div style={{width:8,height:8,borderRadius:"50%",background:"#ef4444",animation:"mb 1.5s infinite",boxShadow:"0 0 6px rgba(239,68,68,.5)"}}/>}
-        <span style={{fontFamily:"monospace",fontSize:20,color:running?"#fff":"rgba(255,255,255,.3)",fontWeight:300}}>{fmt(seconds)}</span>
+  const panelStyle = (id) => ({
+    flex: 1, padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer",
+    fontSize: 11, fontWeight: panel === id ? 700 : 400, letterSpacing: panel === id ? "0.5px" : "0",
+    background: panel === id ? "linear-gradient(135deg, rgba(6,182,212,.2), rgba(6,182,212,.08))" : "transparent",
+    color: panel === id ? "#22d3ee" : "rgba(255,255,255,.35)",
+    transition: "all 0.3s ease", display: "flex", alignItems: "center", justifyContent: "center", gap: 5
+  });
+
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(6,182,212,.03) 0%, transparent 40%)"}}>
+    {/* TIM Cue Banner */}
+    {activeCue && <div style={{
+      padding:"10px 14px",margin:"6px 8px 0",borderRadius:12,
+      background: activeCue.type === "ALERT" ? "linear-gradient(135deg, rgba(239,68,68,.15), rgba(239,68,68,.05))" : "linear-gradient(135deg, rgba(6,182,212,.15), rgba(6,182,212,.05))",
+      border: activeCue.type === "ALERT" ? "1px solid rgba(239,68,68,.2)" : "1px solid rgba(6,182,212,.15)",
+      boxShadow: activeCue.type === "ALERT" ? "0 0 20px rgba(239,68,68,.1)" : "0 0 20px rgba(6,182,212,.08)",
+      animation:"mf .4s ease",transition:"all 0.3s ease"
+    }}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+        <div style={{width:6,height:6,borderRadius:"50%",background:activeCue.type==="ALERT"?"#ef4444":"#22d3ee",boxShadow:activeCue.type==="ALERT"?"0 0 8px rgba(239,68,68,.5)":"0 0 8px rgba(6,182,212,.5)",animation:"mb 1.5s infinite"}}/>
+        <span style={{fontSize:9,fontWeight:700,color:activeCue.type==="ALERT"?"#fca5a5":"rgba(6,182,212,.7)",letterSpacing:"1px",textTransform:"uppercase"}}>{activeCue.type==="ALERT"?"Alert":"TIM Cue"}</span>
+        <span style={{fontSize:8,color:"rgba(255,255,255,.2)",marginLeft:"auto"}}>{activeCue.latency}ms</span>
       </div>
-      <div style={{display:"flex",gap:6}}>
-        {!running && <button onClick={startMeeting} style={{padding:"6px 14px",borderRadius:10,border:"none",background:"rgba(6,182,212,.2)",color:"#22d3ee",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}><Mic size={13}/>Start</button>}
-        {running && <button onClick={endMeeting} style={{padding:"6px 14px",borderRadius:10,border:"none",background:"rgba(239,68,68,.15)",color:"#f87171",fontSize:12,fontWeight:600,cursor:"pointer"}}>End</button>}
+      <p style={{fontSize:13,color:"rgba(255,255,255,.9)",margin:0,lineHeight:1.5,fontWeight:500}}>{activeCue.text}</p>
+    </div>}
+
+    {/* Header */}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",borderBottom:"1px solid rgba(6,182,212,.08)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12}}>
+        {recording && <div style={{width:10,height:10,borderRadius:"50%",background:"#ef4444",animation:"mb 1.5s infinite",boxShadow:"0 0 12px rgba(239,68,68,.4)"}}/>}
+        <span style={{fontFamily:"'SF Mono',monospace",fontSize:24,color:running?"#22d3ee":"rgba(255,255,255,.15)",fontWeight:200,letterSpacing:"2px"}}>{fmt(seconds)}</span>
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        {!running ? <button onClick={startMeeting} style={{padding:"8px 18px",borderRadius:12,border:"1px solid rgba(6,182,212,.3)",background:"linear-gradient(135deg, rgba(6,182,212,.15), rgba(6,182,212,.05))",color:"#22d3ee",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6,boxShadow:"0 0 15px rgba(6,182,212,.1)",transition:"all 0.2s ease"}}><Mic size={14}/>Start Meeting</button>
+        : <button onClick={endMeeting} style={{padding:"8px 18px",borderRadius:12,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.08)",color:"#f87171",fontSize:12,fontWeight:600,cursor:"pointer",transition:"all 0.2s ease"}}>End Meeting</button>}
       </div>
     </div>
-    {/* 3-panel tabs */}
-    <div style={{display:"flex",gap:2,padding:"6px 8px",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
-      {panels.map(p => <button key={p.id} onClick={()=>setPanel(p.id)} style={{flex:1,padding:"6px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:panel===p.id?600:400,background:panel===p.id?"rgba(6,182,212,.15)":"transparent",color:panel===p.id?"#22d3ee":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
-        {p.label}{p.count>0&&<span style={{fontSize:9,background:"rgba(6,182,212,.25)",padding:"1px 5px",borderRadius:8}}>{p.count}</span>}
+
+    {/* Panel Tabs */}
+    <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
+      {panels.map(p => <button key={p.id} onClick={()=>setPanel(p.id)} style={panelStyle(p.id)}>
+        <span>{p.icon}</span>{p.label}{p.count>0&&<span style={{fontSize:9,background:panel===p.id?"rgba(6,182,212,.3)":"rgba(255,255,255,.06)",padding:"2px 6px",borderRadius:8,fontWeight:600}}>{p.count}</span>}
       </button>)}
     </div>
-    {/* Panel content */}
-    <div style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
+
+    {/* Panel Content */}
+    <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
       {panel==="transcript" && (transcript.length===0
-        ? <div style={{textAlign:"center",padding:"40px 16px",color:"rgba(255,255,255,.2)"}}><Mic size={28} style={{margin:"0 auto 8px",display:"block",opacity:.3}}/><p style={{fontSize:12,margin:0}}>{running?"Listening...":"Tap Start to begin"}</p>{!running&&<p style={{fontSize:10,color:"rgba(255,255,255,.1)",margin:"4px 0 0"}}>Audio transcribes every 5 seconds</p>}</div>
-        : transcript.map((t,i) => <div key={i} style={{padding:"8px 10px",marginBottom:4,borderRadius:10,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.05)",animation:"mf .3s ease"}}><span style={{color:"rgba(6,182,212,.4)",fontSize:9,marginRight:6}}>[{t.time}]</span><span style={{color:"rgba(255,255,255,.75)",fontSize:12,lineHeight:1.5}}>{t.text}</span></div>)
+        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><Mic size={36} style={{margin:"0 auto 12px",display:"block",opacity:.2}}/><p style={{fontSize:13,margin:0,fontWeight:300}}>{running?"Listening for speech...":"Tap Start Meeting to begin"}</p></div>
+        : transcript.map((t,i) => <div key={i} style={{padding:"10px 12px",marginBottom:5,borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)",animation:"mf .3s ease",transition:"all 0.2s ease"}}><span style={{color:"rgba(6,182,212,.35)",fontSize:9,fontWeight:600,marginRight:8,fontFamily:"monospace"}}>{t.time}</span><span style={{color:"rgba(255,255,255,.8)",fontSize:12.5,lineHeight:1.6}}>{t.text}</span></div>)
       )}
-      {panel==="answers" && (answers.length===0
-        ? <div style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.2)"}}><Sparkles size={24} style={{margin:"0 auto 8px",display:"block",opacity:.3}}/><p style={{fontSize:12,margin:0}}>ABA answers appear as the meeting progresses</p></div>
-        : answers.map((a,i) => <div key={i} style={{padding:10,marginBottom:6,borderRadius:10,background:"rgba(139,92,246,.06)",border:"1px solid rgba(139,92,246,.1)"}}><p style={{color:"#a78bfa",fontSize:11,fontWeight:500,margin:"0 0 4px"}}>{a.q}</p><p style={{color:"rgba(255,255,255,.7)",fontSize:12,margin:0,lineHeight:1.5}}>{a.a}</p></div>)
+      {panel==="coaching" && (cookAnswers.length===0
+        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><Sparkles size={36} style={{margin:"0 auto 12px",display:"block",opacity:.2}}/><p style={{fontSize:13,margin:0,fontWeight:300}}>COOK's polished answers appear here as the meeting progresses</p><p style={{fontSize:10,color:"rgba(255,255,255,.08)",marginTop:4}}>TIM fires quick cues at the top, COOK delivers substance here</p></div>
+        : cookAnswers.map((a,i) => <div key={i} style={{padding:14,marginBottom:8,borderRadius:14,background:"linear-gradient(135deg, rgba(139,92,246,.06), rgba(139,92,246,.02))",border:"1px solid rgba(139,92,246,.1)",boxShadow:a.streaming?"0 0 15px rgba(139,92,246,.08)":"none",transition:"all 0.3s ease"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+            <div style={{width:5,height:5,borderRadius:"50%",background:a.streaming?"#a78bfa":"rgba(139,92,246,.3)",...(a.streaming?{animation:"mb 1s infinite"}:{})}}/>
+            <span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",letterSpacing:"1px",textTransform:"uppercase"}}>{a.streaming?"COOK is thinking...":"COOK"}</span>
+            <span style={{fontSize:8,color:"rgba(255,255,255,.15)",marginLeft:"auto"}}>{a.time}</span>
+          </div>
+          {a.q && <p style={{color:"rgba(139,92,246,.5)",fontSize:10,margin:"0 0 6px",fontStyle:"italic"}}>Re: {a.q}</p>}
+          <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{a.text}</p>
+        </div>)
       )}
       {panel==="glossary" && (glossary.length===0
-        ? <div style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.2)"}}><p style={{fontSize:12,margin:0}}>Key terms will appear here</p></div>
-        : (glossary||[]).map((g,i) => <div key={i} style={{padding:8,marginBottom:4,borderRadius:8,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.05)"}}><span style={{color:"#22d3ee",fontSize:11,fontWeight:600}}>{g.term}</span><p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"2px 0 0",lineHeight:1.4}}>{g.definition}</p></div>)
+        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><p style={{fontSize:13,margin:0,fontWeight:300}}>Key terms will appear here as they are mentioned</p></div>
+        : glossary.map((g,i) => <div key={i} style={{padding:10,marginBottom:5,borderRadius:10,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}><span style={{color:"#22d3ee",fontSize:12,fontWeight:600}}>{g.term}</span><p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"3px 0 0",lineHeight:1.5}}>{g.definition}</p></div>)
       )}
-      {summary && <div style={{padding:12,borderRadius:12,background:"rgba(16,185,129,.06)",border:"1px solid rgba(16,185,129,.12)",marginTop:8}}><p style={{color:"#34d399",fontSize:11,fontWeight:600,margin:"0 0 4px"}}>Meeting Summary</p><p style={{color:"rgba(255,255,255,.7)",fontSize:12,margin:0,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{summary}</p></div>}
+      {summary && <div style={{padding:16,borderRadius:14,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.12)",marginTop:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><CheckCircle size={14} color="#34d399"/><span style={{fontSize:11,fontWeight:700,color:"#34d399",letterSpacing:"0.5px"}}>Meeting Summary</span></div>
+        <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{summary}</p>
+      </div>}
     </div>
+
     {/* Ask ABA input */}
-    {running && <div style={{padding:"8px 10px",borderTop:"1px solid rgba(255,255,255,.06)",display:"flex",gap:6}}>
-      <input value={askInput} onChange={e=>setAskInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&askABA()} placeholder="Ask ABA about this meeting..." style={{flex:1,padding:"8px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:12,outline:"none"}}/>
-      <button onClick={askABA} disabled={askLoading||!askInput.trim()} style={{padding:"8px 14px",borderRadius:10,border:"none",background:askInput.trim()?"rgba(139,92,246,.2)":"rgba(255,255,255,.04)",color:"#a78bfa",cursor:"pointer",fontSize:12}}>{askLoading?<Loader2 size={13} className="animate-spin"/>:<Send size={13}/>}</button>
+    {running && <div style={{padding:"10px 12px",borderTop:"1px solid rgba(6,182,212,.08)",display:"flex",gap:8,background:"rgba(0,0,0,.2)"}}>
+      <input value={askInput} onChange={e=>setAskInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&askABA()} placeholder="Ask ABA anything during this meeting..." style={{flex:1,padding:"10px 14px",borderRadius:12,border:"1px solid rgba(6,182,212,.12)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:12,outline:"none",transition:"border-color 0.2s"}}/>
+      <button onClick={askABA} disabled={askLoading||!askInput.trim()} style={{padding:"10px 16px",borderRadius:12,border:"none",background:askInput.trim()?"linear-gradient(135deg, rgba(139,92,246,.25), rgba(139,92,246,.1))":"rgba(255,255,255,.03)",color:askInput.trim()?"#c4b5fd":"rgba(255,255,255,.15)",cursor:"pointer",fontSize:12,fontWeight:600,transition:"all 0.2s ease"}}>{askLoading?<Loader2 size={14} style={{animation:"spin 1s linear infinite"}}/>:<Send size={14}/>}</button>
     </div>}
   </div>);
 }
