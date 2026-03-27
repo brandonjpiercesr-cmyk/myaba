@@ -65,8 +65,31 @@ function useIsMobile() {
 // ABABASE = Fat Prompt Architecture (87 agents, HAM identity)
 const ABABASE = "https://abacia-services.onrender.com";
 
-
-// ⬡B:aba_skins:MAP:icon_lookup:20260323⬡
+// ⬡B:ham.resolve:CACHE:backend_identity_resolution:20260327⬡
+// HAM identity resolution from backend. Replaces hardcoded hamMap.
+// Loaded once on module init, used by all components that need email→hamId.
+let HAM_EMAIL_MAP = {};
+let HAM_TEAM = [];
+(async () => {
+  try {
+    const r = await fetch(`${ABABASE}/api/ham/team`);
+    if (r.ok) {
+      const d = await r.json();
+      if (d.team) {
+        HAM_TEAM = d.team;
+        for (const t of d.team) {
+          if (t.email) HAM_EMAIL_MAP[t.email.toLowerCase()] = t.ham_id;
+        }
+        console.log('[HAM] Team cache loaded:', Object.keys(HAM_EMAIL_MAP).length, 'members');
+      }
+    }
+  } catch (e) { console.log('[HAM] Cache load failed, using fallback:', e.message); }
+})();
+function resolveHamId(email) {
+  if (!email) return 'all';
+  const e = email.toLowerCase();
+  return HAM_EMAIL_MAP[e] || e.split('@')[0] || 'all';
+}// ⬡B:aba_skins:MAP:icon_lookup:20260323⬡
 // Maps icon names from /api/apps to lucide-react components
 const ICON_MAP = {
   MessageSquare, Sunrise, Briefcase, Mail, MessageCircle, Camera,
@@ -2882,8 +2905,7 @@ function FirstLoginTour({user,onComplete}){
         {currentStep.action==="connect_email"&&(
           <button onClick={()=>{
             const email=(user?.email||"").toLowerCase();
-            const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselanesr@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
-            const hamId=hamMap[email]||email.split("@")[0];
+            const hamId=resolveHamId(email);
             window.open(`https://abacia-services.onrender.com/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
           }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#10B981,#059669)",color:"white",cursor:"pointer",fontSize:14,fontWeight:600,marginTop:16,boxShadow:"0 4px 20px rgba(16,185,129,.3)"}}>
             <Mail size={18}/>Connect Email with Google
@@ -3771,8 +3793,7 @@ function ReferencesView({userId}){
 // ═══════════════════════════════════════════════════════════════════════════
 function JobsView({userId}){
   // Map email to ham_id for default filter
-  const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselanesr@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
-  const defaultHam=hamMap[(userId||"").toLowerCase()]||(userId||"").split("@")[0]||"all";
+  const defaultHam=resolveHamId(userId);
   
   const[jobs,setJobs]=useState([]);
   const[loading,setLoading]=useState(true);
@@ -5060,8 +5081,7 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
       <button onClick={()=>{
         // Map email to ham_id for Nylas OAuth
         const email=(user?.email||"").toLowerCase();
-        const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselanesr@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
-        const hamId=hamMap[email]||email.split("@")[0];
+        const hamId=resolveHamId(email);
         window.open(`https://abacia-services.onrender.com/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
       }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px 16px",borderRadius:14,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.06)",color:"rgba(16,185,129,.8)",cursor:"pointer",fontSize:14,fontWeight:600,marginBottom:8}}>
         <Mail size={18}/>Connect Email
