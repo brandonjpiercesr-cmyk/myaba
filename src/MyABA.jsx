@@ -390,10 +390,10 @@ function CRMView({ userId }) {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw";
+  // ⬡B:911:FIX:crm_use_backend:20260327⬡
   useEffect(() => {
-    (async () => { try { const r = await fetch("https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_contacts?select=*&order=name.asc&limit=100", { headers: { apikey: ANON } }); if (r.ok) setContacts(await r.json()); } catch {} setLoading(false); })();
-  }, []);
+    (async () => { try { const hamId=(userId||"").split("@")[0]; const r = await fetch(`${ABABASE}/api/contacts?ham_id=${hamId}`); if (r.ok) { const d=await r.json(); setContacts(d.contacts||[]); } } catch {} setLoading(false); })();
+  }, [userId]);
   const f = contacts.filter(c => !search || (c.name||"").toLowerCase().includes(search.toLowerCase()) || (c.email||"").toLowerCase().includes(search.toLowerCase()));
   return (<div style={{flex:1,display:"flex",flexDirection:"column",padding:16}}>
     <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search contacts..." style={{padding:"10px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none",marginBottom:12}} />
@@ -2947,7 +2947,6 @@ function EmailDetail({email,onBack,userId}){
   const[askInput,setAskInput]=useState("");
   const[askResult,setAskResult]=useState("");
   const[askLoading,setAskLoading]=useState(false);
-  const ABABASE="https://abacia-services.onrender.com";
 
   // Mark as read after 3 seconds via direct Nylas PATCH (not AIR)
   useEffect(()=>{
@@ -3004,15 +3003,16 @@ function ContactsView({userId}){
   const[adding,setAdding]=useState(false);
   const[newC,setNewC]=useState({contact_name:"",email:"",phone:"",relationship:""});
   const[saving,setSaving]=useState(false);
-  const SB="https://htlxjkbrstpwwtzsbyvb.supabase.co";
-  const ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw";
+  // ⬡B:911:FIX:contacts_use_backend:20260327⬡
+  // Was: direct Supabase with anon key (RLS blocks writes, reads worked by luck).
+  // Now: uses /api/contacts backend endpoint with service_role key.
   
   useEffect(()=>{
     (async()=>{
       try{
         const hamId=(userId||"unknown").split("@")[0];
-        const r=await fetch(`${SB}/rest/v1/aba_contacts?ham_id=eq.${hamId}&order=contact_name.asc&limit=100`,{headers:{apikey:ANON}});
-        if(r.ok)setContacts(await r.json());
+        const r=await fetch(`${ABABASE}/api/contacts?ham_id=${hamId}`);
+        if(r.ok){const d=await r.json();setContacts(d.contacts||[]);}
       }catch{}
       setLoading(false);
     })();
@@ -3036,7 +3036,7 @@ function ContactsView({userId}){
       </div>
       <div style={{display:"flex",gap:4}}>
         <input value={newC.relationship} onChange={e=>setNewC({...newC,relationship:e.target.value})} placeholder="Relationship" style={{flex:1,padding:"7px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:11,outline:"none"}}/>
-        <button onClick={async()=>{if(!newC.contact_name.trim())return;setSaving(true);try{const hamId=(userId||"").split("@")[0];await fetch(`${SB}/rest/v1/aba_contacts`,{method:"POST",headers:{apikey:ANON,Authorization:`Bearer ${ANON}`,"Content-Type":"application/json"},body:JSON.stringify({ham_id:hamId,...newC,created_by:"cip"})});setAdding(false);setNewC({contact_name:"",email:"",phone:"",relationship:""});const r2=await fetch(`${SB}/rest/v1/aba_contacts?ham_id=eq.${hamId}&order=contact_name.asc&limit=100`,{headers:{apikey:ANON}});if(r2.ok)setContacts(await r2.json());}catch{}setSaving(false);}} disabled={saving||!newC.contact_name.trim()} style={{padding:"7px 12px",borderRadius:8,border:"none",background:"rgba(139,92,246,.2)",color:"#a78bfa",fontSize:11,cursor:"pointer"}}>{saving?"...":"Save"}</button>
+        <button onClick={async()=>{if(!newC.contact_name.trim())return;setSaving(true);try{const hamId=(userId||"").split("@")[0];await fetch(`${ABABASE}/api/contacts`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ham_id:hamId,...newC,userId})});setAdding(false);setNewC({contact_name:"",email:"",phone:"",relationship:""});const r2=await fetch(`${ABABASE}/api/contacts?ham_id=${hamId}`);if(r2.ok){const d2=await r2.json();setContacts(d2.contacts||[]);}}catch{}setSaving(false);}} disabled={saving||!newC.contact_name.trim()} style={{padding:"7px 12px",borderRadius:8,border:"none",background:"rgba(139,92,246,.2)",color:"#a78bfa",fontSize:11,cursor:"pointer"}}>{saving?"...":"Save"}</button>
       </div>
     </div>}
     <div style={{padding:"6px 10px"}}><div style={{position:"relative"}}><Search size={12} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"rgba(255,255,255,.2)"}}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." style={{width:"100%",padding:"7px 10px 7px 28px",borderRadius:8,border:"1px solid rgba(255,255,255,.06)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:11,outline:"none"}}/></div></div>
@@ -3060,7 +3060,6 @@ function ContactsView({userId}){
 }
 
 function EmailView({userId}){
-  const ABABASE="https://abacia-services.onrender.com";
   const[emails,setEmails]=useState([]);
   const[loading,setLoading]=useState(true);
   const[selectedEmail,setSelectedEmail]=useState(null);
@@ -3146,7 +3145,6 @@ function MainTabSwitcher({tab,setTab}){
 // ═══════════════════════════════════════════════════════════════════════════
 // ⬡B:MYABA:BRIEFING_SETUP:20260321⬡ New user preference collection
 function BriefingSetup({userId,onRefresh}){
-  const ABABASE="https://abacia-services.onrender.com";
   const[selected,setSelected]=useState([]);
   const[custom,setCustom]=useState("");
   const[saving,setSaving]=useState(false);
@@ -3176,12 +3174,9 @@ function BriefingSetup({userId,onRefresh}){
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({message:`Save my news interests for DAWN briefings: ${interests.join(", ")}`,user_id:userId,channel:"cip",appScope:"email"})
       });
-      // Also save directly to brain as HAM preference
-      await fetch(`https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory`,{
-        method:"POST",
-        headers:{"apikey":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw","Content-Type":"application/json","Prefer":"return=minimal"},
-        body:JSON.stringify({source:`ham.preferences.${(userId||"").split("@")[0]}`,memory_type:"ham_preferences",content:JSON.stringify({news_interests:interests,updated:new Date().toISOString()}),importance:7,tags:["preferences","news",userId]})
-      });
+      // ⬡B:911:FIX:no_direct_supabase_write:20260327⬡
+      // REMOVED: Direct Supabase POST with anon key. Anon is for reads only.
+      // AIR call above handles saving preferences to brain.
     }catch(e){console.error("[BRIEFING] Save prefs error:",e)}
     setSaving(false);setDone(true);
     setTimeout(()=>onRefresh(),1000);
@@ -4483,7 +4478,6 @@ function PipelineView({userId}){
   const[loading,setLoading]=useState(true);
   const[expandedCol,setExpandedCol]=useState(null);
 
-  const ABABASE="https://abacia-services.onrender.com";
 
   const COLUMNS=[
     {key:"NEW",label:"New",color:"#6B7280",icon:"📥"},
@@ -4557,7 +4551,6 @@ function PipelineView({userId}){
 // ⬡B:AWA.v3:proactive:alerts_summary:20260315⬡
 function AlertsSummary({userId}){
   const[alerts,setAlerts]=useState([]);
-  const ABABASE="https://abacia-services.onrender.com";
 
   useEffect(()=>{
     (async()=>{
