@@ -2882,7 +2882,7 @@ function FirstLoginTour({user,onComplete}){
         {currentStep.action==="connect_email"&&(
           <button onClick={()=>{
             const email=(user?.email||"").toLowerCase();
-            const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselane@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
+            const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselanesr@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
             const hamId=hamMap[email]||email.split("@")[0];
             window.open(`https://abacia-services.onrender.com/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
           }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#10B981,#059669)",color:"white",cursor:"pointer",fontSize:14,fontWeight:600,marginTop:16,boxShadow:"0 4px 20px rgba(16,185,129,.3)"}}>
@@ -3771,7 +3771,7 @@ function ReferencesView({userId}){
 // ═══════════════════════════════════════════════════════════════════════════
 function JobsView({userId}){
   // Map email to ham_id for default filter
-  const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselane@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
+  const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselanesr@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
   const defaultHam=hamMap[(userId||"").toLowerCase()]||(userId||"").split("@")[0]||"all";
   
   const[jobs,setJobs]=useState([]);
@@ -5060,7 +5060,7 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
       <button onClick={()=>{
         // Map email to ham_id for Nylas OAuth
         const email=(user?.email||"").toLowerCase();
-        const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselane@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
+        const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselanesr@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
         const hamId=hamMap[email]||email.split("@")[0];
         window.open(`https://abacia-services.onrender.com/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
       }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px 16px",borderRadius:14,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.06)",color:"rgba(16,185,129,.8)",cursor:"pointer",fontSize:14,fontWeight:600,marginBottom:8}}>
