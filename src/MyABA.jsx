@@ -4929,35 +4929,66 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
   // ⬡B:MYABA.V2:ghost:20260313⬡ Ghost Mode state
   const[ghostMode,setGhostMode]=useState(false);
   const[ghostLoading,setGhostLoading]=useState(false);
+  // ⬡B:pam:STATE:passcode_ui:20260328⬡
+  const[passcodeSet,setPasscodeSet]=useState(false);
+  const[showPasscodeForm,setShowPasscodeForm]=useState(false);
+  const[newPasscode,setNewPasscode]=useState('');
+  const[confirmPasscode,setConfirmPasscode]=useState('');
+  const[passcodeMsg,setPasscodeMsg]=useState('');
+  const[passcodeLoading,setPasscodeLoading]=useState(false);
+  const[heldItems,setHeldItems]=useState(0);
   
-  // Load ghost mode status on mount
+  // Load PAM status on mount (ghost mode + passcode + held items)
   useEffect(()=>{
     if(!user?.email)return;
     (async()=>{
       try{
-        const res=await fetch(`https://abacia-services.onrender.com/api/myaba/ghost?userId=${encodeURIComponent(user.email)}`);
+        const res=await fetch(`${ABABASE}/api/pam/status?userId=${encodeURIComponent(user.email)}`);
         if(res.ok){
           const data=await res.json();
-          setGhostMode(data.active||false);
+          if(data.success){
+            setGhostMode(data.dark_mode||false);
+            setPasscodeSet(data.passcode_set||false);
+            setHeldItems(data.held_items||0);
+          }
         }
-      }catch(e){console.error("[GHOST] Load failed:",e)}
+      }catch(e){console.error("[PAM] Status load failed:",e)}
     })();
   },[user?.email]);
   
   const handleGhostToggle=async(enable)=>{
     setGhostLoading(true);
     try{
-      const res=await fetch('https://abacia-services.onrender.com/api/myaba/ghost',{
+      const res=await fetch(`${ABABASE}/api/pam/dark`,{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({userId:user?.email||user?.uid||"unknown",enabled:enable,duration:24})
+        body:JSON.stringify({userId:user?.email||user?.uid||"unknown",enabled:enable})
       });
       if(res.ok){
         const data=await res.json();
-        setGhostMode(data.active||enable);
+        setGhostMode(data.dark_mode||enable);
       }
-    }catch(e){console.error("[GHOST] Toggle failed:",e)}
+    }catch(e){console.error("[PAM] Dark toggle failed:",e)}
     setGhostLoading(false);
+  };
+  
+  // ⬡B:pam:HANDLER:passcode_save:20260328⬡
+  const handleSavePasscode=async()=>{
+    if(newPasscode.length<4){setPasscodeMsg('Must be 4+ characters.');return;}
+    if(newPasscode!==confirmPasscode){setPasscodeMsg('Passcodes do not match.');return;}
+    setPasscodeLoading(true);
+    try{
+      const res=await fetch(`${ABABASE}/api/pam/passcode`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({userId:user?.email||user?.uid||'unknown',passcode:newPasscode})
+      });
+      const data=await res.json();
+      if(data.success){
+        setPasscodeSet(true);setShowPasscodeForm(false);
+        setNewPasscode('');setConfirmPasscode('');setPasscodeMsg('');
+      }else{setPasscodeMsg(data.error||'Failed.');}
+    }catch(e){setPasscodeMsg(e.message);}
+    setPasscodeLoading(false);
   };
   
   useEffect(()=>{try{localStorage.setItem("myaba_notifyBriefing",String(notifyBriefing))}catch{}},[notifyBriefing]);
@@ -5054,6 +5085,29 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
         {ghostMode&&<div style={{padding:"10px 0",color:"rgba(139,92,246,.7)",fontSize:11}}>
           ABA is handling your messages autonomously. Toggle off to resume normal notifications.
         </div>}
+        {/* ⬡B:pam:UI:cip_passcode:20260328⬡ Passcode Management */}
+        <div style={{padding:"12px 0",borderTop:"1px solid rgba(255,255,255,.05)"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <p style={{color:"rgba(255,255,255,.85)",fontSize:13,fontWeight:500,margin:0}}>{passcodeSet?"Passcode Set 🔒":"No Passcode 🔓"}</p>
+              <p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:"2px 0 0"}}>{passcodeSet?"Protected content requires your passcode.":"Set one to protect sensitive content."}</p>
+            </div>
+            <button onClick={()=>{setShowPasscodeForm(!showPasscodeForm);setPasscodeMsg('');}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(139,92,246,.3)",background:"rgba(139,92,246,.1)",color:"#a78bfa",cursor:"pointer",fontSize:11}}>{passcodeSet?"Change":"Set"}</button>
+          </div>
+          {showPasscodeForm&&<div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8}}>
+            <input type="password" value={newPasscode} onChange={e=>setNewPasscode(e.target.value)} placeholder="New passcode (4+ chars)" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.05)",color:"white",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+            <input type="password" value={confirmPasscode} onChange={e=>setConfirmPasscode(e.target.value)} placeholder="Confirm passcode" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.05)",color:"white",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+            {passcodeMsg&&<p style={{color:"#f87171",fontSize:11,margin:0}}>{passcodeMsg}</p>}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={handleSavePasscode} disabled={passcodeLoading} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"rgba(139,92,246,.3)",color:"#c4b5fd",cursor:"pointer",fontSize:12}}>{passcodeLoading?"Saving...":"Save"}</button>
+              <button onClick={()=>{setShowPasscodeForm(false);setNewPasscode('');setConfirmPasscode('');setPasscodeMsg('');}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:12}}>Cancel</button>
+            </div>
+          </div>}
+          {heldItems>0&&<div style={{marginTop:10,padding:10,borderRadius:8,background:"rgba(251,191,36,.05)",border:"1px solid rgba(251,191,36,.15)"}}>
+            <p style={{color:"#fbbf24",fontSize:12,fontWeight:500,margin:0}}>Aunt PAM is holding {heldItems} item{heldItems>1?"s":""}</p>
+            <p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:"4px 0 0"}}>Say "Aunt PAM, show me what you are holding" in chat.</p>
+          </div>}
+        </div>
       </Section>
       
       {/* Appearance */}
