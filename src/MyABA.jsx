@@ -41,7 +41,8 @@ import {
   MapPin, ExternalLink, Building, Download, ChevronDown, Camera, Sunrise, BookOpen, GripVertical,
   Loader2, Timer, Play, Pause, Square, Target
 } from "lucide-react";
-import { auth, signInGoogle, signOutUser } from "./firebase.js";
+import { auth, signInGoogle, signOutUser, db } from "./firebase.js";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useConversation } from "@elevenlabs/react";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -309,10 +310,36 @@ function GMGUniversityView() {
   const [transcript, setTranscript] = useState("");
   const [textIn, setTextIn] = useState("");
   const [gmgHistory, setGmgHistory] = useState([]);
+  const [gmgCompleted, setGmgCompleted] = useState({});
   const recogRef = useRef(null);
   const initRef = useRef(false);
   const userEmail = window.__ABA_USER_EMAIL || "";
   const userName = window.__ABA_USER_NAME || "there";
+  const gmgUid = window.__ABA_USER_UID || "";
+
+  // F1/F6: Load progress from Firestore
+  useEffect(() => {
+    if (!gmgUid) return;
+    (async () => {
+      try {
+        const d = await getDoc(doc(db, "gmg_university", gmgUid));
+        if (d.exists()) {
+          const data = d.data();
+          if (data.completedLessons) setGmgCompleted(data.completedLessons);
+          if (data.sessionHistory?.length > 0) setGmgHistory(data.sessionHistory.slice(-20));
+        }
+      } catch(e) { console.error("[GMG-U] Load failed:", e); }
+    })();
+  }, [gmgUid]);
+
+  const saveGmgProgress = async (completed) => {
+    if (!gmgUid) return;
+    try { await setDoc(doc(db, "gmg_university", gmgUid), { completedLessons: completed, email: userEmail, lastActivity: new Date().toISOString() }, { merge: true }); } catch(e) {}
+  };
+  const saveGmgSession = async (hist) => {
+    if (!gmgUid) return;
+    try { await setDoc(doc(db, "gmg_university", gmgUid), { sessionHistory: hist.slice(-40), lastActivity: new Date().toISOString() }, { merge: true }); } catch(e) {}
+  };
 
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -362,8 +389,10 @@ function GMGUniversityView() {
     if (!input.trim()) return; setAbaState("thinking"); setTranscript(""); setTextIn("");
     const uh = [...gmgHistory, { role: "user", content: input }]; setGmgHistory(uh);
     const resp = await streamAIR(input);
-    if (resp) { const clean = resp.replace(/\[LESSON_COMPLETE:V\d+D\d+\]/, "").trim();
-      setGmgHistory(prev => [...prev, { role: "assistant", content: resp }]); await speakGMG(clean);
+    if (resp) { const m = resp.match(/\[LESSON_COMPLETE:V(\d+)D(\d+)\]/);
+      const clean = resp.replace(/\[LESSON_COMPLETE:V\d+D\d+\]/, "").trim();
+      if (m) { const b = parseInt(m[1]), d = parseInt(m[2]); setGmgCompleted(prev => { const nc = {...prev}; if(!nc[b])nc[b]=[]; if(!nc[b].includes(d)){nc[b]=[...nc[b],d]; saveGmgProgress(nc);} return nc; }); }
+      const newHist = [...gmgHistory, { role: "assistant", content: resp }]; setGmgHistory(newHist); await saveGmgSession(newHist); await speakGMG(clean);
     } else { setAbaState("idle"); setSubtitle("Lost connection. Try again."); }
   };
 
