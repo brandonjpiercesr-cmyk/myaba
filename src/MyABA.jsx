@@ -301,13 +301,118 @@ function MobileDocEditor({ content: initialContent, docId, docType, onClose, onS
 }
 
 function GMGUniversityView() {
-  return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-    <iframe 
-      src="https://gmg-university-v7.vercel.app" 
-      style={{flex:1,border:"none",width:"100%",height:"100%",borderRadius:0}} 
-      title="GMG University"
-      allow="microphone; camera; autoplay"
-    />
+  // ⬡B:gmg_u:CIP:native_streaming:20260328⬡
+  // Native GMG-U component — calls AIR streaming directly, no iframe
+  const [abaState, setAbaState] = useState("idle");
+  const [subtitle, setSubtitle] = useState("");
+  const [listening, setListening] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const [textIn, setTextIn] = useState("");
+  const [gmgHistory, setGmgHistory] = useState([]);
+  const recogRef = useRef(null);
+  const initRef = useRef(false);
+  const userEmail = window.__ABA_USER_EMAIL || "";
+  const userName = window.__ABA_USER_NAME || "there";
+
+  useEffect(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SR) { const r = new SR(); r.continuous = false; r.interimResults = true; r.lang = "en-US";
+      r.onresult = e => { let t = ""; for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; setTranscript(t); };
+      r.onend = () => setListening(false); r.onerror = () => setListening(false); recogRef.current = r; }
+  }, []);
+
+  const streamAIR = async (msg) => {
+    return new Promise(resolve => {
+      const ctrl = new AbortController();
+      const to = setTimeout(() => { ctrl.abort(); resolve(null); }, 90000);
+      let full = "";
+      fetch(ABABASE + "/api/air/stream", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg, userId: userEmail || "anon", email: userEmail, channel: "gmg-university", previousMessages: gmgHistory.slice(-20) }),
+        signal: ctrl.signal
+      }).then(r => {
+        const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
+        function read() { reader.read().then(({ done, value }) => {
+          if (done) { clearTimeout(to); resolve(full || null); return; }
+          buf += dec.decode(value, { stream: true }); const lines = buf.split("\n"); buf = lines.pop() || "";
+          for (const line of lines) { if (!line.startsWith("data: ")) continue;
+            try { const d = JSON.parse(line.slice(6));
+              if (d.type === "chunk") { full += d.text; setSubtitle(full.replace(/\[[\\w:]+\]/g, "").trim()); }
+              else if (d.type === "filler" && !full) setSubtitle(d.text || "One moment...");
+              else if (d.type === "done") { clearTimeout(to); resolve(full || null); return; }
+              else if (d.type === "error") { clearTimeout(to); resolve(null); return; }
+            } catch {} }
+          read();
+        }).catch(() => { clearTimeout(to); resolve(full || null); }); }
+        read();
+      }).catch(() => { clearTimeout(to); resolve(null); });
+    });
+  };
+
+  const speakGMG = async (text) => {
+    if (!text) return; setAbaState("speaking");
+    try { const r = await fetch("https://api.elevenlabs.io/v1/text-to-speech/AIFDUhRnM6s61433WMNu", { method: "POST",
+      headers: { "Content-Type": "application/json", "xi-api-key": "sk_e0b48157805968dbb370f299b60e22001189bd85c3864040" },
+      body: JSON.stringify({ text, model_id: "eleven_turbo_v2_5", voice_settings: { stability: 0.5, similarity_boost: 0.75 } }) });
+    if (!r.ok) throw new Error("TTS"); const blob = await r.blob(); const url = URL.createObjectURL(blob); const audio = new Audio(url);
+    audio.onended = () => { setAbaState("idle"); URL.revokeObjectURL(url); }; audio.onerror = () => setAbaState("idle");
+    await audio.play(); } catch { setTimeout(() => setAbaState("idle"), 2000); }
+  };
+
+  const processGMG = async (input) => {
+    if (!input.trim()) return; setAbaState("thinking"); setTranscript(""); setTextIn("");
+    const uh = [...gmgHistory, { role: "user", content: input }]; setGmgHistory(uh);
+    const resp = await streamAIR(input);
+    if (resp) { const clean = resp.replace(/\[LESSON_COMPLETE:V\d+D\d+\]/, "").trim();
+      setGmgHistory(prev => [...prev, { role: "assistant", content: resp }]); await speakGMG(clean);
+    } else { setAbaState("idle"); setSubtitle("Lost connection. Try again."); }
+  };
+
+  useEffect(() => { if (!listening && transcript && abaState !== "speaking" && abaState !== "thinking") {
+    const t = setTimeout(() => processGMG(transcript), 1200); return () => clearTimeout(t); }
+  }, [listening, transcript]);
+
+  useEffect(() => {
+    if (initRef.current) return; initRef.current = true; setAbaState("thinking");
+    const h = new Date().getHours(); const tod = h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
+    const msg = "Student " + userName + " just opened GMG University. It is " + tod + ". Welcome them and start teaching Block 1 Day 1: The Four Sources of Money.";
+    (async () => { const resp = await streamAIR(msg);
+      if (resp) { const clean = resp.replace(/\[LESSON_COMPLETE:V\d+D\d+\]/, "").trim();
+        setGmgHistory([{ role: "assistant", content: resp }]); await speakGMG(clean);
+      } else { setAbaState("idle"); setSubtitle("ABA is warming up..."); initRef.current = false; }
+    })();
+  }, []);
+
+  const mic = () => { if (recogRef.current && abaState === "idle") { setTranscript(""); recogRef.current.start(); setListening(true); setAbaState("listening"); } };
+  const stopMic = () => { if (recogRef.current && listening) { recogRef.current.stop(); setListening(false); } };
+  const glow = abaState === "thinking" ? "245,158,11" : abaState === "speaking" ? "34,197,94" : abaState === "listening" ? "6,182,212" : "139,92,246";
+
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:16,background:"rgba(15,23,42,0.95)",position:"relative",overflow:"auto"}}>
+    <div style={{color:"#8B5CF6",fontSize:11,fontWeight:700,letterSpacing:"0.08em",marginBottom:12}}>GMG UNIVERSITY</div>
+    <div style={{width:120,height:120,borderRadius:"50%",background:`radial-gradient(circle,rgba(${glow},0.3),transparent)`,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:12}}>
+      <div style={{width:60,height:60,borderRadius:"50%",background:`radial-gradient(circle,rgba(${glow},0.8),rgba(${glow},0.2))`,boxShadow:`0 0 40px rgba(${glow},0.4)`,animation:"pulse 2s ease-in-out infinite"}}/>
+    </div>
+    <div style={{height:20,marginBottom:8}}>
+      {abaState==="thinking"&&<span style={{color:"#F59E0B",fontSize:12}}>thinking...</span>}
+      {abaState==="speaking"&&<span style={{color:"#22c55e",fontSize:12}}>speaking...</span>}
+      {abaState==="listening"&&<span style={{color:"#06B6D4",fontSize:12}}>listening...</span>}
+    </div>
+    {transcript&&<p style={{color:"rgba(255,255,255,0.5)",fontSize:13,fontStyle:"italic",textAlign:"center",margin:"0 0 8px"}}>\"{transcript}\"</p>}
+    {subtitle&&<div style={{background:"rgba(255,255,255,0.05)",borderRadius:12,padding:"12px 16px",maxWidth:"100%",marginBottom:12,border:"1px solid rgba(139,92,246,0.1)"}}>
+      <p style={{color:"rgba(255,255,255,0.9)",fontSize:15,margin:0,textAlign:"center",lineHeight:1.6}}>{subtitle}</p></div>}
+    <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}>
+      <button onClick={listening?stopMic:mic} disabled={abaState==="speaking"||abaState==="thinking"} style={{
+        width:52,height:52,borderRadius:"50%",border:"none",cursor:abaState==="speaking"||abaState==="thinking"?"not-allowed":"pointer",
+        background:abaState==="speaking"||abaState==="thinking"?"rgba(255,255,255,0.05)":listening?"linear-gradient(135deg,#ef4444,#dc2626)":"linear-gradient(135deg,#8B5CF6,#6D28D9)",
+        color:"#fff",fontSize:20,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:listening?"0 0 30px rgba(239,68,68,0.3)":"0 4px 20px rgba(139,92,246,0.3)"}}>
+        {listening?"\u23f9":"\ud83c\udfa4"}</button>
+    </div>
+    <div style={{display:"flex",gap:6,marginTop:12,width:"100%",maxWidth:320}}>
+      <input type="text" value={textIn} onChange={e=>setTextIn(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&textIn.trim())processGMG(textIn)}}
+        placeholder="Type to ABA..." disabled={abaState==="speaking"||abaState==="thinking"}
+        style={{flex:1,background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#fff",outline:"none"}}/>
+      <button onClick={()=>textIn.trim()&&processGMG(textIn)} disabled={!textIn.trim()||abaState==="speaking"||abaState==="thinking"}
+        style={{padding:"8px 12px",background:"#8B5CF6",borderRadius:8,border:"none",color:"#fff",fontSize:12,cursor:"pointer"}}>Send</button>
+    </div>
   </div>);
 }
 
