@@ -35,12 +35,12 @@ import {
   Send, Mic, MicOff, Volume2, VolumeX, MessageSquare, Radio, Hand,
   Settings, X, Plus, Bell, Mail, Calendar, Phone, Headphones,
   MessageCircle, Zap, Activity, Home, ChevronLeft, Code, Clock, CheckCircle, AlertTriangle,
-  Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock,
+  Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock, Trophy, Timer, Target, Code, Shield, CheckSquare, Coffee, FolderOpen, HardDrive, Clipboard, Waves, LayoutList,
   Trash2, Archive, Search, WifiOff, Wifi, RefreshCw, Share2, Paperclip,
   FolderOpen, Image, File, FolderPlus, MoreVertical, Edit2, Copy, Briefcase,
   MapPin, ExternalLink, Building, Download, ChevronDown, Camera, Sunrise, BookOpen, GripVertical,
   Loader2, Timer, Play, Pause, Square, Target
-} from "lucide-react";
+, Globe, Compass, Hash, Heart, Star, TrendingUp, BarChart2 } from "lucide-react";
 import { auth, signInGoogle, signOutUser, db } from "./firebase.js";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useConversation } from "@elevenlabs/react";
@@ -95,8 +95,19 @@ function resolveHamId(email) {
 const ICON_MAP = {
   MessageSquare, Sunrise, Briefcase, Mail, MessageCircle, Camera,
   MapPin, CheckCircle, Phone, Settings, BookOpen, AlertTriangle,
-  FileText, Calendar, Search, Activity, Sparkles, Users
+  FileText, Calendar, Search, Activity, Sparkles, Users,
+  Trophy, Timer, Target, Code, Shield, CheckSquare,
+  Coffee, FolderOpen, HardDrive, Clipboard, Waves, LayoutList,
+  Volume2, Bell, Mic, Radio, Globe, Compass, Zap, Hash,
+  Headphones, Eye, Heart, Star, TrendingUp, BarChart2
 };
+// Alias icons not in lucide-react shortlist
+ICON_MAP.FileEdit = FileText;
+ICON_MAP.PenTool = FileText;
+ICON_MAP.GraduationCap = BookOpen;
+ICON_MAP.Users2 = Users;
+ICON_MAP.Music = Volume2;
+ICON_MAP.Music2 = Volume2;
 
 // v1.2.0: Check online status
 function isOnline() { return navigator.onLine; }
@@ -1450,9 +1461,9 @@ function MeetingModeView({ userId }) {
   };
 
   const panels = [
-    { id: "transcript", label: "Transcript", count: transcript.length, icon: "📝" },
-    { id: "coaching", label: "Coaching", count: cookAnswers.length, icon: "🧠" },
-    { id: "glossary", label: "Glossary", count: glossary.length, icon: "📖" }
+    { id: "transcript", label: "Transcript", count: transcript.length, Icon: FileText },
+    { id: "coaching", label: "Coaching", count: cookAnswers.length, Icon: MessageSquare },
+    { id: "glossary", label: "Glossary", count: glossary.length, Icon: BookOpen }
   ];
 
   const panelStyle = (id) => ({
@@ -1495,7 +1506,7 @@ function MeetingModeView({ userId }) {
     {/* Panel Tabs */}
     <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
       {panels.map(p => <button key={p.id} onClick={()=>setPanel(p.id)} style={panelStyle(p.id)}>
-        <span>{p.icon}</span>{p.label}{p.count>0&&<span style={{fontSize:9,background:panel===p.id?"rgba(6,182,212,.3)":"rgba(255,255,255,.06)",padding:"2px 6px",borderRadius:8,fontWeight:600}}>{p.count}</span>}
+        {p.Icon&&<p.Icon size={12}/>}{p.label}{p.count>0&&<span style={{fontSize:9,background:panel===p.id?"rgba(6,182,212,.3)":"rgba(255,255,255,.06)",padding:"2px 6px",borderRadius:8,fontWeight:600}}>{p.count}</span>}
       </button>)}
     </div>
 
@@ -1820,8 +1831,8 @@ function InterviewModeView({ userId }) {
 
   // ═══════ LIVE MODE ═══════
   const livePanels = [
-    { id: "transcript", label: "Transcript", count: transcript.length, icon: "📝" },
-    { id: "coaching", label: "Coaching", count: cookAnswers.length, icon: "🧠" }
+    { id: "transcript", label: "Transcript", count: transcript.length, Icon: FileText },
+    { id: "coaching", label: "Coaching", count: cookAnswers.length, Icon: MessageSquare }
   ];
 
   return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
@@ -1848,7 +1859,7 @@ function InterviewModeView({ userId }) {
       </div>
     </div>
     <div style={{display:"flex",gap:3,padding:"6px 10px",borderBottom:"1px solid rgba(255,255,255,.03)"}}>
-      {livePanels.map(p => <button key={p.id} onClick={()=>setPanel(p.id)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:panel===p.id?700:400,background:panel===p.id?`linear-gradient(135deg, ${amber(.15)}, ${amber(.05)})`:"transparent",color:panel===p.id?"#fbbf24":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}><span>{p.icon}</span>{p.label}{p.count>0&&<span style={{fontSize:9,background:amber(.2),padding:"2px 6px",borderRadius:8,fontWeight:600}}>{p.count}</span>}</button>)}
+      {livePanels.map(p => <button key={p.id} onClick={()=>setPanel(p.id)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:panel===p.id?700:400,background:panel===p.id?`linear-gradient(135deg, ${amber(.15)}, ${amber(.05)})`:"transparent",color:panel===p.id?"#fbbf24":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>{p.Icon&&<p.Icon size={12}/>}{p.label}{p.count>0&&<span style={{fontSize:9,background:amber(.2),padding:"2px 6px",borderRadius:8,fontWeight:600}}>{p.count}</span>}</button>)}
     </div>
     <div style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
       {panel==="transcript" && (transcript.length===0
@@ -4738,14 +4749,14 @@ function PipelineView({userId}){
 
 
   const COLUMNS=[
-    {key:"NEW",label:"New",color:"#6B7280",icon:"📥"},
-    {key:"MATERIALS_READY",label:"Ready",color:"#8B5CF6",icon:"📄"},
-    {key:"APPLIED",label:"Applied",color:"#10B981",icon:"📨"},
-    {key:"WAITING",label:"Waiting",color:"#F59E0B",icon:"⏳"},
-    {key:"INTERVIEW_SCHEDULED",label:"Interview",color:"#EC4899",icon:"🎤"},
-    {key:"INTERVIEWED",label:"Done",color:"#F97316",icon:"✅"},
-    {key:"OFFER",label:"Offer",color:"#A78BFA",icon:"💰"},
-    {key:"ACCEPTED",label:"Won",color:"#34D399",icon:"🎉"},
+    {key:"NEW",label:"New",color:"#6B7280",icon:"inbox"},
+    {key:"MATERIALS_READY",label:"Ready",color:"#8B5CF6",icon:"doc"},
+    {key:"APPLIED",label:"Applied",color:"#10B981",icon:"sent"},
+    {key:"WAITING",label:"Waiting",color:"#F59E0B",icon:"wait"},
+    {key:"INTERVIEW_SCHEDULED",label:"Interview",color:"#EC4899",icon:"mic"},
+    {key:"INTERVIEWED",label:"Done",color:"#F97316",icon:"check"},
+    {key:"OFFER",label:"Offer",color:"#A78BFA",icon:"offer"},
+    {key:"ACCEPTED",label:"Won",color:"#34D399",icon:"won"},
   ];
 
   useEffect(()=>{
@@ -6146,7 +6157,7 @@ export default function MyABA(){
       {/* App title bar — only shows when NOT on home */}
       {mainTab!=="home"&&mainTab!=="apps"&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 12px 4px",flexShrink:0}}>
         <button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ChevronLeft size={18}/></button>
-        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"Talk to ABA":mainTab==="briefing"?"DAWN Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"CeeCee":mainTab==="nura"?"NURA":mainTab==="phone"?"ABA Dials":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"GUIDE Maps":mainTab==="sports"?"NASH Sports":mainTab==="music"?"ARIA Music":mainTab==="ccwa"?"CCWA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"Meeting Mode":mainTab==="interview"?"Interview Prep":mainTab.replace(/_/g," ")}</span>
+        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"Talk to ABA":mainTab==="briefing"?"Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"Command Center":mainTab==="nura"?"Nutrition":mainTab==="phone"?"ABA Dials":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"ABA Guides":mainTab==="sports"?"Scoreboard":mainTab==="music"?"Music":mainTab==="ccwa"?"CCWA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"Meeting Mode":mainTab==="interview"?"Interview Prep":mainTab.replace(/_/g," ")}</span>
         <div style={{display:"flex",gap:4}}>
           {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:lastABAResponse?"rgba(34,197,94,.1)":"rgba(255,255,255,.04)",color:lastABAResponse?"rgba(34,197,94,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}><Activity size={14}/></button>}
           <button onClick={()=>setVoiceOut(!voiceOut)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:voiceOut?"rgba(139,92,246,.1)":"rgba(255,255,255,.04)",color:voiceOut?"rgba(139,92,246,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={13}/>:<VolumeX size={13}/>}</button>
