@@ -1142,17 +1142,27 @@ function NURAView({ userId, onScan }) {
 function CARAButton({ appScope, userId, onFullChat }) {
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState("");
-  const [response, setResponse] = useState(null);
+  const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
+  const scrollRef = useRef(null);
+  
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages]);
   
   const ask = async () => {
     if (!msg.trim()) return;
-    setLoading(true); setResponse(null);
+    const userMsg = { role: "user", text: msg };
+    const abaId = "aba-" + Date.now();
+    setMessages(prev => [...prev, userMsg, { role: "aba", text: "", id: abaId }]);
+    setLoading(true);
+    const question = msg;
+    setMsg("");
     try {
       const res = await fetch(ABABASE + "/api/air/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, user_id: userId, userId, channel: "cip", appScope })
+        body: JSON.stringify({ message: question, user_id: userId, userId, channel: "cip", appScope })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1164,13 +1174,13 @@ function CARAButton({ appScope, userId, onFullChat }) {
         for (const line of text.split("\n").filter(l => l.startsWith("data: "))) {
           try {
             const d = JSON.parse(line.slice(6));
-            if (d.type === "chunk") { acc += d.text; setResponse(acc); }
-            else if (d.type === "done") { setResponse(d.fullResponse || acc); }
+            if (d.type === "chunk") { acc += d.text; setMessages(prev => prev.map(m => m.id === abaId ? { ...m, text: acc } : m)); }
+            else if (d.type === "done") { setMessages(prev => prev.map(m => m.id === abaId ? { ...m, text: d.fullResponse || acc } : m)); }
           } catch {}
         }
       }
-    } catch (e) { setResponse("Could not reach ABA. Try again."); }
-    setLoading(false); setMsg("");
+    } catch (e) { setMessages(prev => prev.map(m => m.id === abaId ? { ...m, text: "Could not reach ABA. Try again." } : m)); }
+    setLoading(false);
   };
   
   if (!open) return (
@@ -1202,22 +1212,31 @@ function CARAButton({ appScope, userId, onFullChat }) {
           {appScope && <span style={{ fontSize: 10, color: "rgba(139,92,246,.5)", padding: "2px 8px", background: "rgba(139,92,246,.1)", borderRadius: 8 }}>{appScope}</span>}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={onFullChat} style={{ fontSize: 11, color: "rgba(139,92,246,.6)", background: "none", border: "none", cursor: "pointer" }}>Full Chat</button>
-          <button onClick={() => { setOpen(false); setResponse(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.3)" }}>
+          <button onClick={() => { setMessages([]); }} style={{ fontSize: 11, color: "rgba(255,255,255,.3)", background: "none", border: "none", cursor: "pointer" }}>Clear</button>
+          <button onClick={() => { setOpen(false); }} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.3)" }}>
             <X size={16} />
           </button>
         </div>
       </div>
       
-      {/* Response */}
-      {response && (
-        <div style={{ padding: "12px 16px", flex: 1, overflowY: "auto", maxHeight: "40vh" }}>
-          <p style={{ fontSize: 13, color: "rgba(255,255,255,.8)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{response}</p>
-        </div>
-      )}
+      {/* Messages */}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "8px 16px", maxHeight: "40vh" }}>
+        {messages.length === 0 && <p style={{ color: "rgba(255,255,255,.25)", fontSize: 12, textAlign: "center", padding: 20 }}>Ask ABA anything about this app</p>}
+        {messages.map((m, i) => (
+          <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", marginBottom: 8 }}>
+            <div style={{
+              maxWidth: "85%", padding: "8px 12px", borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+              background: m.role === "user" ? "rgba(139,92,246,.2)" : "rgba(255,255,255,.06)",
+              border: "1px solid " + (m.role === "user" ? "rgba(139,92,246,.2)" : "rgba(255,255,255,.08)")
+            }}>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,.8)", lineHeight: 1.5, margin: 0, whiteSpace: "pre-wrap" }}>{m.text || "..."}</p>
+            </div>
+          </div>
+        ))}
+      </div>
       
       {/* Input */}
-      <div style={{ display: "flex", gap: 8, padding: "10px 16px 16px", borderTop: response ? "1px solid rgba(255,255,255,.06)" : "none" }}>
+      <div style={{ display: "flex", gap: 8, padding: "10px 16px 16px", borderTop: "1px solid rgba(255,255,255,.06)" }}>
         <input type="text" value={msg} onChange={e => setMsg(e.target.value)}
           onKeyDown={e => e.key === "Enter" && ask()}
           placeholder="Ask ABA anything..."
@@ -1227,13 +1246,12 @@ function CARAButton({ appScope, userId, onFullChat }) {
           padding: "10px 16px", borderRadius: 12, border: "none", cursor: "pointer",
           background: loading ? "rgba(139,92,246,.2)" : "rgba(139,92,246,.3)", color: "#a78bfa"
         }}>
-          {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+          {loading ? "..." : "Go"}
         </button>
       </div>
     </div>
   );
 }
-
 
 
 function CCWAView({ userId }) {
@@ -1422,16 +1440,26 @@ function MeetingModeView({ userId }) {
       let mime = "";
       for (const m of mimes) { if (!m || MediaRecorder.isTypeSupported(m)) { mime = m; break; } }
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      let emptyChunks = 0;
       rec.ondataavailable = async (e) => {
-        if (e.data.size > 0) {
+        if (e.data.size > 500) {
           const blob = new Blob([e.data], { type: mime || "audio/webm" });
+          console.log("[MEETING] Audio chunk:", blob.size, "bytes, type:", blob.type);
           const text = await reachTranscribe(blob);
           if (text && text.trim()) {
+            emptyChunks = 0;
             const entry = { text, time: fmt(secondsRef.current) };
             setTranscript(prev => [...prev, entry]);
             transcriptRef.current = [...transcriptRef.current, entry];
             processSegment(text);
+          } else {
+            emptyChunks++;
+            if (emptyChunks === 3) {
+              setTranscript(prev => [...prev, { text: "ABA is having trouble hearing. Try moving closer to the microphone.", time: fmt(secondsRef.current), isSystem: true }]);
+            }
           }
+        } else {
+          console.log("[MEETING] Audio chunk too small:", e.data.size, "bytes — skipping");
         }
       };
       rec.start(5000);
@@ -2388,8 +2416,12 @@ async function uploadAttachmentsBatch(files, userId, conversationId) {
 
 async function reachTranscribe(audioBlob) {
   try {
-    if (!audioBlob || audioBlob.size < 1000) { 
-      console.log("[VOICE] Audio chunk too small:", audioBlob?.size, "bytes — skipping"); 
+    if (!audioBlob || !(audioBlob instanceof Blob)) {
+      console.warn("[VOICE] reachTranscribe called with non-Blob:", typeof audioBlob);
+      return null;
+    }
+    if (audioBlob.size < 1000) { 
+      console.log("[VOICE] Audio chunk too small:", audioBlob.size, "bytes — skipping"); 
       return null; 
     }
     console.log("[VOICE] Transcribing", audioBlob.size, "bytes,", audioBlob.type);
@@ -2942,7 +2974,7 @@ function Bubble({msg,userPhoto,onSpeak}){const isU=msg.role==="user";const time=
   const isImg=t=>(t||"").startsWith("image/");
   return(<div style={{display:"flex",justifyContent:isU?"flex-end":"flex-start",padding:"4px 0",gap:10,alignItems:"flex-end"}}>
     {!isU&&<div style={{width:28,height:28,borderRadius:99,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ABALogo size={28} glow/></div>}
-    <div style={{maxWidth:"80%"}}><div style={{padding:"12px 16px",borderRadius:isU?"20px 20px 6px 20px":"20px 20px 20px 6px",background:isU?"linear-gradient(135deg,rgba(139,92,246,.35),rgba(99,102,241,.3))":"rgba(255,255,255,.08)",backdropFilter:"blur(12px)",border:`1px solid ${isU?"rgba(139,92,246,.3)":"rgba(255,255,255,.1)"}`,boxShadow:isU?"0 4px 16px rgba(139,92,246,.15)":"inset 0 1px 1px rgba(255,255,255,.08), 0 4px 12px rgba(0,0,0,.15)"}}>{msg.output?<OutputCard output={msg.output}/>:<div>{renderMd(msg.content)||(!msg.role?.includes("user")&&msg.streaming?<span style={{color:"rgba(255,255,255,.3)",fontSize:12}}>Thinking...</span>:null)}</div>}
+    <div style={{maxWidth:"80%"}}><div style={{padding:"12px 16px",borderRadius:isU?"20px 20px 6px 20px":"20px 20px 20px 6px",background:isU?"linear-gradient(135deg,rgba(139,92,246,.35),rgba(99,102,241,.3))":"rgba(255,255,255,.08)",minHeight:isU?undefined:24,backdropFilter:"blur(12px)",border:`1px solid ${isU?"rgba(139,92,246,.3)":"rgba(255,255,255,.1)"}`,boxShadow:isU?"0 4px 16px rgba(139,92,246,.15)":"inset 0 1px 1px rgba(255,255,255,.08), 0 4px 12px rgba(0,0,0,.15)"}}>{msg.output?<OutputCard output={msg.output}/>:<div>{renderMd(msg.content)||(!msg.role?.includes("user")&&msg.streaming?<span style={{color:"rgba(255,255,255,.3)",fontSize:12}}>Thinking...</span>:null)}</div>}
       {/* ⬡B:MYABA:FILE_ATTACHMENTS_DISPLAY:20260319⬡ */}
       {msg.attachments&&msg.attachments.length>0&&(
       <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>
@@ -5957,7 +5989,7 @@ export default function MyABA(){
           setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:"_"+chunkText+"_",isFiller:true}:m));
         } else if (chunkType === "filler_end") {
           // Clear filler, prepare for real content
-          setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:"",isFiller:false}:m));
+          setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,isFiller:false}:m)); // Keep filler text visible until real chunks replace it
         } else {
           // Real content chunk
           setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:accumulated,isFiller:false}:m));
