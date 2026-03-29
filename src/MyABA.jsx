@@ -2398,7 +2398,7 @@ async function reachSynthesize(text) {
     const res = await fetch(`${ABABASE}/api/voice/synthesize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voiceId: "6aDn1KB0hjpdcocrUkmq", model: "eleven_turbo_v2_5" }),
+      body: JSON.stringify({ text, voiceId: "AIFDUhRnM6s61433WMNu", model: "eleven_turbo_v2_5" }),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -3111,7 +3111,7 @@ function FirstLoginTour({user,onComplete}){
       try{
         const res=await fetch(`${ABABASE}/api/voice/synthesize`,{
           method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({text:currentStep.voice,voiceId:"6aDn1KB0hjpdcocrUkmq"})
+          body:JSON.stringify({text:currentStep.voice,voiceId:"AIFDUhRnM6s61433WMNu"})
         });
         if(res.ok&&!cancelled){
           const data=await res.json();
