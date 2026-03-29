@@ -869,12 +869,13 @@ function GuideView({ userId }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [mapUrl, setMapUrl] = useState("https://www.openstreetmap.org/export/embed.html?bbox=-86.9,36.1,-86.6,36.2&layer=mapnik");
+  const [mapUrl, setMapUrl] = useState("https://www.openstreetmap.org/export/embed.html?bbox=-80.0,35.9,-79.6,36.2&layer=mapnik");
   const [userLoc, setUserLoc] = useState(null);
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
+          console.log("[GUIDE] Location:", pos.coords.latitude, pos.coords.longitude, "accuracy:", pos.coords.accuracy + "m");
           const lat = pos.coords.latitude, lng = pos.coords.longitude;
           setUserLoc({ lat, lng });
           const d = 0.02;
@@ -897,7 +898,11 @@ function GuideView({ userId }) {
       setResults(prev => [...prev, { role: "user", text: query }, { role: "aba", text: data.response || data.message || "No results" }]);
       // Update map to searched location
       const q = encodeURIComponent(query);
-      setMapUrl(`https://www.openstreetmap.org/export/embed.html?bbox=-87.1,35.9,-86.5,36.3&layer=mapnik&marker=36.16,-86.78`);
+      // Use user location for map center if available, otherwise keep current view
+      if (userLoc) {
+        const d = 0.05;
+        setMapUrl(`https://www.openstreetmap.org/export/embed.html?bbox=${userLoc.lng-d},${userLoc.lat-d},${userLoc.lng+d},${userLoc.lat+d}&layer=mapnik&marker=${userLoc.lat},${userLoc.lng}`);
+      }
     } catch { setResults(prev => [...prev, { role: "user", text: query }, { role: "aba", text: "Could not reach GUIDE right now" }]); }
     setQuery(""); setLoading(false);
   };
