@@ -35,11 +35,12 @@ import {
   Send, Mic, MicOff, Volume2, VolumeX, MessageSquare, Radio, Hand,
   Settings, X, Plus, Bell, Mail, Calendar, Phone, Headphones,
   MessageCircle, Zap, Activity, Home, ChevronLeft, Code, Clock, CheckCircle, AlertTriangle,
-  Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock, Trophy, Timer, Target, Shield, CheckSquare, Coffee, FolderOpen, HardDrive, Clipboard, Waves, LayoutList,
+  Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock, Trophy, Timer, Target, Code, Shield, CheckSquare, Coffee, FolderOpen, HardDrive, Clipboard, Waves, LayoutList,
   Trash2, Archive, Search, WifiOff, Wifi, RefreshCw, Share2, Paperclip,
-  Image, File, FolderPlus, MoreVertical, Edit2, Copy, Briefcase,
+  FolderOpen, Image, File, FolderPlus, MoreVertical, Edit2, Copy, Briefcase,
   MapPin, ExternalLink, Building, Download, ChevronDown, Camera, Sunrise, BookOpen, GripVertical,
-  Loader2, Play, Pause, Square, Globe, Compass, Hash, Heart, Star, TrendingUp, BarChart2 } from "lucide-react";
+  Loader2, Timer, Play, Pause, Square, Target
+, Globe, Compass, Hash, Heart, Star, TrendingUp, BarChart2 } from "lucide-react";
 import { auth, signInGoogle, signOutUser, db } from "./firebase.js";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useConversation } from "@elevenlabs/react";
@@ -367,9 +368,8 @@ function GMGUniversityView() {
       r.onend = () => setListening(false); r.onerror = () => setListening(false); recogRef.current = r; }
   }, []);
 
-  const streamAIR = async (msg, retries = 2) => {
-    for (let attempt = 0; attempt <= retries; attempt++) {
-    const result = await new Promise(resolve => {
+  const streamAIR = async (msg) => {
+    return new Promise(resolve => {
       const ctrl = new AbortController(); const to = setTimeout(() => { ctrl.abort(); resolve(null); }, 90000); let full = "";
       fetch(ABABASE + "/api/air/stream", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: msg, userId: userEmail || "anon", email: userEmail, channel: "gmg-university", previousMessages: gmgHistory.slice(-20) }),
@@ -390,20 +390,14 @@ function GMGUniversityView() {
     });
   };
 
-  const subTimerRef = useRef(null);
   const speakGMG = async (text) => {
-    if (!text) return; setAbaState("speaking"); setSubtitle("");
-    if (subTimerRef.current) clearInterval(subTimerRef.current);
+    if (!text) return; setAbaState("speaking");
     try { const r = await fetch("https://api.elevenlabs.io/v1/text-to-speech/AIFDUhRnM6s61433WMNu", { method: "POST",
       headers: { "Content-Type": "application/json", "xi-api-key": "sk_e0b48157805968dbb370f299b60e22001189bd85c3864040" },
       body: JSON.stringify({ text, model_id: "eleven_turbo_v2_5", voice_settings: { stability: 0.5, similarity_boost: 0.75 } }) });
     if (!r.ok) throw new Error("TTS"); const blob = await r.blob(); const url = URL.createObjectURL(blob); const audio = new Audio(url);
-    await new Promise(res => { audio.addEventListener("loadedmetadata", res); audio.load(); });
-    const words = text.split(" "); const tw = words.length; const dur = audio.duration || (tw * 0.3); const mpw = (dur * 1000) / tw; let wi = 0;
-    subTimerRef.current = setInterval(() => { if (wi <= tw) { setSubtitle(words.slice(0, wi).join(" ")); wi++; } }, mpw);
-    audio.onended = () => { if (subTimerRef.current) clearInterval(subTimerRef.current); setSubtitle(text); setAbaState("idle"); URL.revokeObjectURL(url); };
-    audio.onerror = () => { if (subTimerRef.current) clearInterval(subTimerRef.current); setSubtitle(text); setAbaState("idle"); };
-    await audio.play(); } catch(e) { console.error("[GMG-U CIP] TTS:", e); setSubtitle(text); setTimeout(() => setAbaState("idle"), 2000); }
+    audio.onended = () => { setAbaState("idle"); URL.revokeObjectURL(url); }; audio.onerror = () => setAbaState("idle");
+    await audio.play(); } catch { setTimeout(() => setAbaState("idle"), 2000); }
   };
 
   const processGMG = async (input) => {
@@ -2891,11 +2885,11 @@ async function fetchBriefing(userId) {
     // Transform v2 response to expected format
     const briefing = data.briefing || data;
     return {
-      summary: briefing.spoken_summary || briefing.greeting || '',
-      handled: briefing.sections?.find(s => s.type === 'handled')?.items || [],
-      pending: briefing.sections?.find(s => s.type === 'pending' || s.type === 'approvals')?.items || [],
-      upcoming: briefing.sections?.find(s => s.type === 'calendar')?.items || [],
-      jobs: briefing.sections?.find(s => s.type === 'jobs')?.items || [],
+      summary: data.summary || briefing.spoken_summary || briefing.summary || briefing.greeting || '',
+      handled: data.handled || briefing.sections?.find(s => s.type === 'handled')?.items || [],
+      pending: data.pending || briefing.sections?.find(s => s.type === 'pending' || s.type === 'approvals')?.items || [],
+      upcoming: data.upcoming || briefing.sections?.find(s => s.type === 'calendar')?.items || [],
+      jobs: data.jobs || briefing.sections?.find(s => s.type === 'jobs')?.items || [],
       raw: briefing
     };
   } catch (e) {
