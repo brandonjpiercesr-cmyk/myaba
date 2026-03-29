@@ -2842,7 +2842,7 @@ function CommandCenterView({ open, onClose, userEmail }) {
 async function fetchBriefing(userId) {
   try {
     // Use v2 MyABA briefing endpoint
-    const response = await fetch(`https://abacia-services.onrender.com/api/myaba/briefing?userId=${encodeURIComponent(userId)}`);
+    const response = await fetch(`${ABABASE}/api/briefing?userId=${encodeURIComponent(userId)}`);
     if (!response.ok) throw new Error('Briefing fetch failed');
     const data = await response.json();
     // Transform v2 response to expected format
