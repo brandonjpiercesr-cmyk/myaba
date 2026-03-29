@@ -1764,12 +1764,12 @@ function InterviewModeView({ userId }) {
     letterSpacing: mode===id?"0.5px":"0",
     background:mode===id?`linear-gradient(135deg, ${amber(.2)}, ${amber(.08)})`:"transparent",
     color:mode===id?"#fbbf24":"rgba(255,255,255,.3)",transition:"all 0.3s ease",display:"flex",alignItems:"center",justifyContent:"center",gap:5
-  }}><span>{emoji}</span>{label}</button>;
+  }}>{typeof emoji==="string"?<span>{emoji}</span>:React.createElement(emoji,{size:12})}{label}</button>;
 
   // ═══════ PREP MODE ═══════
   if (mode === "prep") return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
     <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:`1px solid ${amber(.08)}`}}>
-      {modeTab("prep","Prep","📋")}{modeTab("live","Live","🎙️")}{modeTab("mock","Mock","🎯")}
+      {modeTab("prep","Prep",FileText)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
     </div>
     <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
       {!selectedJob ? (<>
@@ -1795,7 +1795,7 @@ function InterviewModeView({ userId }) {
   // ═══════ MOCK MODE ═══════
   if (mode === "mock") return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
     <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:`1px solid ${amber(.08)}`}}>
-      {modeTab("prep","Prep","📋")}{modeTab("live","Live","🎙️")}{modeTab("mock","Mock","🎯")}
+      {modeTab("prep","Prep",FileText)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
     </div>
     <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
       {mockHistory.map((h,i) => <div key={i} style={{marginBottom:14}}>
@@ -1837,7 +1837,7 @@ function InterviewModeView({ userId }) {
 
   return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
     <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:`1px solid ${amber(.08)}`}}>
-      {modeTab("prep","Prep","📋")}{modeTab("live","Live","🎙️")}{modeTab("mock","Mock","🎯")}
+      {modeTab("prep","Prep",FileText)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
     </div>
     {activeCue && <div style={{padding:"10px 14px",margin:"6px 8px 0",borderRadius:12,background:activeCue.type==="ALERT"?"linear-gradient(135deg, rgba(239,68,68,.15), rgba(239,68,68,.05))":`linear-gradient(135deg, ${amber(.15)}, ${amber(.05)})`,border:activeCue.type==="ALERT"?"1px solid rgba(239,68,68,.2)":`1px solid ${amber(.15)}`,boxShadow:activeCue.type==="ALERT"?"0 0 20px rgba(239,68,68,.1)":`0 0 20px ${amber(.08)}`,animation:"mf .4s ease"}}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
@@ -2937,7 +2937,7 @@ function Bubble({msg,userPhoto,onSpeak}){const isU=msg.role==="user";const time=
   const isImg=t=>(t||"").startsWith("image/");
   return(<div style={{display:"flex",justifyContent:isU?"flex-end":"flex-start",padding:"4px 0",gap:10,alignItems:"flex-end"}}>
     {!isU&&<div style={{width:28,height:28,borderRadius:99,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ABALogo size={28} glow/></div>}
-    <div style={{maxWidth:"80%"}}><div style={{padding:"12px 16px",borderRadius:isU?"20px 20px 6px 20px":"20px 20px 20px 6px",background:isU?"linear-gradient(135deg,rgba(139,92,246,.35),rgba(99,102,241,.3))":"rgba(255,255,255,.08)",backdropFilter:"blur(12px)",border:`1px solid ${isU?"rgba(139,92,246,.3)":"rgba(255,255,255,.1)"}`,boxShadow:isU?"0 4px 16px rgba(139,92,246,.15)":"inset 0 1px 1px rgba(255,255,255,.08), 0 4px 12px rgba(0,0,0,.15)"}}>{msg.output?<OutputCard output={msg.output}/>:<div>{renderMd(msg.content)}</div>}
+    <div style={{maxWidth:"80%"}}><div style={{padding:"12px 16px",borderRadius:isU?"20px 20px 6px 20px":"20px 20px 20px 6px",background:isU?"linear-gradient(135deg,rgba(139,92,246,.35),rgba(99,102,241,.3))":"rgba(255,255,255,.08)",backdropFilter:"blur(12px)",border:`1px solid ${isU?"rgba(139,92,246,.3)":"rgba(255,255,255,.1)"}`,boxShadow:isU?"0 4px 16px rgba(139,92,246,.15)":"inset 0 1px 1px rgba(255,255,255,.08), 0 4px 12px rgba(0,0,0,.15)"}}>{msg.output?<OutputCard output={msg.output}/>:<div>{renderMd(msg.content)||(!msg.role?.includes("user")&&msg.streaming?<span style={{color:"rgba(255,255,255,.3)",fontSize:12}}>Thinking...</span>:null)}</div>}
       {/* ⬡B:MYABA:FILE_ATTACHMENTS_DISPLAY:20260319⬡ */}
       {msg.attachments&&msg.attachments.length>0&&(
       <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>
@@ -5991,7 +5991,7 @@ export default function MyABA(){
       const url=await reachSynthesize(finalContent);
       if(url){
         const a=new Audio(url);
-        a.onended=()=>{setAbaState("idle");if(liveRef.current&&startListeningRef.current)startListeningRef.current()};
+        a.onended=()=>{setAbaState("idle");if(liveRef.current&&startListeningRef.current){console.log("[VOICE] Auto-listen after speak");setTimeout(()=>{if(liveRef.current&&startListeningRef.current)startListeningRef.current()},500)}};
         a.play().catch(err=>{console.error("[VOICE] Audio play error:",err);setAbaState("idle");if(liveRef.current&&startListeningRef.current)startListeningRef.current()});
       }else{
         setAbaState("idle");
