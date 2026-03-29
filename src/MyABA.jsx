@@ -35,11 +35,12 @@ import {
   Send, Mic, MicOff, Volume2, VolumeX, MessageSquare, Radio, Hand,
   Settings, X, Plus, Bell, Mail, Calendar, Phone, Headphones,
   MessageCircle, Zap, Activity, Home, ChevronLeft, Code, Clock, CheckCircle, AlertTriangle,
-  Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock, Trophy, Timer, Target, Shield, CheckSquare, Coffee, FolderOpen, HardDrive, Clipboard, Waves, LayoutList,
+  Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock, Trophy, Timer, Target, Code, Shield, CheckSquare, Coffee, FolderOpen, HardDrive, Clipboard, Waves, LayoutList,
   Trash2, Archive, Search, WifiOff, Wifi, RefreshCw, Share2, Paperclip,
-  Image, File, FolderPlus, MoreVertical, Edit2, Copy, Briefcase,
+  FolderOpen, Image, File, FolderPlus, MoreVertical, Edit2, Copy, Briefcase,
   MapPin, ExternalLink, Building, Download, ChevronDown, Camera, Sunrise, BookOpen, GripVertical,
-  Loader2, Play, Pause, Square, Globe, Compass, Hash, Heart, Star, TrendingUp, BarChart2 } from "lucide-react";
+  Loader2, Timer, Play, Pause, Square, Target
+, Globe, Compass, Hash, Heart, Star, TrendingUp, BarChart2 } from "lucide-react";
 import { auth, signInGoogle, signOutUser, db } from "./firebase.js";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useConversation } from "@elevenlabs/react";
@@ -1258,11 +1259,12 @@ function CCWAView({ userId }) {
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState([]);
+  const [devMode, setDevMode] = useState("prod"); // prod | dev | compare
   const ask = async () => {
     if (!query.trim()) return; setLoading(true);
     setHistory(prev => [...prev, { role: "user", text: query }]); const msg = query; setQuery("");
     try {
-      const res = await fetch(ABABASE + "/api/air/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg, user_id: userId, userId, channel: "ccwa", appScope: "ccwa" }) });
+      const res = await fetch(ABABASE + "/api/air/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg, user_id: userId, userId, channel: devMode === "dev" ? "incuaba" : "ccwa", appScope: "ccwa" }) });
       const reader = res.body.getReader(); const decoder = new TextDecoder(); let acc = "";
       while (true) { const { done, value } = await reader.read(); if (done) break;
         for (const line of decoder.decode(value, { stream: true }).split("\n").filter(l => l.startsWith("data: "))) {
@@ -1273,8 +1275,14 @@ function CCWAView({ userId }) {
   };
   return (<div style={{flex:1,display:"flex",flexDirection:"column"}}>
     <div style={{flex:1,overflowY:"auto",padding:16}}>
+      {/* INCUABA Dev Toggle */}
+      <div style={{display:"flex",gap:4,padding:"0 0 8px",borderBottom:"1px solid rgba(255,255,255,.04)",marginBottom:8}}>
+        {[{id:"prod",label:"Production",color:"#f59e0b"},{id:"dev",label:"Dev (Haiku)",color:"#22d3ee"},{id:"compare",label:"Compare",color:"#a78bfa"}].map(m=>
+          <button key={m.id} onClick={()=>setDevMode(m.id)} style={{flex:1,padding:"6px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:devMode===m.id?700:400,background:devMode===m.id?m.color+"20":"transparent",color:devMode===m.id?m.color:"rgba(255,255,255,.3)"}}>{m.label}</button>)}
+      </div>
+      {devMode==="dev"&&<div style={{padding:"4px 8px",borderRadius:6,background:"rgba(34,211,238,.08)",border:"1px solid rgba(34,211,238,.15)",marginBottom:8,fontSize:10,color:"rgba(34,211,238,.7)"}}>INCUABA: Running on Haiku. 10-20x cheaper. Same agents, cheaper model.</div>}
       {history.length === 0 && !response && <div style={{textAlign:"center",padding:"40px 20px"}}>
-        <Code size={40} style={{margin:"0 auto 12px",opacity:.3,color:"#f59e0b"}} />
+        <Code size={40} style={{margin:"0 auto 12px",opacity:.3,color:devMode==="dev"?"#22d3ee":"#f59e0b"}} />
         <p style={{fontSize:15,color:"rgba(255,255,255,.6)",marginBottom:8}}>Code with ABA</p>
         <p style={{fontSize:12,color:"rgba(255,255,255,.3)"}}>Build, debug, audit, or deploy code across the ABA ecosystem</p>
         <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:16}}>
@@ -2884,11 +2892,11 @@ async function fetchBriefing(userId) {
     // Transform v2 response to expected format
     const briefing = data.briefing || data;
     return {
-      summary: briefing.spoken_summary || briefing.greeting || '',
-      handled: briefing.sections?.find(s => s.type === 'handled')?.items || [],
-      pending: briefing.sections?.find(s => s.type === 'pending' || s.type === 'approvals')?.items || [],
-      upcoming: briefing.sections?.find(s => s.type === 'calendar')?.items || [],
-      jobs: briefing.sections?.find(s => s.type === 'jobs')?.items || [],
+      summary: data.summary || briefing.spoken_summary || briefing.summary || briefing.greeting || '',
+      handled: data.handled || briefing.sections?.find(s => s.type === 'handled')?.items || [],
+      pending: data.pending || briefing.sections?.find(s => s.type === 'pending' || s.type === 'approvals')?.items || [],
+      upcoming: data.upcoming || briefing.sections?.find(s => s.type === 'calendar')?.items || [],
+      jobs: data.jobs || briefing.sections?.find(s => s.type === 'jobs')?.items || [],
       raw: briefing
     };
   } catch (e) {
