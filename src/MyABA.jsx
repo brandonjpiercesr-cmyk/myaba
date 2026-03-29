@@ -3557,7 +3557,7 @@ function ApproveView({userId,onAction}){
   useEffect(()=>{
     (async()=>{
       try{
-        const response=await fetch(`https://abacia-services.onrender.com/api/myaba/approvals?userId=${encodeURIComponent(userId)}`);
+        const response=await fetch(`${ABABASE}/api/pending-approvals?userId=${encodeURIComponent(userId)}`);
         if(response.ok){
           const data=await response.json();
           setItems(data.items||[]);
@@ -3575,10 +3575,10 @@ function ApproveView({userId,onAction}){
     
     // Execute action via v2 endpoint — field must be 'action' not 'decision'
     const action=direction==="right"?"approve":"reject";
-    fetch(`https://abacia-services.onrender.com/api/myaba/approvals/${currentItem.id}`,{
+    fetch(`${ABABASE}/api/approve-action`,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action,userId})
+      body:JSON.stringify({item_id:currentItem.id,action,userId})
     }).catch(e=>console.error('[APPROVE] Action failed:',e));
     
     // Animate out then advance
