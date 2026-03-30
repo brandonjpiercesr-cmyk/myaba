@@ -5400,6 +5400,11 @@ export default function MyABA(){
   const fileInputRef=useRef(null);
   const [scannerOpen,setScannerOpen]=useState(false);
   const[isTyping,setIsTyping]=useState(false);
+  // ⬡B:FIX:chat_bubble_collapsed:setMessages_wrapper:20260330⬡
+  // messages is derived from convos — streaming updates must route through setConvos
+  const setMessages=useCallback((updater)=>{
+    setConvos(prev=>prev.map(c=>c.id===activeId?{...c,messages:typeof updater==='function'?updater(c.messages||[]):updater,updatedAt:Date.now()}:c));
+  },[activeId]);
   
   // v2.16.1: Settings from backend (fallback to localStorage, then defaults)
   const[bg,setBg]=useState(()=>{try{return localStorage.getItem("myaba_bg")||"pinkSmoke"}catch{return "pinkSmoke"}});
