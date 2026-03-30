@@ -35,12 +35,12 @@ import {
   Send, Mic, MicOff, Volume2, VolumeX, MessageSquare, Radio, Hand,
   Settings, X, Plus, Bell, Mail, Calendar, Phone, Headphones,
   MessageCircle, Zap, Activity, Home, ChevronLeft, Code, Clock, CheckCircle, AlertTriangle,
-  Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock, Trophy, Timer, Target, Code, Shield, CheckSquare, Coffee, FolderOpen, HardDrive, Clipboard, Waves, LayoutList,
+  Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock, Trophy, Timer, Target, Shield, CheckSquare, Coffee, FolderOpen, HardDrive, Clipboard, Waves, LayoutList,
   Trash2, Archive, Search, WifiOff, Wifi, RefreshCw, Share2, Paperclip,
-  FolderOpen, Image, File, FolderPlus, MoreVertical, Edit2, Copy, Briefcase,
+  Image, File, FolderPlus, MoreVertical, Edit2, Copy, Briefcase,
   MapPin, ExternalLink, Building, Download, ChevronDown, Camera, Sunrise, BookOpen, GripVertical,
-  Loader2, Timer, Play, Pause, Square, Target
-, Globe, Compass, Hash, Heart, Star, TrendingUp, BarChart2 } from "lucide-react";
+  Loader2, Play, Pause, Square, Globe, Compass, Hash, Heart, Star, TrendingUp, BarChart2
+} from "lucide-react";
 import { auth, signInGoogle, signOutUser, db } from "./firebase.js";
 import { doc, getDoc, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
 import { useConversation } from "@elevenlabs/react";
