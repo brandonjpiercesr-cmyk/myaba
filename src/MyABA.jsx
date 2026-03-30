@@ -1296,6 +1296,8 @@ function MeetingModeView({ userId }) {
   const secondsRef = useRef(0);
   const cueTimeoutRef = useRef(null);
   const transcriptRef = useRef([]);
+  const analyserRef = useRef(null);
+  const audioCtxRef = useRef(null);
 
   useEffect(() => {
     if (running) { intervalRef.current = setInterval(() => { setSeconds(s => { secondsRef.current = s + 1; return s + 1; }); }, 1000); }
@@ -1365,13 +1367,38 @@ function MeetingModeView({ userId }) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+      // ⬡B:FIX:meeting_vad:silence_detection:20260330⬡
+      // Set up AudioContext + AnalyserNode for voice activity detection
+      // Polls every 200ms — if no voice detected in a 5s chunk, skip Deepgram call
+      try {
+        const actx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = actx.createMediaStreamSource(stream);
+        const analyser = actx.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        audioCtxRef.current = actx;
+        analyserRef.current = { node: analyser, hadVoice: false, buf: new Uint8Array(analyser.fftSize) };
+        // Poll audio level every 200ms
+        analyserRef.current.interval = setInterval(() => {
+          if (!analyserRef.current) return;
+          const a = analyserRef.current;
+          a.node.getByteTimeDomainData(a.buf);
+          let maxDev = 0;
+          for (let i = 0; i < a.buf.length; i++) maxDev = Math.max(maxDev, Math.abs(a.buf[i] - 128));
+          if (maxDev > 8) a.hadVoice = true;
+        }, 200);
+      } catch (vadErr) { console.log("[MEETING] VAD setup skipped:", vadErr.message); }
       const mimes = ["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus",""];
       let mime = "";
       for (const m of mimes) { if (!m || MediaRecorder.isTypeSupported(m)) { mime = m; break; } }
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       let emptyChunks = 0;
       rec.ondataavailable = async (e) => {
-        if (e.data.size > 500) {
+        // Check VAD — skip Deepgram if no voice detected in this chunk
+        const vad = analyserRef.current;
+        const hadVoice = vad ? vad.hadVoice : true; // default to true if VAD not available
+        if (vad) vad.hadVoice = false; // reset for next chunk
+        if (e.data.size > 500 && hadVoice) {
           const audioBlob_meeting = new Blob([e.data], { type: mime || "audio/webm" });
           console.log("[MEETING] Audio chunk:", audioBlob_meeting.size, "bytes, type:", audioBlob_meeting.type);
           const text = await reachTranscribe(audioBlob_meeting);
@@ -1387,6 +1414,8 @@ function MeetingModeView({ userId }) {
               setTranscript(prev => [...prev, { text: "ABA is having trouble hearing. Try moving closer to the microphone.", time: fmt(secondsRef.current), isSystem: true }]);
             }
           }
+        } else if (!hadVoice) {
+          console.log("[MEETING] Silent chunk — skipping Deepgram call");
         } else {
           console.log("[MEETING] Audio chunk too small:", e.data.size, "bytes — skipping");
         }
@@ -1401,6 +1430,10 @@ function MeetingModeView({ userId }) {
   const endMeeting = async () => {
     recRef.current?.stop();
     streamRef.current?.getTracks().forEach(t => t.stop());
+    // Clean up VAD
+    if (analyserRef.current?.interval) clearInterval(analyserRef.current.interval);
+    if (audioCtxRef.current) { try { audioCtxRef.current.close(); } catch {} }
+    analyserRef.current = null; audioCtxRef.current = null;
     setRunning(false);
     setRecording(false);
     if (transcriptRef.current.length > 0) {
@@ -1538,6 +1571,8 @@ function InterviewModeView({ userId }) {
   const secondsRef = useRef(0);
   const cueTimeoutRef = useRef(null);
   const transcriptRef = useRef([]);
+  const analyserRef_iv = useRef(null);
+  const audioCtxRef_iv = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -1680,16 +1715,37 @@ function InterviewModeView({ userId }) {
   };
 
   const toggleRecord = async () => {
-    if (recording) { recRef.current?.stop(); streamRef.current?.getTracks().forEach(t=>t.stop()); setRecording(false); return; }
+    if (recording) { recRef.current?.stop(); streamRef.current?.getTracks().forEach(t=>t.stop()); setRecording(false); if(analyserRef_iv.current?.interval)clearInterval(analyserRef_iv.current.interval); if(audioCtxRef_iv.current){try{audioCtxRef_iv.current.close()}catch{}} analyserRef_iv.current=null; audioCtxRef_iv.current=null; return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+      // ⬡B:FIX:interview_vad:silence_detection:20260330⬡
+      try {
+        const actx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = actx.createMediaStreamSource(stream);
+        const analyser = actx.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        audioCtxRef_iv.current = actx;
+        analyserRef_iv.current = { node: analyser, hadVoice: false, buf: new Uint8Array(analyser.fftSize) };
+        analyserRef_iv.current.interval = setInterval(() => {
+          if (!analyserRef_iv.current) return;
+          const a = analyserRef_iv.current;
+          a.node.getByteTimeDomainData(a.buf);
+          let maxDev = 0;
+          for (let i = 0; i < a.buf.length; i++) maxDev = Math.max(maxDev, Math.abs(a.buf[i] - 128));
+          if (maxDev > 8) a.hadVoice = true;
+        }, 200);
+      } catch (vadErr) { console.log("[INTERVIEW] VAD setup skipped:", vadErr.message); }
       const mimes = ["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus",""];
       let mime = "";
       for (const m of mimes) { if (!m || MediaRecorder.isTypeSupported(m)) { mime = m; break; } }
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       rec.ondataavailable = async (e) => {
-        if (e.data.size > 0) {
+        const vad = analyserRef_iv.current;
+        const hadVoice = vad ? vad.hadVoice : true;
+        if (vad) vad.hadVoice = false;
+        if (e.data.size > 500 && hadVoice) {
           const audioBlob_interview = new Blob([e.data], { type: mime || "audio/webm" });
           const text = await reachTranscribe(audioBlob_interview);
           if (text && text.trim()) {
@@ -1699,6 +1755,8 @@ function InterviewModeView({ userId }) {
             if (mode === "mock") setMockAnswer(prev => prev ? prev + " " + text : text);
             else processSegment(text);
           }
+        } else if (!hadVoice) {
+          console.log("[INTERVIEW] Silent chunk — skipping Deepgram call");
         }
       };
       rec.start(5000); recRef.current = rec; setRecording(true);
@@ -1709,6 +1767,9 @@ function InterviewModeView({ userId }) {
   const endInterview = async () => {
     recRef.current?.stop();
     streamRef.current?.getTracks().forEach(t => t.stop());
+    if(analyserRef_iv.current?.interval)clearInterval(analyserRef_iv.current.interval);
+    if(audioCtxRef_iv.current){try{audioCtxRef_iv.current.close()}catch{}}
+    analyserRef_iv.current=null; audioCtxRef_iv.current=null;
     setRunning(false); setRecording(false);
     if (transcriptRef.current.length > 0) {
       try {
