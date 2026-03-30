@@ -1450,9 +1450,9 @@ function MeetingModeView({ userId }) {
       let emptyChunks = 0;
       rec.ondataavailable = async (e) => {
         if (e.data.size > 500) {
-          const blob = new Blob([e.data], { type: mime || "audio/webm" });
-          console.log("[MEETING] Audio chunk:", blob.size, "bytes, type:", blob.type);
-          const text = await reachTranscribe(blob);
+          const audioBlob_meeting = new Blob([e.data], { type: mime || "audio/webm" });
+          console.log("[MEETING] Audio chunk:", audioBlob_meeting.size, "bytes, type:", audioBlob_meeting.type);
+          const text = await reachTranscribe(audioBlob_meeting);
           if (text && text.trim()) {
             emptyChunks = 0;
             const entry = { text, time: fmt(secondsRef.current) };
@@ -1768,8 +1768,8 @@ function InterviewModeView({ userId }) {
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       rec.ondataavailable = async (e) => {
         if (e.data.size > 0) {
-          const blob = new Blob([e.data], { type: mime || "audio/webm" });
-          const text = await reachTranscribe(blob);
+          const audioBlob_interview = new Blob([e.data], { type: mime || "audio/webm" });
+          const text = await reachTranscribe(audioBlob_interview);
           if (text && text.trim()) {
             const entry = { text, time: fmt(secondsRef.current) };
             setTranscript(prev => [...prev, entry]);
