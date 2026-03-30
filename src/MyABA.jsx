@@ -113,9 +113,8 @@ ICON_MAP.Music2 = Volume2;
 function isOnline() { return navigator.onLine; }
 
 // v2.15.0: AIR with retry + offline awareness + proper userId handling
-// HAM users: brandonjpiercesr@gmail.com, brandon@globalmajoritygroup.com
-const HAM_EMAILS = ['brandonjpiercesr@gmail.com', 'brandon@globalmajoritygroup.com'];
-function isHAM(email) { return HAM_EMAILS.includes(email?.toLowerCase()); }
+// ⬡B:ham.audit:FIX:dynamic_isHAM:20260330⬡ Uses backend HAM team cache, not hardcoded emails
+function isHAM(email) { return !!email && !!HAM_EMAIL_MAP[email.toLowerCase()]; }
 
 async function airRequest(type, payload = {}, userId = "unknown", maxRetries = 3) {
   if (!isOnline()) {
