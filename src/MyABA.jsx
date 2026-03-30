@@ -42,7 +42,7 @@ import {
   Loader2, Timer, Play, Pause, Square, Target
 , Globe, Compass, Hash, Heart, Star, TrendingUp, BarChart2 } from "lucide-react";
 import { auth, signInGoogle, signOutUser, db } from "./firebase.js";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
 import { useConversation } from "@elevenlabs/react";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -313,270 +313,163 @@ function MobileDocEditor({ content: initialContent, docId, docType, onClose, onS
 }
 
 function GMGUniversityView() {
-  // ⬡B:gmg_u:CIP:interactive_deck:20260328⬡
-  // Native GMG-U with ABA/DECK tab toggle for mobile
-  const [abaState, setAbaState] = useState("idle");
-  const [subtitle, setSubtitle] = useState("");
-  const [listening, setListening] = useState(false);
-  const [transcript, setTranscript] = useState("");
-  const [textIn, setTextIn] = useState("");
-  const [gmgHistory, setGmgHistory] = useState([]);
-  const [gmgCompleted, setGmgCompleted] = useState({});
-  const [cipTab, setCipTab] = useState("aba"); // "aba" or "deck"
-  const [pitchSecs, setPitchSecs] = useState(null); // {total, elapsed, running}
-  const recogRef = useRef(null);
-  const initRef = useRef(false);
-  const deckRef = useRef(null);
+  // ⬡B:gmg_u:CIP:standalone_replica:20260329⬡
+  // Replica of standalone GMG University for mobile
   const userEmail = window.__ABA_USER_EMAIL || "";
   const userName = window.__ABA_USER_NAME || "there";
   const gmgUid = window.__ABA_USER_UID || "";
+  const firstName = (userName || "there").split(" ")[0];
 
-  // Curriculum (matches CIB)
-  const BLOCK1 = [{t:"The Four Sources of Money",mode:"teach"},{t:"Why People Actually Give",mode:"teach"},{t:"The Donor Lifecycle",mode:"teach"},{t:"The Donor Pyramid",mode:"teach"},{t:"Review: Days 1-4",mode:"drill"},{t:"Annual Giving Programs",mode:"teach"},{t:"Foundation Grants Reality",mode:"teach"},{t:"Corporate Partnerships",mode:"teach"},{t:"Earned Revenue Strategies",mode:"teach"},{t:"Review: Days 6-9",mode:"drill"},{t:"Board Fundraising",mode:"teach"},{t:"Grant Research and Writing",mode:"teach"},{t:"Donor Retention",mode:"teach"},{t:"Systems and Tools",mode:"teach"},{t:"Block 1 Assessment",mode:"drill"}];
-  const BLOCK4 = [{t:"What Is CPP",mode:"teach"},{t:"Business Setup",mode:"teach"},{t:"Revenue Model",mode:"teach"},{t:"Review: Days 46-48",mode:"teach"},{t:"Resume First Read",mode:"read"},{t:"The Claims",mode:"drill"},{t:"The Numbers Drill",mode:"drill"},{t:"Cover Letter Mastery",mode:"read"},{t:"The Elevator Pitch",mode:"timer"},{t:"Mock Interview Round 1",mode:"interview"},{t:"Stress Test",mode:"interview"},{t:"Resume Drill Review",mode:"drill"},{t:"Documentation and Client Systems",mode:"teach"},{t:"Client Communication",mode:"teach"},{t:"Block 4 Assessment",mode:"interview"}];
-  const BLOCK5 = [{t:"Mock Discovery Call",mode:"interview"},{t:"Needs Assessment",mode:"teach"},{t:"Proposal Writing",mode:"teach"},{t:"Budget Building",mode:"teach"},{t:"Review: Days 61-64",mode:"teach"},{t:"Mock Board Training",mode:"interview"},{t:"Donor Cultivation",mode:"interview"},{t:"Grant Application",mode:"teach"},{t:"Resume and Cover Letter Pitch",mode:"interview"},{t:"Review: Days 66-69",mode:"teach"},{t:"Client Engagement Plan",mode:"teach"},{t:"Status Report",mode:"teach"},{t:"Portfolio Review",mode:"interview"},{t:"Peer Coaching",mode:"interview"},{t:"Final Certification",mode:"interview"}];
+  const [profile, setProfile] = useState(null);
+  const [view, setView] = useState("home");
+  const [vol, setVol] = useState("v1");
+  const [day, setDay] = useState(null);
+  const [voice, setVoice] = useState(false);
+  const [msgs, setMsgs] = useState([]);
+  const [input, setInput] = useState("");
+  const [typing, setTyping] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const audioRef = useRef();
+  const endRef = useRef();
 
-  const getNextLesson = () => {
-    const allLessons = [BLOCK1, [], [], BLOCK4, BLOCK5]; // Blocks 2-3 are track-specific, 15 lessons each
-    for (let b = 0; b < 5; b++) {
-      const done = gmgCompleted[b+1] || [];
-      const lessons = allLessons[b].length > 0 ? allLessons[b] : Array.from({length:15}, (_,i) => ({t:"Track Lesson "+(i+1), mode:"teach"}));
-      for (let d = 0; d < lessons.length; d++) {
-        if (!done.includes(d+1)) return {block:b+1, day:d+1, lesson:lessons[d]};
-      }
+  const VOL = { v1:{t:"Foundations",f:"Fundraising Foundations",d:15}, v2:{t:"Track 1",f:"Role-Specific Track 1",d:15}, v3:{t:"Track 2",f:"Role-Specific Track 2",d:15}, v4:{t:"CPP & Resume",f:"CPP and Resume Mastery",d:15}, v5:{t:"Demonstration",f:"Final Demonstration",d:15} };
+  const TITLES = { v1:["The Four Sources of Money","Why People Actually Give","The Donor Lifecycle","The Donor Pyramid","Review: Days 1-4","Annual Giving Programs","Foundation Grants Reality","Corporate Partnerships","Earned Revenue Strategies","Review: Days 6-9","Board Fundraising","Grant Research and Writing","Donor Retention","Systems and Tools","Block 1 Assessment"], v4:["What Is CPP","Business Setup","Revenue Model","Review","Resume First Read","The Claims","The Numbers Drill","Cover Letter Mastery","The Elevator Pitch","Mock Interview Round 1","Stress Test","Resume Drill Review","Documentation","Client Communication","Block 4 Assessment"], v5:["Mock Discovery Call","Needs Assessment","Proposal Writing","Budget Building","Review","Mock Board Training","Donor Cultivation","Grant Application","Resume Pitch","Review","Engagement Plan","Status Report","Portfolio Review","Peer Coaching","Final Certification"] };
+  const BG = { pink:"https://i.imgur.com/3RkebB2.jpeg", embers:"https://i.imgur.com/9HZYnlX.png", nebula:"https://i.imgur.com/nLBRQ82.jpeg", city:"https://i.imgur.com/h8zNCw1.jpeg" };
+  const ABA_LOGO = "https://i.imgur.com/0be7HCF.png";
+  const glass = { background:"rgba(255,255,255,0.08)", backdropFilter:"blur(12px)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:16, padding:16 };
+
+  useEffect(() => { if (gmgUid) loadProfile(); }, [gmgUid]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior:"smooth" }); }, [msgs]);
+
+  const loadProfile = async () => {
+    try {
+      const snap = await getDoc(doc(db, "gmg_university", gmgUid));
+      if (snap.exists()) setProfile(snap.data());
+      else { const np = { email:userEmail, name:userName, completedDays:[], xp:0, streak:0 }; await setDoc(doc(db, "gmg_university", gmgUid), np); setProfile(np); }
+    } catch { setProfile({ completedDays:[], xp:0, streak:0 }); }
+  };
+
+  const getNext = () => {
+    const done = profile?.completedDays || [];
+    for (const [v, info] of Object.entries(VOL)) {
+      for (let d = 1; d <= info.d; d++) { if (!done.includes(v+"-d"+d)) return { vol:v, day:d, title:(TITLES[v]||[])[d-1]||"Day "+d }; }
     }
-    return {block:5, day:15, lesson:BLOCK5[14]};
-  };
-  const currentLesson = getNextLesson();
-  const lessonMode = currentLesson?.lesson?.mode || "teach";
-  const totalDone = Object.values(gmgCompleted).flat().length;
-
-  // Firestore persistence
-  useEffect(() => {
-    if (!gmgUid) return;
-    (async () => { try { const d = await getDoc(doc(db, "gmg_university", gmgUid));
-      if (d.exists()) { const data = d.data(); if (data.completedLessons) setGmgCompleted(data.completedLessons); if (data.sessionHistory?.length > 0) setGmgHistory(data.sessionHistory.slice(-20)); }
-    } catch(e) { console.error("[GMG-U CIP] Load:", e); } })();
-  }, [gmgUid]);
-  const saveGmgProgress = async (completed) => { if (!gmgUid) return; try { await setDoc(doc(db, "gmg_university", gmgUid), { completedLessons: completed, email: userEmail, lastActivity: new Date().toISOString() }, { merge: true }); } catch(e) {} };
-  const saveGmgSession = async (hist) => { if (!gmgUid) return; try { await setDoc(doc(db, "gmg_university", gmgUid), { sessionHistory: hist.slice(-40), lastActivity: new Date().toISOString() }, { merge: true }); } catch(e) {} };
-
-  // Speech recognition
-  useEffect(() => { const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SR) { const r = new SR(); r.continuous = false; r.interimResults = true; r.lang = "en-US";
-      r.onresult = e => { let t = ""; for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; setTranscript(t); };
-      r.onend = () => setListening(false); r.onerror = () => setListening(false); recogRef.current = r; }
-  }, []);
-
-  const streamAIR = async (msg) => {
-    return new Promise(resolve => {
-      const ctrl = new AbortController(); const to = setTimeout(() => { ctrl.abort(); resolve(null); }, 90000); let full = "";
-      fetch(ABABASE + "/api/air/stream", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, userId: userEmail || "anon", email: userEmail, channel: "gmg-university", previousMessages: gmgHistory.slice(-20) }),
-        signal: ctrl.signal
-      }).then(r => { const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
-        function read() { reader.read().then(({ done, value }) => {
-          if (done) { clearTimeout(to); resolve(full || null); return; }
-          buf += dec.decode(value, { stream: true }); const lines = buf.split("\n"); buf = lines.pop() || "";
-          for (const line of lines) { if (!line.startsWith("data: ")) continue;
-            try { const d = JSON.parse(line.slice(6));
-              if (d.type === "chunk") { full += d.text; setSubtitle(full.replace(/\[[\w:]+\]/g, "").replace(/^#+\s*.*/gm, "").replace(/\*\*/g, "").trim()); }
-              else if (d.type === "filler" && !full) setSubtitle(d.text || "One moment...");
-              else if (d.type === "done") { clearTimeout(to); resolve(full || null); return; }
-              else if (d.type === "error") { clearTimeout(to); resolve(null); return; }
-            } catch {} } read();
-        }).catch(() => { clearTimeout(to); resolve(full || null); }); } read();
-      }).catch(() => { clearTimeout(to); resolve(null); });
-    });
+    return null;
   };
 
-  const speakGMG = async (text) => {
-    if (!text) return; setAbaState("speaking");
-    try { const r = await fetch("https://api.elevenlabs.io/v1/text-to-speech/AIFDUhRnM6s61433WMNu", { method: "POST",
-      headers: { "Content-Type": "application/json", "xi-api-key": "sk_e0b48157805968dbb370f299b60e22001189bd85c3864040" },
-      body: JSON.stringify({ text, model_id: "eleven_turbo_v2_5", voice_settings: { stability: 0.5, similarity_boost: 0.75 } }) });
-    if (!r.ok) throw new Error("TTS"); const blob = await r.blob(); const url = URL.createObjectURL(blob); const audio = new Audio(url);
-    audio.onended = () => { setAbaState("idle"); URL.revokeObjectURL(url); }; audio.onerror = () => setAbaState("idle");
-    await audio.play(); } catch { setTimeout(() => setAbaState("idle"), 2000); }
+  const startLesson = (v, d) => {
+    setVol(v); setDay(d); setView("lesson"); setMsgs([]);
+    const title = (TITLES[v]||[])[d-1]||"Day "+d;
+    setIsTyping(true);
+    setMsgs([{ aba:true, text:firstName+", welcome to "+VOL[v].f+", Day "+d+": "+title+". Let me walk you through today's material.", typing:true }]);
   };
 
-  const processGMG = async (input) => {
-    if (!input.trim()) return; setAbaState("thinking"); setTranscript(""); setTextIn("");
-    const uh = [...gmgHistory, { role: "user", content: input }]; setGmgHistory(uh);
-    const resp = await streamAIR(input);
-    if (resp) {
-      const m = resp.match(/\[LESSON_COMPLETE:V(\d+)D(\d+)\]/);
-      const clean = resp.replace(/\[LESSON_COMPLETE:V\d+D\d+\]/, "").replace(/^#+\s*.*/gm, "").replace(/\*\*/g, "").replace(/\n{2,}/g, " ").trim();
-      if (m) { const b = parseInt(m[1]), d = parseInt(m[2]); setGmgCompleted(prev => { const nc = {...prev}; if(!nc[b])nc[b]=[]; if(!nc[b].includes(d)){nc[b]=[...nc[b],d]; saveGmgProgress(nc);} return nc; }); }
-      const newHist = [...uh, { role: "assistant", content: resp }]; setGmgHistory(newHist); await saveGmgSession(newHist); await speakGMG(clean);
-    } else { setAbaState("idle"); setSubtitle("Lost connection. Try again."); }
+  const send = async () => {
+    if (!input.trim()||typing) return;
+    const msg = input.trim(); setInput(""); setTyping(true);
+    setMsgs(p => [...p, {aba:false,text:msg}, {aba:true,text:"",streaming:true}]);
+    try {
+      const r = await fetch(ABABASE+"/api/air/stream", { method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ message:msg, user_id:userEmail, userId:userEmail, channel:"gmg-university",
+          conversationHistory:msgs.slice(-20).map(m=>({role:m.aba?"assistant":"user",content:m.text||""})).filter(m=>m.content) }) });
+      const reader = r.body.getReader(); const decoder = new TextDecoder(); let acc = "";
+      while (true) {
+        const {done,value} = await reader.read(); if (done) break;
+        for (const line of decoder.decode(value,{stream:true}).split("\n").filter(l=>l.startsWith("data: "))) {
+          try { const d=JSON.parse(line.slice(6));
+            if (d.type==="chunk") { acc+=d.text; setMsgs(p=>{const c=[...p];const l=c[c.length-1];if(l?.aba)c[c.length-1]={...l,text:acc};return c;}); }
+            else if (d.type==="done") { setMsgs(p=>{const c=[...p];const l=c[c.length-1];if(l?.aba)c[c.length-1]={...l,text:d.fullResponse||acc,streaming:false};return c;}); }
+          } catch {}
+        }
+      }
+    } catch { setMsgs(p=>[...p.slice(0,-1),{aba:true,text:"Connection issue. Try again?"}]); }
+    finally { setTyping(false); setIsTyping(false); }
   };
 
-  useEffect(() => { if (!listening && transcript && abaState !== "speaking" && abaState !== "thinking") {
-    const t = setTimeout(() => processGMG(transcript), 1200); return () => clearTimeout(t); }
-  }, [listening, transcript]);
+  const markComplete = async () => {
+    const k = vol+"-d"+day;
+    if (profile?.completedDays?.includes(k)) { setView("home"); return; }
+    try { await updateDoc(doc(db,"gmg_university",gmgUid), { completedDays:arrayUnion(k), xp:(profile.xp||0)+100 }); } catch {}
+    setProfile(p => ({...p, completedDays:[...(p.completedDays||[]),k], xp:(p.xp||0)+100}));
+    setView("home");
+  };
 
-  // Auto-scroll deck
-  useEffect(() => { if (deckRef.current) deckRef.current.scrollTop = deckRef.current.scrollHeight; }, [gmgHistory, abaState]);
+  if (!profile) return <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}><img src={ABA_LOGO} alt="ABA" style={{width:60,height:60,opacity:.5}}/></div>;
 
-  // Auto-init
-  useEffect(() => {
-    if (initRef.current) return; initRef.current = true; setAbaState("thinking");
-    const h = new Date().getHours(); const tod = h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
-    const msg = "Student " + userName + " just opened GMG University. It is " + tod + ". They have completed " + totalDone + " of 75 lessons. Their next lesson is Block " + currentLesson.block + ", Day " + currentLesson.day + ": " + currentLesson.lesson.t + ". Welcome them and start teaching.";
-    (async () => { const resp = await streamAIR(msg);
-      if (resp) { const clean = resp.replace(/\[LESSON_COMPLETE:V\d+D\d+\]/, "").replace(/^#+\s*.*/gm, "").replace(/\*\*/g, "").replace(/\n{2,}/g, " ").trim();
-        const h = [{ role: "assistant", content: resp }]; setGmgHistory(h); await saveGmgSession(h); await speakGMG(clean);
-      } else { setAbaState("idle"); setSubtitle("ABA is warming up..."); initRef.current = false; }
-    })();
-  }, []);
-
-  const mic = () => { if (recogRef.current && abaState === "idle") { setTranscript(""); recogRef.current.start(); setListening(true); setAbaState("listening"); } };
-  const stopMic = () => { if (recogRef.current && listening) { recogRef.current.stop(); setListening(false); } };
-
-  // Timer for pitch mode
-  useEffect(() => { if (!pitchSecs?.running) return;
-    const iv = setInterval(() => { setPitchSecs(prev => { if(!prev?.running) return prev; const n=prev.elapsed+1; return n>=prev.total ? {...prev,elapsed:n,running:false} : {...prev,elapsed:n}; }); }, 1000);
-    return () => clearInterval(iv);
-  }, [pitchSecs?.running]);
-
-  const lastGuruMsg = [...gmgHistory].reverse().find(m => m.role === "assistant");
-  const lastQuestion = lastGuruMsg ? (() => { const c = lastGuruMsg.content.replace(/\[[\w:]+\]/g,"").replace(/^#+\s*.*/gm,"").replace(/\*\*/g,"").trim(); const ss = c.split(/(?<=[.?!])\s+/); const qs = ss.filter(s=>s.includes("?")); return qs.length > 0 ? qs[qs.length-1] : null; })() : null;
-
-  const glow = abaState === "thinking" ? "245,158,11" : abaState === "speaking" ? "34,197,94" : abaState === "listening" ? "6,182,212" : "139,92,246";
-
-  return (<div style={{flex:1,display:"flex",flexDirection:"column",background:"rgba(15,23,42,0.95)",position:"relative",overflow:"hidden"}}>
-    {/* Header with tab toggle */}
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
-      <div style={{display:"flex",alignItems:"center",gap:8}}>
-        <span style={{color:"#8B5CF6",fontSize:11,fontWeight:700,letterSpacing:"0.08em"}}>GMG-U</span>
-        {totalDone > 0 && <span style={{fontSize:9,color:"#A78BFA",background:"rgba(255,255,255,0.05)",padding:"2px 6px",borderRadius:4}}>{totalDone}/75</span>}
-        {lessonMode !== "teach" && <span style={{fontSize:8,fontWeight:700,letterSpacing:"0.1em",padding:"2px 6px",borderRadius:10,
-          color: lessonMode==="drill"?"#F59E0B":lessonMode==="interview"?"#F43F5E":lessonMode==="read"?"#06B6D4":"#22c55e",
-          background: lessonMode==="drill"?"rgba(245,158,11,0.1)":lessonMode==="interview"?"rgba(244,63,94,0.1)":lessonMode==="read"?"rgba(6,182,212,0.1)":"rgba(34,197,94,0.1)"
-        }}>{lessonMode.toUpperCase()}</span>}
+  // LESSON VIEW
+  if (view==="lesson" && day) {
+    const dn = profile?.completedDays?.includes(vol+"-d"+day);
+    const title = (TITLES[vol]||[])[day-1]||"Day "+day;
+    return (<div style={{flex:1,display:"flex",flexDirection:"column",position:"relative",background:`url(${BG.embers}) center/cover`}}>
+      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)"}}/>
+      <div style={{position:"relative",zIndex:1,display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderBottom:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",backdropFilter:"blur(12px)"}}>
+        <button onClick={()=>setView("home")} style={{color:"rgba(255,255,255,.5)",background:"none",border:"none",cursor:"pointer",fontSize:16}}>←</button>
+        <img src={ABA_LOGO} alt="ABA" style={{width:28,height:28}}/>
+        <div style={{flex:1}}><p style={{color:"#a78bfa",fontSize:9,letterSpacing:2,margin:0}}>DAY {day} OF {VOL[vol].d}</p><p style={{color:"white",fontSize:13,margin:0}}>{title}</p></div>
       </div>
-      <div style={{display:"flex",gap:2,background:"rgba(255,255,255,0.05)",borderRadius:8,padding:2}}>
-        <button onClick={()=>setCipTab("aba")} style={{padding:"4px 12px",borderRadius:6,border:"none",cursor:"pointer",fontSize:10,fontWeight:600,
-          background:cipTab==="aba"?"#8B5CF6":"transparent",color:cipTab==="aba"?"#fff":"#94A3B8"}}>ABA</button>
-        <button onClick={()=>setCipTab("deck")} style={{padding:"4px 12px",borderRadius:6,border:"none",cursor:"pointer",fontSize:10,fontWeight:600,
-          background:cipTab==="deck"?"#8B5CF6":"transparent",color:cipTab==="deck"?"#fff":"#94A3B8"}}>DECK</button>
+      <div style={{flex:1,overflowY:"auto",padding:12,paddingBottom:140,position:"relative",zIndex:1}}>
+        {msgs.map((m,i) => <div key={i} style={{marginBottom:16,display:"flex",justifyContent:m.aba?"flex-start":"flex-end",gap:8}}>
+          {m.aba && <img src={ABA_LOGO} alt="ABA" style={{width:28,height:28,marginTop:4,flexShrink:0}}/>}
+          <div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:14,background:m.aba?"rgba(255,255,255,0.1)":"rgba(139,92,246,0.3)",border:"1px solid "+(m.aba?"rgba(255,255,255,0.15)":"rgba(139,92,246,0.4)"),backdropFilter:"blur(8px)"}}>
+            <p style={{color:"rgba(255,255,255,0.9)",fontSize:14,lineHeight:1.6,whiteSpace:"pre-wrap",margin:0}}>{m.text}{m.streaming&&<span style={{display:"inline-block",width:6,height:14,background:"#a78bfa",marginLeft:3,animation:"pulse 1s infinite"}}/>}</p>
+          </div>
+        </div>)}
+        <div ref={endRef}/>
       </div>
+      <div style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(16px)",borderTop:"1px solid rgba(255,255,255,0.1)",padding:12,zIndex:20}}>
+        <div style={{display:"flex",gap:8}}>
+          <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Ask GURU..." style={{flex:1,background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:12,padding:"12px 14px",color:"white",fontSize:13,outline:"none"}}/>
+          <button onClick={send} disabled={!input.trim()||typing} style={{width:44,background:"#7c3aed",border:"none",borderRadius:12,color:"white",cursor:"pointer",fontSize:14}}>→</button>
+        </div>
+        {!isTyping && <button onClick={markComplete} style={{width:"100%",marginTop:10,padding:14,borderRadius:12,border:"none",background:dn?"rgba(255,255,255,0.1)":"linear-gradient(to right,#10b981,#14b8a6)",color:dn?"rgba(255,255,255,0.4)":"white",fontSize:14,fontWeight:500,cursor:"pointer"}}>{dn?"Completed":"Mark Complete +100 XP"}</button>}
+      </div>
+      <audio ref={audioRef}/>
+      <style>{"@keyframes pulse{0%,100%{opacity:1}50%{opacity:0}}"}</style>
+    </div>);
+  }
+
+  // ALL LESSONS
+  if (view==="learn") {
+    const lessons = [...Array(VOL[vol].d)].map((_,i)=>({d:i+1,q:(i+1)%5===0}));
+    const done = profile?.completedDays||[];
+    return (<div style={{flex:1,overflowY:"auto",padding:12,position:"relative",background:`url(${BG.city}) center/cover`}}>
+      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)"}}/>
+      <div style={{position:"relative",zIndex:1}}>
+        <button onClick={()=>setView("home")} style={{color:"rgba(255,255,255,.5)",background:"none",border:"none",cursor:"pointer",marginBottom:12,fontSize:16}}>←</button>
+        <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>{Object.entries(VOL).map(([k,v])=><button key={k} onClick={()=>setVol(k)} style={{padding:"8px 12px",borderRadius:10,border:vol===k?"none":"1px solid rgba(255,255,255,.15)",background:vol===k?"#7c3aed":"rgba(255,255,255,.08)",color:vol===k?"white":"rgba(255,255,255,.5)",fontSize:11,cursor:"pointer"}}>{v.t}</button>)}</div>
+        <p style={{color:"rgba(255,255,255,.4)",fontSize:11,marginBottom:10}}>{VOL[vol].f} — {done.filter(d=>d.startsWith(vol)).length}/{VOL[vol].d}</p>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8}}>
+          {lessons.map(l=>{const k=vol+"-d"+l.d,d=done.includes(k);return <button key={l.d} onClick={()=>startLesson(vol,l.d)} style={{aspectRatio:"1",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:500,border:"1px solid "+(d?"rgba(16,185,129,.4)":l.q?"rgba(139,92,246,.4)":"rgba(255,255,255,.15)"),background:d?"rgba(16,185,129,.2)":l.q?"rgba(139,92,246,.2)":"rgba(255,255,255,.08)",color:d?"#10b981":l.q?"#a78bfa":"rgba(255,255,255,.5)",cursor:"pointer"}}>{d?"✓":l.d}</button>;})}
+        </div>
+      </div>
+    </div>);
+  }
+
+  // HOME
+  const cnt = profile?.completedDays?.length||0, tot=Object.values(VOL).reduce((s,v)=>s+v.d,0), pct=Math.round((cnt/tot)*100);
+  const next = getNext();
+  return (<div style={{flex:1,overflowY:"auto",padding:12,paddingBottom:24,position:"relative",background:`url(${BG.pink}) center/cover`}}>
+    <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)"}}/>
+    <div style={{position:"relative",zIndex:1}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+        <img src={ABA_LOGO} alt="ABA" style={{width:48,height:48}}/>
+        <div><h1 style={{fontSize:18,color:"white",margin:0}}>Hey, <span style={{color:"#a78bfa"}}>{firstName}</span></h1><p style={{color:"rgba(255,255,255,.4)",fontSize:13,margin:0}}>{cnt===0?"Ready to start?":pct+"% complete"}</p></div>
+      </div>
+      <div style={{display:"flex",gap:10,marginBottom:20}}>
+        <div style={{...glass,flex:1,textAlign:"center"}}><p style={{fontSize:22,fontWeight:300,color:"white",margin:0}}>{profile?.xp||0}</p><p style={{color:"#a78bfa",fontSize:11,marginTop:4,marginBottom:0}}>XP</p></div>
+        <div style={{...glass,flex:1,textAlign:"center"}}><p style={{fontSize:22,fontWeight:300,color:"white",margin:0}}>{profile?.streak||0}</p><p style={{color:"#fbbf24",fontSize:11,marginTop:4,marginBottom:0}}>Streak</p></div>
+      </div>
+      <div style={{...glass,marginBottom:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6}}><span style={{color:"rgba(255,255,255,.5)"}}>Progress</span><span style={{color:"#a78bfa"}}>{cnt}/{tot}</span></div>
+        <div style={{height:6,background:"rgba(255,255,255,.1)",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:"linear-gradient(to right,#7c3aed,#c026d3)",borderRadius:3,width:pct+"%",transition:"width .5s"}}/></div>
+      </div>
+      {next && <button onClick={()=>startLesson(next.vol,next.day)} style={{width:"100%",background:"linear-gradient(to right,#7c3aed,#c026d3)",borderRadius:14,padding:18,marginBottom:14,textAlign:"left",border:"none",cursor:"pointer",boxShadow:"0 8px 30px rgba(124,58,237,.3)"}}>
+        <p style={{color:"rgba(255,255,255,.6)",fontSize:10,letterSpacing:1,margin:0}}>UP NEXT</p>
+        <p style={{color:"white",fontSize:16,fontWeight:500,margin:"4px 0 0"}}>Day {next.day}: {next.title}</p>
+        <p style={{color:"rgba(255,255,255,.8)",fontSize:13,marginTop:10,marginBottom:0}}>▶ Start Lesson</p>
+      </button>}
+      <button onClick={()=>setView("learn")} style={{...glass,width:"100%",textAlign:"left",cursor:"pointer",marginBottom:10,border:"1px solid rgba(255,255,255,.15)"}}><p style={{color:"white",fontSize:14,margin:0}}>📚 All Lessons</p></button>
     </div>
-
-    {/* ABA TAB — orb + voice */}
-    {cipTab === "aba" && (
-      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:16,overflow:"auto"}}>
-        <div style={{fontSize:11,color:"#94A3B8",marginBottom:8}}>B{currentLesson.block} D{currentLesson.day}: {currentLesson.lesson.t}</div>
-        <div style={{width:120,height:120,borderRadius:"50%",background:"radial-gradient(circle,rgba("+glow+",0.3),transparent)",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:12}}>
-          <div style={{width:60,height:60,borderRadius:"50%",background:"radial-gradient(circle,rgba("+glow+",0.8),rgba("+glow+",0.2))",boxShadow:"0 0 40px rgba("+glow+",0.4)"}}/>
-        </div>
-        <div style={{height:20,marginBottom:8}}>
-          {abaState==="thinking"&&<span style={{color:"#F59E0B",fontSize:12}}>thinking...</span>}
-          {abaState==="speaking"&&<span style={{color:"#22c55e",fontSize:12}}>speaking...</span>}
-          {abaState==="listening"&&<span style={{color:"#06B6D4",fontSize:12}}>listening...</span>}
-        </div>
-        {transcript&&<p style={{color:"rgba(255,255,255,0.5)",fontSize:13,fontStyle:"italic",textAlign:"center",margin:"0 0 8px"}}>"{transcript}"</p>}
-        {subtitle&&<div style={{background:"rgba(255,255,255,0.05)",borderRadius:12,padding:"12px 16px",maxWidth:"100%",marginBottom:12,border:"1px solid rgba(139,92,246,0.1)"}}>
-          <p style={{color:"rgba(255,255,255,0.9)",fontSize:15,margin:0,textAlign:"center",lineHeight:1.6}}>{subtitle}</p></div>}
-        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}>
-          <button onClick={listening?stopMic:mic} disabled={abaState==="speaking"||abaState==="thinking"} style={{
-            width:52,height:52,borderRadius:"50%",border:"none",cursor:abaState==="speaking"||abaState==="thinking"?"not-allowed":"pointer",
-            background:abaState==="speaking"||abaState==="thinking"?"rgba(255,255,255,0.05)":listening?"linear-gradient(135deg,#ef4444,#dc2626)":"linear-gradient(135deg,#8B5CF6,#6D28D9)",
-            color:"#fff",fontSize:20,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:listening?"0 0 30px rgba(239,68,68,0.3)":"0 4px 20px rgba(139,92,246,0.3)"}}>
-            {listening?"\u23f9":"\ud83c\udfa4"}</button>
-        </div>
-        <div style={{display:"flex",gap:6,marginTop:12,width:"100%",maxWidth:320}}>
-          <input type="text" value={textIn} onChange={e=>setTextIn(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&textIn.trim())processGMG(textIn)}}
-            placeholder="Type to ABA..." disabled={abaState==="speaking"||abaState==="thinking"}
-            style={{flex:1,background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#fff",outline:"none"}}/>
-          <button onClick={()=>textIn.trim()&&processGMG(textIn)} disabled={!textIn.trim()||abaState==="speaking"||abaState==="thinking"}
-            style={{padding:"8px 12px",background:"#8B5CF6",borderRadius:8,border:"none",color:"#fff",fontSize:12,cursor:"pointer"}}>Send</button>
-        </div>
-      </div>
-    )}
-
-    {/* DECK TAB — lesson card + mode zone + transcript + input */}
-    {cipTab === "deck" && (
-      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-        {/* Lesson card */}
-        <div style={{padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
-          <div style={{color:"#8B5CF6",fontSize:10,fontWeight:700,letterSpacing:"0.06em"}}>BLOCK {currentLesson.block} — DAY {currentLesson.day}</div>
-          <div style={{color:"#F1F5F9",fontSize:15,fontWeight:600,marginTop:2}}>{currentLesson.lesson.t}</div>
-          <div style={{marginTop:6,height:4,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}>
-            <div style={{height:"100%",background:"#8B5CF6",borderRadius:4,width:(totalDone/75*100)+"%"}}/>
-          </div>
-        </div>
-
-        {/* Mode zone */}
-        {lessonMode === "drill" && lastQuestion && (
-          <div style={{padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
-            <div style={{background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.15)",borderRadius:12,padding:12}}>
-              <div style={{color:"#F59E0B",fontSize:9,fontWeight:700,letterSpacing:"0.08em",marginBottom:4}}>GURU ASKS</div>
-              <p style={{color:"#fff",fontSize:14,margin:0,lineHeight:1.5}}>{lastQuestion}</p>
-            </div>
-          </div>
-        )}
-        {lessonMode === "interview" && (
-          <div style={{padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,0.05)",textAlign:"center"}}>
-            <div style={{color:"#F43F5E",fontSize:10,fontWeight:700,letterSpacing:"0.08em"}}>INTERVIEW MODE</div>
-            {lastQuestion && <p style={{color:"#fff",fontSize:13,margin:"6px 0 0",fontStyle:"italic"}}>"{lastQuestion}"</p>}
-          </div>
-        )}
-        {lessonMode === "read" && (
-          <div style={{padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,0.05)",textAlign:"center"}}>
-            <div style={{color:"#06B6D4",fontSize:10,fontWeight:700,letterSpacing:"0.08em"}}>DOCUMENT READ</div>
-            <p style={{color:"#94A3B8",fontSize:11,margin:"4px 0 0"}}>Read your document out loud with GURU</p>
-          </div>
-        )}
-        {lessonMode === "timer" && (
-          <div style={{padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,0.05)",textAlign:"center"}}>
-            <div style={{color:"#22c55e",fontSize:10,fontWeight:700,letterSpacing:"0.08em",marginBottom:6}}>ELEVATOR PITCH</div>
-            {pitchSecs ? (
-              <div>
-                <div style={{fontSize:32,fontFamily:"monospace",color:"#fff",marginBottom:4}}>{Math.max(0,pitchSecs.total-pitchSecs.elapsed)}s</div>
-                <div style={{height:6,background:"rgba(255,255,255,0.05)",borderRadius:4,overflow:"hidden"}}>
-                  <div style={{height:"100%",borderRadius:4,background:pitchSecs.elapsed>=pitchSecs.total?"#ef4444":"#22c55e",width:Math.min(100,pitchSecs.elapsed/pitchSecs.total*100)+"%"}}/>
-                </div>
-                <button onClick={()=>setPitchSecs(null)} style={{marginTop:6,color:"#94A3B8",fontSize:10,background:"none",border:"none",cursor:"pointer"}}>Reset</button>
-              </div>
-            ) : (
-              <div style={{display:"flex",gap:6,justifyContent:"center"}}>
-                <button onClick={()=>setPitchSecs({total:60,elapsed:0,running:true})} style={{padding:"6px 12px",background:"#22c55e",borderRadius:8,border:"none",color:"#fff",fontSize:11,cursor:"pointer"}}>60s</button>
-                <button onClick={()=>setPitchSecs({total:30,elapsed:0,running:true})} style={{padding:"6px 12px",background:"#F59E0B",borderRadius:8,border:"none",color:"#fff",fontSize:11,cursor:"pointer"}}>30s</button>
-                <button onClick={()=>setPitchSecs({total:10,elapsed:0,running:true})} style={{padding:"6px 12px",background:"#ef4444",borderRadius:8,border:"none",color:"#fff",fontSize:11,cursor:"pointer"}}>10s</button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Conversation transcript */}
-        <div ref={deckRef} style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
-          {gmgHistory.map((msg,i)=>(
-            <div key={i} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start",marginBottom:6}}>
-              <div style={{maxWidth:"85%",borderRadius:10,padding:"6px 10px",fontSize:12,lineHeight:1.5,
-                background:msg.role==="user"?"rgba(139,92,246,0.15)":"rgba(255,255,255,0.04)",
-                color:msg.role==="user"?"#C4B5FD":"#CBD5E1",
-                border:msg.role==="user"?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.04)"}}>
-                {msg.role==="assistant" ? msg.content.replace(/\[[\w:]+\]/g,"").replace(/^#+\s*.*/gm,"").replace(/\*\*/g,"").trim().substring(0,400) : msg.content}
-              </div>
-            </div>
-          ))}
-          {abaState==="thinking"&&<div style={{fontSize:11,color:"#F59E0B",padding:4}}>GURU is thinking...</div>}
-        </div>
-
-        {/* Deck input */}
-        <div style={{padding:"8px 12px",borderTop:"1px solid rgba(255,255,255,0.05)"}}>
-          <div style={{display:"flex",gap:6}}>
-            <input type="text" value={textIn} onChange={e=>setTextIn(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&textIn.trim())processGMG(textIn)}}
-              placeholder="Answer GURU..." disabled={abaState==="speaking"||abaState==="thinking"}
-              style={{flex:1,background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:8,padding:"8px 10px",fontSize:12,color:"#fff",outline:"none"}}/>
-            <button onClick={()=>textIn.trim()&&processGMG(textIn)} disabled={!textIn.trim()||abaState==="speaking"||abaState==="thinking"}
-              style={{padding:"8px 10px",background:"#8B5CF6",borderRadius:8,border:"none",color:"#fff",fontSize:11,cursor:"pointer"}}>Send</button>
-          </div>
-        </div>
-      </div>
-    )}
   </div>);
 }
 
