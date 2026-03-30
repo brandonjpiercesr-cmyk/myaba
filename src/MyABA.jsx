@@ -1003,8 +1003,8 @@ function NURAView({ userId, onScan }) {
       const reader = res.body.getReader(); const decoder = new TextDecoder(); let acc = "";
       while (true) { const { done, value } = await reader.read(); if (done) break;
         for (const line of decoder.decode(value, { stream: true }).split("\n").filter(l => l.startsWith("data: "))) {
-          try { const d = JSON.parse(line.slice(6)); if (d.type === "chunk") { acc += d.text; setResponse(acc); } else if (d.type === "done") { acc = d.fullResponse || acc; setResponse(acc); } } catch {} } }
-      setHistory(prev => [...prev, { role: "assistant", text: acc }]); setResponse(null);
+          try { const d = JSON.parse(line.slice(6)); if (d.type === "chunk") { acc += d.text; setResponse(acc); } else if (d.type === "done") { acc = d.fullResponse || acc; const toolNames = (d.toolsExecuted || []).map(t => typeof t === "object" ? t.tool_name : t).filter(Boolean); setHistory(prev => { const c = [...prev]; if (c.length > 0 && c[c.length-1].role === "assistant") c[c.length-1] = { ...c[c.length-1], tools: toolNames }; return c; }); setResponse(acc); } } catch {} } }
+      setHistory(prev => { const c = [...prev]; if (c.length > 0 && c[c.length-1].role === "assistant") c[c.length-1] = { ...c[c.length-1], text: acc }; else c.push({ role: "assistant", text: acc }); return c; }); setResponse(null);
     } catch { setHistory(prev => [...prev, { role: "assistant", text: "Could not reach ABA." }]); }
     setLoading(false);
   };
@@ -1162,7 +1162,7 @@ function CCWAView({ userId }) {
       while (true) { const { done, value } = await reader.read(); if (done) break;
         for (const line of decoder.decode(value, { stream: true }).split("\n").filter(l => l.startsWith("data: "))) {
           try { const d = JSON.parse(line.slice(6)); if (d.type === "chunk") { acc += d.text; setResponse(acc); } else if (d.type === "done") { acc = d.fullResponse || acc; setResponse(acc); } } catch {} } }
-      setHistory(prev => [...prev, { role: "assistant", text: acc }]); setResponse(null);
+      setHistory(prev => { const c = [...prev]; if (c.length > 0 && c[c.length-1].role === "assistant") c[c.length-1] = { ...c[c.length-1], text: acc }; else c.push({ role: "assistant", text: acc }); return c; }); setResponse(null);
     } catch { setHistory(prev => [...prev, { role: "assistant", text: "Could not reach ABA." }]); }
     setLoading(false);
   };
@@ -1181,7 +1181,10 @@ function CCWAView({ userId }) {
         <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:16}}>
           {["Audit last deploy","Check Render status","Agent roster","Show recent errors"].map(s => <button key={s} onClick={()=>setQuery(s)} style={{padding:"8px 14px",borderRadius:20,border:"1px solid rgba(245,158,11,.2)",background:"rgba(245,158,11,.08)",color:"rgba(245,158,11,.7)",fontSize:11,cursor:"pointer"}}>{s}</button>)}
         </div></div>}
-      {history.map((m,i) => <div key={i} style={{marginBottom:12,display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}><div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:m.role==="user"?"rgba(245,158,11,.15)":"rgba(255,255,255,.05)",border:"1px solid "+(m.role==="user"?"rgba(245,158,11,.2)":"rgba(255,255,255,.08)")}}><p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{m.text}</p></div></div>)}
+      {history.map((m,i) => <div key={i} style={{marginBottom:12}}>
+        <div style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}><div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:m.role==="user"?"rgba(245,158,11,.15)":"rgba(255,255,255,.05)",border:"1px solid "+(m.role==="user"?"rgba(245,158,11,.2)":"rgba(255,255,255,.08)")}}><p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap",margin:0}}>{m.text}</p></div></div>
+        {m.tools && m.tools.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4,justifyContent:"flex-start"}}>{m.tools.map((t,j)=><span key={j} style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:"rgba(139,92,246,.1)",color:"#a78bfa"}}>{t}</span>)}</div>}
+      </div>)}
       {response && <div style={{marginBottom:12}}><div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:"rgba(255,255,255,.05)",border:"1px solid rgba(245,158,11,.15)"}}><p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{response}</p></div></div>}
     </div>
     <div style={{display:"flex",gap:8,padding:"10px 16px 16px"}}>
