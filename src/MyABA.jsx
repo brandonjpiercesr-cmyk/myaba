@@ -1156,6 +1156,20 @@ function CCWAView({ userId }) {
   const ask = async () => {
     if (!query.trim()) return; setLoading(true);
     setHistory(prev => [...prev, { role: "user", text: query }]); const msg = query; setQuery("");
+    // Compare mode: fire both channels, show results
+    if (devMode === "compare") {
+      const channels = ["ccwa", "incuaba"];
+      const results = await Promise.allSettled(channels.map(ch =>
+        fetch(ABABASE + "/api/air/process", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: msg, user_id: userId, userId, channel: ch, appScope: "ccwa" }) }).then(r => r.json())
+      ));
+      const prodResp = results[0]?.value?.response || "Production error";
+      const devResp = results[1]?.value?.response || "Dev error";
+      const prodTools = (results[0]?.value?.toolsExecuted || []).map(t => typeof t === "object" ? t.tool_name : t).filter(Boolean);
+      const devTools = (results[1]?.value?.toolsExecuted || []).map(t => typeof t === "object" ? t.tool_name : t).filter(Boolean);
+      setHistory(prev => [...prev, { role: "compare", prod: prodResp, dev: devResp, prodTools, devTools }]);
+      setLoading(false); return;
+    }
     try {
       const res = await fetch(ABABASE + "/api/air/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg, user_id: userId, userId, channel: devMode === "dev" ? "incuaba" : "ccwa", appScope: "ccwa" }) });
       const reader = res.body.getReader(); const decoder = new TextDecoder(); let acc = "";
@@ -1182,8 +1196,20 @@ function CCWAView({ userId }) {
           {["Audit last deploy","Check Render status","Agent roster","Show recent errors"].map(s => <button key={s} onClick={()=>setQuery(s)} style={{padding:"8px 14px",borderRadius:20,border:"1px solid rgba(245,158,11,.2)",background:"rgba(245,158,11,.08)",color:"rgba(245,158,11,.7)",fontSize:11,cursor:"pointer"}}>{s}</button>)}
         </div></div>}
       {history.map((m,i) => <div key={i} style={{marginBottom:12}}>
-        <div style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}><div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:m.role==="user"?"rgba(245,158,11,.15)":"rgba(255,255,255,.05)",border:"1px solid "+(m.role==="user"?"rgba(245,158,11,.2)":"rgba(255,255,255,.08)")}}><p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap",margin:0}}>{m.text}</p></div></div>
-        {m.tools && m.tools.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4,justifyContent:"flex-start"}}>{m.tools.map((t,j)=><span key={j} style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:"rgba(139,92,246,.1)",color:"#a78bfa"}}>{t}</span>)}</div>}
+        {m.role==="compare" ? <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <div style={{padding:"10px 12px",borderRadius:12,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.15)"}}>
+            <p style={{fontSize:10,color:"#f59e0b",marginBottom:4,fontWeight:600}}>PRODUCTION (Sonnet)</p>
+            <p style={{fontSize:12,color:"rgba(255,255,255,.8)",lineHeight:1.5,whiteSpace:"pre-wrap",margin:0}}>{m.prod}</p>
+            {m.prodTools?.length>0&&<div style={{display:"flex",gap:3,flexWrap:"wrap",marginTop:4}}>{m.prodTools.map((t,j)=><span key={j} style={{fontSize:8,padding:"1px 5px",borderRadius:3,background:"rgba(245,158,11,.1)",color:"#f59e0b"}}>{t}</span>)}</div>}
+          </div>
+          <div style={{padding:"10px 12px",borderRadius:12,background:"rgba(34,211,238,.08)",border:"1px solid rgba(34,211,238,.15)"}}>
+            <p style={{fontSize:10,color:"#22d3ee",marginBottom:4,fontWeight:600}}>DEV (Haiku)</p>
+            <p style={{fontSize:12,color:"rgba(255,255,255,.8)",lineHeight:1.5,whiteSpace:"pre-wrap",margin:0}}>{m.dev}</p>
+            {m.devTools?.length>0&&<div style={{display:"flex",gap:3,flexWrap:"wrap",marginTop:4}}>{m.devTools.map((t,j)=><span key={j} style={{fontSize:8,padding:"1px 5px",borderRadius:3,background:"rgba(34,211,238,.1)",color:"#22d3ee"}}>{t}</span>)}</div>}
+          </div>
+        </div>
+        : <><div style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}><div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:m.role==="user"?"rgba(245,158,11,.15)":"rgba(255,255,255,.05)",border:"1px solid "+(m.role==="user"?"rgba(245,158,11,.2)":"rgba(255,255,255,.08)")}}><p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap",margin:0}}>{m.text}</p></div></div>
+        {m.tools && m.tools.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4,justifyContent:"flex-start"}}>{m.tools.map((t,j)=><span key={j} style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:"rgba(139,92,246,.1)",color:"#a78bfa"}}>{t}</span>)}</div>}</>}
       </div>)}
       {response && <div style={{marginBottom:12}}><div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:"rgba(255,255,255,.05)",border:"1px solid rgba(245,158,11,.15)"}}><p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{response}</p></div></div>}
     </div>
