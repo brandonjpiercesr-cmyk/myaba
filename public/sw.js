@@ -1,7 +1,7 @@
 // ⬡B:myaba.pwa:SW:v2.16.2:20260315⬡
 // MyABA Service Worker - Offline support + Background sync
 
-const CACHE_NAME = 'myaba-v3';
+const CACHE_NAME = 'myaba-v7-real-logo';
 const ABABASE_URL = 'https://abacia-services.onrender.com';
 
 // Assets to cache for offline
@@ -54,11 +54,12 @@ self.addEventListener('fetch', (event) => {
   }
   
   // For other requests: network first, cache fallback
+  // ⬡B:FIX:sw_post_cache:20260324⬡ Cache API only supports GET. POST/PUT/DELETE skip cache.
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Clone and cache successful responses
-        if (response.ok) {
+        // Clone and cache successful GET responses only
+        if (response.ok && event.request.method === 'GET') {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, clone);
@@ -67,7 +68,12 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(() => {
-        return caches.match(event.request);
+        if (event.request.method === 'GET') {
+          return caches.match(event.request);
+        }
+        return new Response(JSON.stringify({ error: 'Network unavailable' }), {
+          status: 503, headers: { 'Content-Type': 'application/json' }
+        });
       })
   );
 });

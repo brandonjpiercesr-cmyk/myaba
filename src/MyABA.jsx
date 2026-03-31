@@ -35,12 +35,14 @@ import {
   Send, Mic, MicOff, Volume2, VolumeX, MessageSquare, Radio, Hand,
   Settings, X, Plus, Bell, Mail, Calendar, Phone, Headphones,
   MessageCircle, Zap, Activity, Home, ChevronLeft, Code, Clock, CheckCircle, AlertTriangle,
-  Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock,
+  Sparkles, FileText, Eye, ChevronRight, User, LogOut, Users, Lock, Trophy, Timer, Target, Shield, CheckSquare, Coffee, FolderOpen, HardDrive, Clipboard, Waves, LayoutList,
   Trash2, Archive, Search, WifiOff, Wifi, RefreshCw, Share2, Paperclip,
-  FolderOpen, Image, File, FolderPlus, MoreVertical, Edit2, Copy, Briefcase,
-  MapPin, ExternalLink, Building, Download, ChevronDown, Camera, Sunrise, BookOpen, GripVertical
+  Image, File, FolderPlus, MoreVertical, Edit2, Copy, Briefcase,
+  MapPin, ExternalLink, Building, Download, ChevronDown, Camera, Sunrise, BookOpen, GripVertical,
+  Loader2, Play, Pause, Square, Globe, Compass, Hash, Heart, Star, TrendingUp, BarChart2
 } from "lucide-react";
-import { auth, signInGoogle, signOutUser } from "./firebase.js";
+import { auth, signInGoogle, signOutUser, db } from "./firebase.js";
+import { doc, getDoc, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
 import { useConversation } from "@elevenlabs/react";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -64,22 +66,55 @@ function useIsMobile() {
 // ABABASE = Fat Prompt Architecture (87 agents, HAM identity)
 const ABABASE = "https://abacia-services.onrender.com";
 
-
-// ⬡B:aba_skins:MAP:icon_lookup:20260323⬡
+// ⬡B:ham.resolve:CACHE:backend_identity_resolution:20260327⬡
+// HAM identity resolution from backend. Replaces hardcoded hamMap.
+// Loaded once on module init, used by all components that need email→hamId.
+let HAM_EMAIL_MAP = {};
+let HAM_TEAM = [];
+(async () => {
+  try {
+    const r = await fetch(`${ABABASE}/api/ham/team`);
+    if (r.ok) {
+      const d = await r.json();
+      if (d.team) {
+        HAM_TEAM = d.team;
+        for (const t of d.team) {
+          if (t.email) HAM_EMAIL_MAP[t.email.toLowerCase()] = t.ham_id;
+        }
+        console.log('[HAM] Team cache loaded:', Object.keys(HAM_EMAIL_MAP).length, 'members');
+      }
+    }
+  } catch (e) { console.log('[HAM] Cache load failed, using fallback:', e.message); }
+})();
+function resolveHamId(email) {
+  if (!email) return 'all';
+  const e = email.toLowerCase();
+  return HAM_EMAIL_MAP[e] || e.split('@')[0] || 'all';
+}// ⬡B:aba_skins:MAP:icon_lookup:20260323⬡
 // Maps icon names from /api/apps to lucide-react components
 const ICON_MAP = {
   MessageSquare, Sunrise, Briefcase, Mail, MessageCircle, Camera,
   MapPin, CheckCircle, Phone, Settings, BookOpen, AlertTriangle,
-  FileText, Calendar, Search, Activity, Sparkles, Users
+  FileText, Calendar, Search, Activity, Sparkles, Users,
+  Trophy, Timer, Target, Code, Shield, CheckSquare,
+  Coffee, FolderOpen, HardDrive, Clipboard, Waves, LayoutList,
+  Volume2, Bell, Mic, Radio, Globe, Compass, Zap, Hash,
+  Headphones, Eye, Heart, Star, TrendingUp, BarChart2
 };
+// Alias icons not in lucide-react shortlist
+ICON_MAP.FileEdit = FileText;
+ICON_MAP.PenTool = FileText;
+ICON_MAP.GraduationCap = BookOpen;
+ICON_MAP.Users2 = Users;
+ICON_MAP.Music = Volume2;
+ICON_MAP.Music2 = Volume2;
 
 // v1.2.0: Check online status
 function isOnline() { return navigator.onLine; }
 
 // v2.15.0: AIR with retry + offline awareness + proper userId handling
-// HAM users: brandonjpiercesr@gmail.com, brandon@globalmajoritygroup.com
-const HAM_EMAILS = ['brandonjpiercesr@gmail.com', 'brandon@globalmajoritygroup.com'];
-function isHAM(email) { return HAM_EMAILS.includes(email?.toLowerCase()); }
+// ⬡B:ham.audit:FIX:dynamic_isHAM:20260330⬡ Uses backend HAM team cache, not hardcoded emails
+function isHAM(email) { return !!email && !!HAM_EMAIL_MAP[email.toLowerCase()]; }
 
 async function airRequest(type, payload = {}, userId = "unknown", maxRetries = 3) {
   if (!isOnline()) {
@@ -180,7 +215,11 @@ async function airRequestStream({ message, userId, channel, conversationId, conv
           const data = JSON.parse(line.slice(6));
           if (data.type === "chunk") {
             accumulated += data.text;
-            onChunk?.(accumulated, data.text);
+            onChunk?.(accumulated, data.text, "chunk");
+          } else if (data.type === "filler") {
+            onChunk?.(null, data.text, "filler");
+          } else if (data.type === "filler_end") {
+            onChunk?.(null, null, "filler_end");
           } else if (data.type === "tool_start") {
             onToolStart?.(data.tool);
           } else if (data.type === "done") {
@@ -273,8 +312,163 @@ function MobileDocEditor({ content: initialContent, docId, docType, onClose, onS
 }
 
 function GMGUniversityView() {
-  return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-    <iframe src="https://gmg-university-v7.vercel.app" style={{flex:1,border:"none",width:"100%",height:"100%"}} allow="microphone; camera; autoplay" title="GMG University" />
+  // ⬡B:gmg_u:CIP:standalone_replica:20260329⬡
+  // Replica of standalone GMG University for mobile
+  const userEmail = window.__ABA_USER_EMAIL || "";
+  const userName = window.__ABA_USER_NAME || "there";
+  const gmgUid = window.__ABA_USER_UID || "";
+  const firstName = (userName || "there").split(" ")[0];
+
+  const [profile, setProfile] = useState(null);
+  const [view, setView] = useState("home");
+  const [vol, setVol] = useState("v1");
+  const [day, setDay] = useState(null);
+  const [voice, setVoice] = useState(false);
+  const [msgs, setMsgs] = useState([]);
+  const [input, setInput] = useState("");
+  const [typing, setTyping] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const audioRef = useRef();
+  const endRef = useRef();
+
+  const VOL = { v1:{t:"Foundations",f:"Fundraising Foundations",d:15}, v2:{t:"Track 1",f:"Role-Specific Track 1",d:15}, v3:{t:"Track 2",f:"Role-Specific Track 2",d:15}, v4:{t:"CPP & Resume",f:"CPP and Resume Mastery",d:15}, v5:{t:"Demonstration",f:"Final Demonstration",d:15} };
+  const TITLES = { v1:["The Four Sources of Money","Why People Actually Give","The Donor Lifecycle","The Donor Pyramid","Review: Days 1-4","Annual Giving Programs","Foundation Grants Reality","Corporate Partnerships","Earned Revenue Strategies","Review: Days 6-9","Board Fundraising","Grant Research and Writing","Donor Retention","Systems and Tools","Block 1 Assessment"], v4:["What Is CPP","Business Setup","Revenue Model","Review","Resume First Read","The Claims","The Numbers Drill","Cover Letter Mastery","The Elevator Pitch","Mock Interview Round 1","Stress Test","Resume Drill Review","Documentation","Client Communication","Block 4 Assessment"], v5:["Mock Discovery Call","Needs Assessment","Proposal Writing","Budget Building","Review","Mock Board Training","Donor Cultivation","Grant Application","Resume Pitch","Review","Engagement Plan","Status Report","Portfolio Review","Peer Coaching","Final Certification"] };
+  const BG = { pink:"https://i.imgur.com/3RkebB2.jpeg", embers:"https://i.imgur.com/9HZYnlX.png", nebula:"https://i.imgur.com/nLBRQ82.jpeg", city:"https://i.imgur.com/h8zNCw1.jpeg" };
+  const ABA_LOGO = "https://i.imgur.com/0be7HCF.png";
+  const glass = { background:"rgba(255,255,255,0.08)", backdropFilter:"blur(12px)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:16, padding:16 };
+
+  useEffect(() => { if (gmgUid) loadProfile(); }, [gmgUid]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior:"smooth" }); }, [msgs]);
+
+  const loadProfile = async () => {
+    try {
+      const snap = await getDoc(doc(db, "gmg_university", gmgUid));
+      if (snap.exists()) setProfile(snap.data());
+      else { const np = { email:userEmail, name:userName, completedDays:[], xp:0, streak:0 }; await setDoc(doc(db, "gmg_university", gmgUid), np); setProfile(np); }
+    } catch { setProfile({ completedDays:[], xp:0, streak:0 }); }
+  };
+
+  const getNext = () => {
+    const done = profile?.completedDays || [];
+    for (const [v, info] of Object.entries(VOL)) {
+      for (let d = 1; d <= info.d; d++) { if (!done.includes(v+"-d"+d)) return { vol:v, day:d, title:(TITLES[v]||[])[d-1]||"Day "+d }; }
+    }
+    return null;
+  };
+
+  const startLesson = (v, d) => {
+    setVol(v); setDay(d); setView("lesson"); setMsgs([]);
+    const title = (TITLES[v]||[])[d-1]||"Day "+d;
+    setIsTyping(true);
+    setMsgs([{ aba:true, text:firstName+", welcome to "+VOL[v].f+", Day "+d+": "+title+". Let me walk you through today's material.", typing:true }]);
+  };
+
+  const send = async () => {
+    if (!input.trim()||typing) return;
+    const msg = input.trim(); setInput(""); setTyping(true);
+    setMsgs(p => [...p, {aba:false,text:msg}, {aba:true,text:"",streaming:true}]);
+    try {
+      const r = await fetch(ABABASE+"/api/air/stream", { method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ message:msg, user_id:userEmail, userId:userEmail, channel:"gmg-university",
+          conversationHistory:msgs.slice(-20).map(m=>({role:m.aba?"assistant":"user",content:m.text||""})).filter(m=>m.content) }) });
+      const reader = r.body.getReader(); const decoder = new TextDecoder(); let acc = "";
+      while (true) {
+        const {done,value} = await reader.read(); if (done) break;
+        for (const line of decoder.decode(value,{stream:true}).split("\n").filter(l=>l.startsWith("data: "))) {
+          try { const d=JSON.parse(line.slice(6));
+            if (d.type==="chunk") { acc+=d.text; setMsgs(p=>{const c=[...p];const l=c[c.length-1];if(l?.aba)c[c.length-1]={...l,text:acc};return c;}); }
+            else if (d.type==="done") { setMsgs(p=>{const c=[...p];const l=c[c.length-1];if(l?.aba)c[c.length-1]={...l,text:d.fullResponse||acc,streaming:false};return c;}); }
+          } catch {}
+        }
+      }
+    } catch { setMsgs(p=>[...p.slice(0,-1),{aba:true,text:"Connection issue. Try again?"}]); }
+    finally { setTyping(false); setIsTyping(false); }
+  };
+
+  const markComplete = async () => {
+    const k = vol+"-d"+day;
+    if (profile?.completedDays?.includes(k)) { setView("home"); return; }
+    try { await updateDoc(doc(db,"gmg_university",gmgUid), { completedDays:arrayUnion(k), xp:(profile.xp||0)+100 }); } catch {}
+    setProfile(p => ({...p, completedDays:[...(p.completedDays||[]),k], xp:(p.xp||0)+100}));
+    setView("home");
+  };
+
+  if (!profile) return <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}><img src={ABA_LOGO} alt="ABA" style={{width:60,height:60,opacity:.5}}/></div>;
+
+  // LESSON VIEW
+  if (view==="lesson" && day) {
+    const dn = profile?.completedDays?.includes(vol+"-d"+day);
+    const title = (TITLES[vol]||[])[day-1]||"Day "+day;
+    return (<div style={{flex:1,display:"flex",flexDirection:"column",position:"relative",background:`url(${BG.embers}) center/cover`}}>
+      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)"}}/>
+      <div style={{position:"relative",zIndex:1,display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderBottom:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",backdropFilter:"blur(12px)"}}>
+        <button onClick={()=>setView("home")} style={{color:"rgba(255,255,255,.5)",background:"none",border:"none",cursor:"pointer",fontSize:16}}>←</button>
+        <img src={ABA_LOGO} alt="ABA" style={{width:28,height:28}}/>
+        <div style={{flex:1}}><p style={{color:"#a78bfa",fontSize:9,letterSpacing:2,margin:0}}>DAY {day} OF {VOL[vol].d}</p><p style={{color:"white",fontSize:13,margin:0}}>{title}</p></div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:12,paddingBottom:140,position:"relative",zIndex:1}}>
+        {msgs.map((m,i) => <div key={i} style={{marginBottom:16,display:"flex",justifyContent:m.aba?"flex-start":"flex-end",gap:8}}>
+          {m.aba && <img src={ABA_LOGO} alt="ABA" style={{width:28,height:28,marginTop:4,flexShrink:0}}/>}
+          <div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:14,background:m.aba?"rgba(255,255,255,0.1)":"rgba(139,92,246,0.3)",border:"1px solid "+(m.aba?"rgba(255,255,255,0.15)":"rgba(139,92,246,0.4)"),backdropFilter:"blur(8px)"}}>
+            <p style={{color:"rgba(255,255,255,0.9)",fontSize:14,lineHeight:1.6,whiteSpace:"pre-wrap",margin:0}}>{m.text}{m.streaming&&<span style={{display:"inline-block",width:6,height:14,background:"#a78bfa",marginLeft:3,animation:"pulse 1s infinite"}}/>}</p>
+          </div>
+        </div>)}
+        <div ref={endRef}/>
+      </div>
+      <div style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(16px)",borderTop:"1px solid rgba(255,255,255,0.1)",padding:12,zIndex:20}}>
+        <div style={{display:"flex",gap:8}}>
+          <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Ask GURU..." style={{flex:1,background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:12,padding:"12px 14px",color:"white",fontSize:13,outline:"none"}}/>
+          <button onClick={send} disabled={!input.trim()||typing} style={{width:44,background:"#7c3aed",border:"none",borderRadius:12,color:"white",cursor:"pointer",fontSize:14}}>→</button>
+        </div>
+        {!isTyping && <button onClick={markComplete} style={{width:"100%",marginTop:10,padding:14,borderRadius:12,border:"none",background:dn?"rgba(255,255,255,0.1)":"linear-gradient(to right,#10b981,#14b8a6)",color:dn?"rgba(255,255,255,0.4)":"white",fontSize:14,fontWeight:500,cursor:"pointer"}}>{dn?"Completed":"Mark Complete +100 XP"}</button>}
+      </div>
+      <audio ref={audioRef}/>
+      <style>{"@keyframes pulse{0%,100%{opacity:1}50%{opacity:0}}"}</style>
+    </div>);
+  }
+
+  // ALL LESSONS
+  if (view==="learn") {
+    const lessons = [...Array(VOL[vol].d)].map((_,i)=>({d:i+1,q:(i+1)%5===0}));
+    const done = profile?.completedDays||[];
+    return (<div style={{flex:1,overflowY:"auto",padding:12,position:"relative",background:`url(${BG.city}) center/cover`}}>
+      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)"}}/>
+      <div style={{position:"relative",zIndex:1}}>
+        <button onClick={()=>setView("home")} style={{color:"rgba(255,255,255,.5)",background:"none",border:"none",cursor:"pointer",marginBottom:12,fontSize:16}}>←</button>
+        <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>{Object.entries(VOL).map(([k,v])=><button key={k} onClick={()=>setVol(k)} style={{padding:"8px 12px",borderRadius:10,border:vol===k?"none":"1px solid rgba(255,255,255,.15)",background:vol===k?"#7c3aed":"rgba(255,255,255,.08)",color:vol===k?"white":"rgba(255,255,255,.5)",fontSize:11,cursor:"pointer"}}>{v.t}</button>)}</div>
+        <p style={{color:"rgba(255,255,255,.4)",fontSize:11,marginBottom:10}}>{VOL[vol].f} — {done.filter(d=>d.startsWith(vol)).length}/{VOL[vol].d}</p>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8}}>
+          {lessons.map(l=>{const k=vol+"-d"+l.d,d=done.includes(k);return <button key={l.d} onClick={()=>startLesson(vol,l.d)} style={{aspectRatio:"1",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:500,border:"1px solid "+(d?"rgba(16,185,129,.4)":l.q?"rgba(139,92,246,.4)":"rgba(255,255,255,.15)"),background:d?"rgba(16,185,129,.2)":l.q?"rgba(139,92,246,.2)":"rgba(255,255,255,.08)",color:d?"#10b981":l.q?"#a78bfa":"rgba(255,255,255,.5)",cursor:"pointer"}}>{d?"✓":l.d}</button>;})}
+        </div>
+      </div>
+    </div>);
+  }
+
+  // HOME
+  const cnt = profile?.completedDays?.length||0, tot=Object.values(VOL).reduce((s,v)=>s+v.d,0), pct=Math.round((cnt/tot)*100);
+  const next = getNext();
+  return (<div style={{flex:1,overflowY:"auto",padding:12,paddingBottom:24,position:"relative",background:`url(${BG.pink}) center/cover`}}>
+    <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)"}}/>
+    <div style={{position:"relative",zIndex:1}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+        <img src={ABA_LOGO} alt="ABA" style={{width:48,height:48}}/>
+        <div><h1 style={{fontSize:18,color:"white",margin:0}}>Hey, <span style={{color:"#a78bfa"}}>{firstName}</span></h1><p style={{color:"rgba(255,255,255,.4)",fontSize:13,margin:0}}>{cnt===0?"Ready to start?":pct+"% complete"}</p></div>
+      </div>
+      <div style={{display:"flex",gap:10,marginBottom:20}}>
+        <div style={{...glass,flex:1,textAlign:"center"}}><p style={{fontSize:22,fontWeight:300,color:"white",margin:0}}>{profile?.xp||0}</p><p style={{color:"#a78bfa",fontSize:11,marginTop:4,marginBottom:0}}>XP</p></div>
+        <div style={{...glass,flex:1,textAlign:"center"}}><p style={{fontSize:22,fontWeight:300,color:"white",margin:0}}>{profile?.streak||0}</p><p style={{color:"#fbbf24",fontSize:11,marginTop:4,marginBottom:0}}>Streak</p></div>
+      </div>
+      <div style={{...glass,marginBottom:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6}}><span style={{color:"rgba(255,255,255,.5)"}}>Progress</span><span style={{color:"#a78bfa"}}>{cnt}/{tot}</span></div>
+        <div style={{height:6,background:"rgba(255,255,255,.1)",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:"linear-gradient(to right,#7c3aed,#c026d3)",borderRadius:3,width:pct+"%",transition:"width .5s"}}/></div>
+      </div>
+      {next && <button onClick={()=>startLesson(next.vol,next.day)} style={{width:"100%",background:"linear-gradient(to right,#7c3aed,#c026d3)",borderRadius:14,padding:18,marginBottom:14,textAlign:"left",border:"none",cursor:"pointer",boxShadow:"0 8px 30px rgba(124,58,237,.3)"}}>
+        <p style={{color:"rgba(255,255,255,.6)",fontSize:10,letterSpacing:1,margin:0}}>UP NEXT</p>
+        <p style={{color:"white",fontSize:16,fontWeight:500,margin:"4px 0 0"}}>Day {next.day}: {next.title}</p>
+        <p style={{color:"rgba(255,255,255,.8)",fontSize:13,marginTop:10,marginBottom:0}}>▶ Start Lesson</p>
+      </button>}
+      <button onClick={()=>setView("learn")} style={{...glass,width:"100%",textAlign:"left",cursor:"pointer",marginBottom:10,border:"1px solid rgba(255,255,255,.15)"}}><p style={{color:"white",fontSize:14,margin:0}}>📚 All Lessons</p></button>
+    </div>
   </div>);
 }
 
@@ -297,7 +491,7 @@ function TasksView({ userId }) {
   return (<div style={{flex:1,display:"flex",flexDirection:"column",padding:16}}>
     <div style={{flex:1,overflowY:"auto"}}>{loading ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading...</p>
     : tasks.length === 0 ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>No tasks yet</p>
-    : tasks.map((t,i) => <div key={t.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
+    : (tasks||[]).map((t,i) => <div key={t.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
         <p style={{fontSize:13,color:"rgba(255,255,255,.8)"}}>{(typeof t.content==="string"?t.content:JSON.stringify(t.content)).substring(0,200)}</p>
         <span style={{fontSize:10,color:"rgba(255,255,255,.2)"}}>{t.created_at?new Date(t.created_at).toLocaleDateString():""}</span></div>)}</div>
     <div style={{display:"flex",gap:8,paddingTop:12}}>
@@ -326,7 +520,7 @@ function NotesView({ userId }) {
   return (<div style={{flex:1,display:"flex",flexDirection:"column",padding:16}}>
     <div style={{flex:1,overflowY:"auto"}}>{loading ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading...</p>
     : notes.length === 0 ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>No notes yet</p>
-    : notes.map((n,i) => <div key={n.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
+    : (notes||[]).map((n,i) => <div key={n.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
         <p style={{fontSize:13,color:"rgba(255,255,255,.8)",whiteSpace:"pre-wrap"}}>{(typeof n.content==="string"?n.content:JSON.stringify(n.content)).substring(0,300)}</p>
         <span style={{fontSize:10,color:"rgba(255,255,255,.2)"}}>{n.created_at?new Date(n.created_at).toLocaleDateString():""}</span></div>)}</div>
     <div style={{display:"flex",gap:8,paddingTop:12}}>
@@ -345,7 +539,7 @@ function CalendarView({ userId }) {
   return (<div style={{flex:1,overflowY:"auto",padding:16}}>
     {loading ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading calendar...</p>
     : events.length === 0 ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>No upcoming events</p>
-    : events.map((e,i) => <div key={e.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
+    : (Array.isArray(events)?events:[]).map((e,i) => <div key={e.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
         <p style={{fontSize:14,fontWeight:600,color:"rgba(255,255,255,.85)"}}>{e.title||e.subject||"Untitled"}</p>
         {(e.start||e.when)&&<p style={{fontSize:11,color:"rgba(139,92,246,.6)",marginTop:4}}>{new Date(e.start||e.when?.start_time||"").toLocaleString()}</p>}
         {e.location&&<p style={{fontSize:11,color:"rgba(255,255,255,.3)",marginTop:2}}>{e.location}</p>}
@@ -357,92 +551,442 @@ function CRMView({ userId }) {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw";
+  // ⬡B:911:FIX:crm_use_backend:20260327⬡
   useEffect(() => {
-    (async () => { try { const r = await fetch("https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_contacts?select=*&order=name.asc&limit=100", { headers: { apikey: ANON } }); if (r.ok) setContacts(await r.json()); } catch {} setLoading(false); })();
-  }, []);
-  const f = contacts.filter(c => !search || (c.name||"").toLowerCase().includes(search.toLowerCase()) || (c.email||"").toLowerCase().includes(search.toLowerCase()));
+    (async () => { try { const hamId=(userId||"").split("@")[0]; const r = await fetch(`${ABABASE}/api/contacts?ham_id=${hamId}`); if (r.ok) { const d=await r.json(); setContacts(d.contacts||[]); } } catch {} setLoading(false); })();
+  }, [userId]);
+  // ⬡B:rolo.audit:FIX:contact_name_field:20260330⬡
+  const f = contacts.filter(c => !search || (c.contact_name||"").toLowerCase().includes(search.toLowerCase()) || (c.email||"").toLowerCase().includes(search.toLowerCase()));
   return (<div style={{flex:1,display:"flex",flexDirection:"column",padding:16}}>
     <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search contacts..." style={{padding:"10px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none",marginBottom:12}} />
     <div style={{flex:1,overflowY:"auto"}}>{loading ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading...</p>
     : f.length === 0 ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>No contacts</p>
     : f.map((c,i) => <div key={c.id||i} style={{padding:12,marginBottom:6,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",display:"flex",alignItems:"center",gap:12}}>
-        <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(139,92,246,.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:600,color:"#a78bfa"}}>{(c.name||"?")[0].toUpperCase()}</div>
-        <div><p style={{fontSize:13,fontWeight:500,color:"rgba(255,255,255,.85)"}}>{c.name}</p>
+        <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(139,92,246,.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:600,color:"#a78bfa"}}>{(c.contact_name||"?")[0].toUpperCase()}</div>
+        <div><p style={{fontSize:13,fontWeight:500,color:"rgba(255,255,255,.85)"}}>{c.contact_name}</p>
           {c.email&&<p style={{fontSize:11,color:"rgba(255,255,255,.3)"}}>{c.email}</p>}
           {c.phone&&<p style={{fontSize:11,color:"rgba(255,255,255,.3)"}}>{c.phone}</p>}</div>
       </div>)}</div>
   </div>);
 }
 
+// ═══════════════════════════════════════════════════════════
+// LOGFUL (Logging Operations and General Feedback Utility Layer)
+// Dual mode: Capture (quick voice/text notes) + Journal (reflections with mood)
+// ⬡B:cip.logful:VIEW:dual_mode:20260324⬡
+// 90/10: All data through backend /api/logful/* endpoints. Zero direct Supabase.
+// ═══════════════════════════════════════════════════════════
 function JournalView({ userId }) {
+  const [mode, setMode] = useState("journal"); // "capture" or "journal"
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [newEntry, setNewEntry] = useState("");
+  const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
-  const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw";
+  const [mood, setMood] = useState(null);
+  const [recording, setRecording] = useState(false);
+  const recorderRef = useRef(null);
+  const streamRef = useRef(null);
+
   const load = async () => {
-    try { const r = await fetch("https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory?memory_type=eq.journal&order=created_at.desc&limit=30", { headers: { apikey: ANON } }); if (r.ok) setEntries(await r.json()); } catch {}
+    setLoading(true);
+    try {
+      const res = await fetch(`${ABABASE}/api/logful/recent?userId=${encodeURIComponent(userId)}&limit=30`);
+      if (res.ok) {
+        const data = await res.json();
+        setEntries(data.journals || []);
+      }
+    } catch (e) { console.error("[LOGFUL] Load failed:", e); }
     setLoading(false);
   };
+
   useEffect(() => { load(); }, []);
+
   const save = async () => {
-    if (!newEntry.trim()) return; setSending(true);
-    await fetch(ABABASE + "/api/air/process", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Journal entry: " + newEntry, user_id: userId, channel: "cip" }) });
-    setNewEntry(""); setSending(false); load();
+    if (!text.trim()) return;
+    setSending(true);
+    try {
+      const payload = {
+        message: mode === "capture" ? text : `Journal entry: ${text}`,
+        user_id: userId,
+        userId,
+        channel: "cip",
+        appScope: "logful"
+      };
+      if (mood) payload.message = `[mood: ${mood}] ${payload.message}`;
+      await fetch(`${ABABASE}/api/air/process`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      setText(""); setMood(null); load();
+    } catch (e) { console.error("[LOGFUL] Save failed:", e); }
+    setSending(false);
   };
+
+  const toggleRecord = async () => {
+    if (recording) {
+      recorderRef.current?.stop();
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      setRecording(false);
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mimeTypes = ["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus","audio/mp4","audio/aac",""];
+      let mimeType = "";
+      for (const mt of mimeTypes) { if (!mt || MediaRecorder.isTypeSupported(mt)) { mimeType = mt; break; } }
+      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const chunks = [];
+      rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+      rec.onstop = async () => {
+        const blob = new Blob(chunks, { type: mimeType || "audio/webm" });
+        const transcript = await reachTranscribe(blob);
+        if (transcript) setText(prev => prev ? prev + " " + transcript : transcript);
+      };
+      rec.start();
+      recorderRef.current = rec;
+      setRecording(true);
+    } catch (e) {
+      console.error("[LOGFUL] Mic error:", e);
+    }
+  };
+
+  const MOODS = [
+    { emoji: "\u{1F60A}", label: "Good", value: "good" },
+    { emoji: "\u{1F914}", label: "Reflective", value: "reflective" },
+    { emoji: "\u{1F4AA}", label: "Motivated", value: "motivated" },
+    { emoji: "\u{1F614}", label: "Stressed", value: "stressed" },
+    { emoji: "\u{1F64F}", label: "Grateful", value: "grateful" }
+  ];
+
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-  return (<div style={{flex:1,display:"flex",flexDirection:"column",padding:16}}>
-    <p style={{fontSize:13,color:"rgba(255,255,255,.3)",marginBottom:12}}>{today}</p>
-    <div style={{flex:1,overflowY:"auto"}}>{loading ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading...</p>
-    : entries.length === 0 ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>No journal entries yet</p>
-    : entries.map((e,i) => <div key={e.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
-        <p style={{fontSize:13,color:"rgba(255,255,255,.8)",whiteSpace:"pre-wrap",lineHeight:1.6}}>{(typeof e.content==="string"?e.content:JSON.stringify(e.content)).substring(0,400)}</p>
-        <span style={{fontSize:10,color:"rgba(255,255,255,.2)"}}>{e.created_at?new Date(e.created_at).toLocaleString():""}</span></div>)}</div>
-    <div style={{paddingTop:12}}>
-      <textarea value={newEntry} onChange={e=>setNewEntry(e.target.value)} placeholder="What is on your mind today?" rows={3} style={{width:"100%",padding:"12px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none",resize:"none",lineHeight:1.6,marginBottom:8}} />
-      <button onClick={save} disabled={sending||!newEntry.trim()} style={{width:"100%",padding:"10px",borderRadius:12,border:"none",background:"rgba(139,92,246,.3)",color:"#a78bfa",cursor:"pointer",fontSize:13,fontWeight:500}}>{sending?"Saving...":"Save Entry"}</button>
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: 16 }}>
+      {/* Mode Toggle */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "rgba(255,255,255,.04)", borderRadius: 10, padding: 3 }}>
+        {[{ id: "capture", label: "Capture" }, { id: "journal", label: "Journal" }].map(m => (
+          <button key={m.id} onClick={() => setMode(m.id)} style={{
+            flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer",
+            fontSize: 13, fontWeight: 500, transition: "all .2s",
+            background: mode === m.id ? "rgba(139,92,246,.3)" : "transparent",
+            color: mode === m.id ? "#c4b5fd" : "rgba(255,255,255,.35)"
+          }}>{m.label}</button>
+        ))}
+      </div>
+      <p style={{ fontSize: 12, color: "rgba(255,255,255,.25)", marginBottom: 10 }}>{today}</p>
+
+      {/* Mood selector (journal mode only) */}
+      {mode === "journal" && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 12, justifyContent: "center" }}>
+          {MOODS.map(m => (
+            <button key={m.value} onClick={() => setMood(mood === m.value ? null : m.value)} style={{
+              padding: "6px 10px", borderRadius: 20, border: mood === m.value ? "1px solid rgba(139,92,246,.5)" : "1px solid rgba(255,255,255,.08)",
+              background: mood === m.value ? "rgba(139,92,246,.15)" : "rgba(255,255,255,.03)",
+              cursor: "pointer", fontSize: 12, color: mood === m.value ? "#c4b5fd" : "rgba(255,255,255,.4)",
+              transition: "all .2s"
+            }}>{m.emoji} {m.label}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Input area */}
+      <div style={{ marginBottom: 12 }}>
+        <textarea
+          value={text}
+          onChange={e => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px"; }}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && mode === "capture") { e.preventDefault(); save(); } }}
+          placeholder={mode === "capture" ? "Quick thought, note, or idea..." : "How are you feeling? What happened today?"}
+          rows={mode === "capture" ? 2 : 4}
+          style={{
+            width: "100%", padding: "12px 14px", borderRadius: 12,
+            border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)",
+            color: "#fff", fontSize: 13, outline: "none", resize: "none", lineHeight: 1.6,
+            boxSizing: "border-box"
+          }}
+        />
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <button onClick={toggleRecord} style={{
+            padding: "10px 16px", borderRadius: 12, border: "none", cursor: "pointer",
+            background: recording ? "rgba(239,68,68,.3)" : "rgba(255,255,255,.06)",
+            color: recording ? "#fca5a5" : "rgba(255,255,255,.5)", fontSize: 13, fontWeight: 500,
+            display: "flex", alignItems: "center", gap: 6, transition: "all .2s"
+          }}>
+            {recording ? <><MicOff size={14}/> Stop</> : <><Mic size={14}/> Voice</>}
+          </button>
+          <button onClick={save} disabled={sending || !text.trim()} style={{
+            flex: 1, padding: "10px", borderRadius: 12, border: "none", cursor: "pointer",
+            background: text.trim() ? "rgba(139,92,246,.3)" : "rgba(255,255,255,.04)",
+            color: text.trim() ? "#c4b5fd" : "rgba(255,255,255,.2)",
+            fontSize: 13, fontWeight: 500, transition: "all .2s"
+          }}>
+            {sending ? "Saving..." : mode === "capture" ? "Capture" : "Save Entry"}
+          </button>
+        </div>
+      </div>
+
+      {/* Entries list */}
+      <div style={{ flex: 1, overflowY: "auto" }}>
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 40 }}>
+            <div style={{ width: 24, height: 24, margin: "0 auto", borderRadius: "50%", border: "2px solid rgba(139,92,246,.2)", borderTopColor: "rgba(139,92,246,.6)", animation: "spin 1s linear infinite" }}/>
+          </div>
+        ) : entries.length === 0 ? (
+          <p style={{ textAlign: "center", padding: 40, color: "rgba(255,255,255,.25)", fontSize: 13 }}>
+            {mode === "capture" ? "No captures yet. Speak or type a quick thought." : "No journal entries yet. How was your day?"}
+          </p>
+        ) : (entries||[]).map((e, i) => {
+          const content = typeof e.raw === "string" ? e.raw : typeof e.content === "string" ? e.content : JSON.stringify(e);
+          const tone = e.emotionalTone || "";
+          const summary = e.summary || "";
+          const ts = e.extractedAt || e.created_at || "";
+          return (
+            <div key={i} style={{
+              padding: 12, marginBottom: 8, borderRadius: 12,
+              background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)"
+            }}>
+              {tone && <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, background: "rgba(139,92,246,.15)", color: "#a78bfa", marginBottom: 6, display: "inline-block" }}>{tone}</span>}
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,.75)", whiteSpace: "pre-wrap", lineHeight: 1.6, margin: tone ? "6px 0 0" : 0 }}>{content.substring(0, 400)}</p>
+              {summary && <p style={{ fontSize: 11, color: "rgba(139,92,246,.5)", marginTop: 6, fontStyle: "italic" }}>{summary.substring(0, 200)}</p>}
+              <span style={{ fontSize: 10, color: "rgba(255,255,255,.15)", marginTop: 4, display: "block" }}>{ts ? new Date(ts).toLocaleString() : ""}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
-  </div>);
+  );
 }
 
 function GuideView({ userId }) {
   const [query, setQuery] = useState("");
-  const [response, setResponse] = useState(null);
+  const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [history, setHistory] = useState([]);
+  const [mapUrl, setMapUrl] = useState("https://www.openstreetmap.org/export/embed.html?bbox=-80.0,35.9,-79.6,36.2&layer=mapnik");
+  const [userLoc, setUserLoc] = useState(null);
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          console.log("[GUIDE] Location:", pos.coords.latitude, pos.coords.longitude, "accuracy:", pos.coords.accuracy + "m");
+          const lat = pos.coords.latitude, lng = pos.coords.longitude;
+          setUserLoc({ lat, lng });
+          const d = 0.02;
+          setMapUrl(`https://www.openstreetmap.org/export/embed.html?bbox=${lng-d},${lat-d},${lng+d},${lat+d}&layer=mapnik&marker=${lat},${lng}`);
+        },
+        () => {} // Permission denied — keep Nashville default
+      );
+    }
+  }, []);
+  
   const search = async () => {
-    if (!query.trim()) return; setLoading(true);
-    setHistory(prev => [...prev, { role: "user", text: query }]); const userMsg = query; setQuery("");
+    if (!query.trim()) return;
+    setLoading(true);
     try {
-      const res = await fetch(ABABASE + "/api/air/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: userMsg, user_id: userId, userId, channel: "cip", appScope: "guide" }) });
-      const reader = res.body.getReader(); const decoder = new TextDecoder(); let acc = "";
-      while (true) { const { done, value } = await reader.read(); if (done) break;
-        for (const line of decoder.decode(value, { stream: true }).split("\n").filter(l => l.startsWith("data: "))) {
-          try { const d = JSON.parse(line.slice(6)); if (d.type === "chunk") { acc += d.text; setResponse(acc); } else if (d.type === "done") { acc = d.fullResponse || acc; setResponse(acc); } } catch {} } }
-      setHistory(prev => [...prev, { role: "assistant", text: acc }]); setResponse(null);
-    } catch { setHistory(prev => [...prev, { role: "assistant", text: "Could not reach ABA. Try again." }]); }
+      const res = await fetch(ABABASE + "/api/air/process", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: query, user_id: userId, channel: "myaba", context: { app: "guide" } })
+      });
+      const data = await res.json();
+      setResults(prev => [...prev, { role: "user", text: query }, { role: "aba", text: data.response || data.message || "No results" }]);
+      // Update map to searched location
+      const q = encodeURIComponent(query);
+      // Use user location for map center if available, otherwise keep current view
+      if (userLoc) {
+        const d = 0.05;
+        setMapUrl(`https://www.openstreetmap.org/export/embed.html?bbox=${userLoc.lng-d},${userLoc.lat-d},${userLoc.lng+d},${userLoc.lat+d}&layer=mapnik&marker=${userLoc.lat},${userLoc.lng}`);
+      }
+    } catch { setResults(prev => [...prev, { role: "user", text: query }, { role: "aba", text: "Could not reach GUIDE right now" }]); }
+    setQuery(""); setLoading(false);
+  };
+
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    {/* Map view - takes top 45% */}
+    <div style={{height:"45%",position:"relative",borderBottom:"1px solid rgba(255,255,255,.08)"}}>
+      <iframe src={mapUrl} style={{width:"100%",height:"100%",border:"none",filter:"brightness(.85) contrast(1.1) hue-rotate(180deg) invert(1)"}} title="GUIDE Map"/>
+      <div style={{position:"absolute",bottom:8,left:8,padding:"4px 10px",borderRadius:8,background:"rgba(0,0,0,.6)",backdropFilter:"blur(8px)"}}>
+        <span style={{color:"rgba(16,185,129,.8)",fontSize:10,fontWeight:600}}>GUIDE Maps</span>
+      </div>
+    </div>
+    {/* Results area */}
+    <div style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
+      {results.length===0&&<div style={{textAlign:"center",padding:"24px 16px"}}>
+        <MapPin size={28} style={{color:"rgba(16,185,129,.4)",margin:"0 auto 8px"}}/>
+        <p style={{color:"rgba(255,255,255,.4)",fontSize:13,margin:0}}>Ask GUIDE about places, directions, restaurants</p>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,justifyContent:"center",marginTop:12}}>
+          {["Coffee near me","Directions to airport","Best restaurants","Gas stations"].map(s=><button key={s} onClick={()=>{setQuery(s);setTimeout(search,100)}} style={{padding:"6px 12px",borderRadius:16,border:"1px solid rgba(16,185,129,.15)",background:"rgba(16,185,129,.06)",color:"rgba(16,185,129,.6)",fontSize:11,cursor:"pointer"}}>{s}</button>)}
+        </div>
+      </div>}
+      {results.map((msg,i)=><div key={i} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start",marginBottom:6}}>
+        <div style={{maxWidth:"85%",padding:"8px 12px",borderRadius:14,background:msg.role==="user"?"rgba(16,185,129,.15)":"rgba(255,255,255,.04)",border:"1px solid "+(msg.role==="user"?"rgba(16,185,129,.15)":"rgba(255,255,255,.06)")}}>
+          <span style={{color:"rgba(255,255,255,.85)",fontSize:13,lineHeight:1.5}}>{typeof msg.text==="string"?msg.text:JSON.stringify(msg.text)}</span>
+        </div>
+      </div>)}
+    </div>
+    {/* Search bar at bottom */}
+    <div style={{flexShrink:0,padding:"8px 12px 12px",display:"flex",gap:8}}>
+      <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&search()} placeholder="Ask GUIDE about places..." style={{flex:1,padding:"10px 14px",borderRadius:14,border:"1px solid rgba(16,185,129,.12)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none"}}/>
+      <button onClick={search} disabled={loading||!query.trim()} style={{padding:"10px 18px",borderRadius:14,border:"none",background:loading?"rgba(16,185,129,.1)":"rgba(16,185,129,.2)",color:"#10b981",cursor:"pointer"}}>{loading?<Loader2 size={16} className="animate-spin"/>:<Search size={16}/>}</button>
+    </div>
+  </div>);
+}
+
+// ⬡B:NASH:SPORTS_VIEW:CIP:20260325⬡
+// Sports app — NASH (Notable Athletic Scores and Highlights)
+// Calls /api/nash/scores, renders team cards with warm VARA-style scores
+function SportsView({ userId }) {
+  const [scores, setScores] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [searchResult, setSearchResult] = useState(null);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(ABABASE + "/api/nash/briefing?userId=" + encodeURIComponent(userId));
+        if (res.ok) { const d = await res.json(); setScores(d.scores || []); }
+      } catch (e) { console.error("[SPORTS]", e); }
+      setLoading(false);
+    })();
+  }, [userId]);
+
+  const doSearch = async () => {
+    if (!search.trim()) return;
+    setSearching(true); setSearchResult(null);
+    try {
+      const res = await fetch(ABABASE + "/api/nash/scores?team=" + encodeURIComponent(search) + "&userId=" + encodeURIComponent(userId));
+      if (res.ok) { const d = await res.json(); setSearchResult(d); }
+    } catch (e) { console.error("[SPORTS]", e); }
+    setSearching(false);
+  };
+
+  return (<div style={{flex:1,overflowY:"auto",padding:"8px 4px"}}>
+    {/* Search bar */}
+    <div style={{display:"flex",gap:8,marginBottom:12}}>
+      <input value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")doSearch()}}
+        placeholder="Search team (Lakers, Duke, Saints...)"
+        style={{flex:1,padding:"10px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.9)",fontSize:14,outline:"none"}}/>
+      <button onClick={doSearch} disabled={searching}
+        style={{padding:"10px 16px",borderRadius:12,border:"none",background:"rgba(139,92,246,.25)",color:"#a78bfa",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+        {searching?"...":"Go"}
+      </button>
+    </div>
+
+    {/* Search result */}
+    {searchResult && <div style={{padding:16,borderRadius:14,background:"rgba(139,92,246,.08)",border:"1px solid rgba(139,92,246,.15)",marginBottom:12}}>
+      <p style={{color:"rgba(255,255,255,.9)",fontSize:14,lineHeight:1.6,margin:0}}>{searchResult.spoken || searchResult.type}</p>
+      {searchResult.type==="result" && <div style={{marginTop:8,display:"flex",gap:12,justifyContent:"center"}}>
+        <span style={{fontSize:24,fontWeight:700,color:"rgba(34,197,94,.9)"}}>{searchResult.winScore}</span>
+        <span style={{fontSize:14,color:"rgba(255,255,255,.3)",alignSelf:"center"}}>vs</span>
+        <span style={{fontSize:24,fontWeight:700,color:"rgba(239,68,68,.7)"}}>{searchResult.loseScore}</span>
+      </div>}
+    </div>}
+
+    {/* Followed teams scores */}
+    <div style={{fontSize:11,color:"rgba(255,255,255,.3)",marginBottom:8,fontWeight:600,letterSpacing:1}}>YOUR TEAMS</div>
+    {loading ? <p style={{color:"rgba(255,255,255,.3)",textAlign:"center",padding:20}}>Loading scores...</p>
+    : scores.length === 0 ? <p style={{color:"rgba(255,255,255,.3)",textAlign:"center",padding:20}}>No recent scores for your followed teams. Add teams in your profile.</p>
+    : scores.map((s, i) => (
+      <div key={i} style={{padding:14,borderRadius:12,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",marginBottom:8}}>
+        <p style={{color:"rgba(255,255,255,.85)",fontSize:14,margin:0,lineHeight:1.5}}>{s.spoken || JSON.stringify(s)}</p>
+        {s.date && <p style={{color:"rgba(255,255,255,.25)",fontSize:11,margin:"6px 0 0"}}>{s.date}</p>}
+      </div>
+    ))}
+  </div>);
+}
+
+// ⬡B:ARIA:MUSIC_VIEW:CIP:20260325⬡
+// Music app — ARIA (Adaptive Rhythmic Intelligence Agent)
+// Calls /api/aria/search, renders YouTube music results
+function MusicView({ userId }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [mood, setMood] = useState(null);
+  const [recs, setRecs] = useState([]);
+  const [recsLoading, setRecsLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(ABABASE + "/api/aria/recommend?userId=" + encodeURIComponent(userId) + "&mood=chill");
+        if (res.ok) { const d = await res.json(); setRecs(d.results || []); }
+      } catch (e) { console.error("[MUSIC]", e); }
+      setRecsLoading(false);
+    })();
+  }, [userId]);
+
+  const doSearch = async () => {
+    if (!query.trim()) return;
+    setLoading(true); setResults([]);
+    try {
+      const res = await fetch(ABABASE + "/api/aria/search?q=" + encodeURIComponent(query));
+      if (res.ok) { const d = await res.json(); setResults(d.results || []); }
+    } catch (e) { console.error("[MUSIC]", e); }
     setLoading(false);
   };
-  return (<div style={{flex:1,display:"flex",flexDirection:"column"}}>
-    <div style={{flex:1,overflowY:"auto",padding:16}}>
-      {history.length === 0 && !response && <div style={{textAlign:"center",padding:"40px 20px"}}>
-        <MapPin size={40} style={{margin:"0 auto 12px",opacity:.3,color:"#10b981"}} />
-        <p style={{fontSize:15,color:"rgba(255,255,255,.6)",marginBottom:8}}>Where do you want to go?</p>
-        <p style={{fontSize:12,color:"rgba(255,255,255,.3)"}}>Ask ABA for directions, nearby places, or restaurant recommendations</p>
-        <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:16}}>
-          {["Coffee near me","Directions to airport","Best restaurants nearby","Gas stations"].map(s => <button key={s} onClick={()=>{setQuery(s)}} style={{padding:"8px 14px",borderRadius:20,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.08)",color:"rgba(16,185,129,.7)",fontSize:11,cursor:"pointer"}}>{s}</button>)}
-        </div></div>}
-      {history.map((msg,i) => <div key={i} style={{marginBottom:12,display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
-        <div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:msg.role==="user"?"rgba(139,92,246,.2)":"rgba(255,255,255,.05)",border:"1px solid "+(msg.role==="user"?"rgba(139,92,246,.2)":"rgba(255,255,255,.08)")}}>
-          <p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{msg.text}</p></div></div>)}
-      {response && <div style={{marginBottom:12}}><div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:"rgba(255,255,255,.05)",border:"1px solid rgba(16,185,129,.15)"}}>
-        <p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{response}</p></div></div>}
+
+  const moods = ["Chill", "Worship", "Hype", "Study", "Throwback"];
+
+  const loadMood = async (m) => {
+    setMood(m); setRecsLoading(true);
+    try {
+      const res = await fetch(ABABASE + "/api/aria/recommend?userId=" + encodeURIComponent(userId) + "&mood=" + encodeURIComponent(m.toLowerCase()));
+      if (res.ok) { const d = await res.json(); setRecs(d.results || []); }
+    } catch (e) { console.error("[MUSIC]", e); }
+    setRecsLoading(false);
+  };
+
+  const TrackCard = ({ track }) => (
+    <div style={{padding:12,borderRadius:12,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",marginBottom:8,display:"flex",gap:12,alignItems:"center"}}>
+      {track.thumbnail && <img src={track.thumbnail} alt="" style={{width:56,height:56,borderRadius:8,objectFit:"cover",flexShrink:0}}/>}
+      <div style={{flex:1,minWidth:0}}>
+        <p style={{color:"rgba(255,255,255,.85)",fontSize:13,margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} dangerouslySetInnerHTML={{__html:track.title}}/>
+        <p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:"4px 0 0"}}>{track.artist}</p>
+      </div>
+      <a href={track.url} target="_blank" rel="noopener noreferrer"
+        style={{width:36,height:36,borderRadius:99,background:"rgba(239,68,68,.15)",color:"rgba(239,68,68,.8)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,textDecoration:"none"}}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+      </a>
     </div>
-    <div style={{display:"flex",gap:8,padding:"10px 16px 16px"}}>
-      <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&search()} placeholder="Ask GUIDE about places..." style={{flex:1,padding:"12px 14px",borderRadius:14,border:"1px solid rgba(16,185,129,.15)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none"}} />
-      <button onClick={search} disabled={loading||!query.trim()} style={{padding:"12px 18px",borderRadius:14,border:"none",background:loading?"rgba(16,185,129,.15)":"rgba(16,185,129,.25)",color:"#10b981",cursor:"pointer"}}>{loading?<Loader2 size={16} className="animate-spin"/>:<Search size={16}/>}</button>
+  );
+
+  return (<div style={{flex:1,overflowY:"auto",padding:"8px 4px"}}>
+    {/* Search bar */}
+    <div style={{display:"flex",gap:8,marginBottom:12}}>
+      <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")doSearch()}}
+        placeholder="Search songs, artists..."
+        style={{flex:1,padding:"10px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.9)",fontSize:14,outline:"none"}}/>
+      <button onClick={doSearch} disabled={loading}
+        style={{padding:"10px 16px",borderRadius:12,border:"none",background:"rgba(139,92,246,.25)",color:"#a78bfa",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+        {loading?"...":"Search"}
+      </button>
     </div>
+
+    {/* Search results */}
+    {results.length > 0 && <>
+      <div style={{fontSize:11,color:"rgba(255,255,255,.3)",marginBottom:8,fontWeight:600,letterSpacing:1}}>RESULTS</div>
+      {results.map((t, i) => <TrackCard key={i} track={t}/>)}
+    </>}
+
+    {/* Mood filters */}
+    <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+      {moods.map(m => (
+        <button key={m} onClick={()=>loadMood(m)}
+          style={{padding:"6px 14px",borderRadius:20,border:"1px solid " + (mood===m?"rgba(139,92,246,.4)":"rgba(255,255,255,.1)"),
+            background:mood===m?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",
+            color:mood===m?"#a78bfa":"rgba(255,255,255,.5)",fontSize:12,cursor:"pointer"}}>{m}</button>
+      ))}
+    </div>
+
+    {/* Recommendations */}
+    <div style={{fontSize:11,color:"rgba(255,255,255,.3)",marginBottom:8,fontWeight:600,letterSpacing:1}}>
+      {mood ? mood.toUpperCase() + " VIBES" : "RECOMMENDED FOR YOU"}
+    </div>
+    {recsLoading ? <p style={{color:"rgba(255,255,255,.3)",textAlign:"center",padding:20}}>Finding music...</p>
+    : recs.length === 0 ? <p style={{color:"rgba(255,255,255,.3)",textAlign:"center",padding:20}}>No recommendations yet. Try searching above.</p>
+    : recs.map((t, i) => <TrackCard key={i} track={t}/>)}
   </div>);
 }
 
@@ -459,8 +1003,8 @@ function NURAView({ userId, onScan }) {
       const reader = res.body.getReader(); const decoder = new TextDecoder(); let acc = "";
       while (true) { const { done, value } = await reader.read(); if (done) break;
         for (const line of decoder.decode(value, { stream: true }).split("\n").filter(l => l.startsWith("data: "))) {
-          try { const d = JSON.parse(line.slice(6)); if (d.type === "chunk") { acc += d.text; setResponse(acc); } else if (d.type === "done") { acc = d.fullResponse || acc; setResponse(acc); } } catch {} } }
-      setHistory(prev => [...prev, { role: "assistant", text: acc }]); setResponse(null);
+          try { const d = JSON.parse(line.slice(6)); if (d.type === "chunk") { acc += d.text; setResponse(acc); } else if (d.type === "done") { acc = d.fullResponse || acc; const toolNames = (d.toolsExecuted || []).map(t => typeof t === "object" ? t.tool_name : t).filter(Boolean); setHistory(prev => { const c = [...prev]; if (c.length > 0 && c[c.length-1].role === "assistant") c[c.length-1] = { ...c[c.length-1], tools: toolNames }; return c; }); setResponse(acc); } } catch {} } }
+      setHistory(prev => { const c = [...prev]; if (c.length > 0 && c[c.length-1].role === "assistant") c[c.length-1] = { ...c[c.length-1], text: acc }; else c.push({ role: "assistant", text: acc }); return c; }); setResponse(null);
     } catch { setHistory(prev => [...prev, { role: "assistant", text: "Could not reach ABA." }]); }
     setLoading(false);
   };
@@ -491,17 +1035,27 @@ function NURAView({ userId, onScan }) {
 function CARAButton({ appScope, userId, onFullChat }) {
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState("");
-  const [response, setResponse] = useState(null);
+  const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
+  const scrollRef = useRef(null);
+  
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages]);
   
   const ask = async () => {
     if (!msg.trim()) return;
-    setLoading(true); setResponse(null);
+    const userMsg = { role: "user", text: msg };
+    const abaId = "aba-" + Date.now();
+    setMessages(prev => [...prev, userMsg, { role: "aba", text: "", id: abaId }]);
+    setLoading(true);
+    const question = msg;
+    setMsg("");
     try {
       const res = await fetch(ABABASE + "/api/air/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, user_id: userId, userId, channel: "cip", appScope })
+        body: JSON.stringify({ message: question, user_id: userId, userId, channel: "cip", appScope })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -513,13 +1067,13 @@ function CARAButton({ appScope, userId, onFullChat }) {
         for (const line of text.split("\n").filter(l => l.startsWith("data: "))) {
           try {
             const d = JSON.parse(line.slice(6));
-            if (d.type === "chunk") { acc += d.text; setResponse(acc); }
-            else if (d.type === "done") { setResponse(d.fullResponse || acc); }
+            if (d.type === "chunk") { acc += d.text; setMessages(prev => prev.map(m => m.id === abaId ? { ...m, text: acc } : m)); }
+            else if (d.type === "done") { setMessages(prev => prev.map(m => m.id === abaId ? { ...m, text: d.fullResponse || acc } : m)); }
           } catch {}
         }
       }
-    } catch (e) { setResponse("Could not reach ABA. Try again."); }
-    setLoading(false); setMsg("");
+    } catch (e) { setMessages(prev => prev.map(m => m.id === abaId ? { ...m, text: "Could not reach ABA. Try again." } : m)); }
+    setLoading(false);
   };
   
   if (!open) return (
@@ -551,22 +1105,31 @@ function CARAButton({ appScope, userId, onFullChat }) {
           {appScope && <span style={{ fontSize: 10, color: "rgba(139,92,246,.5)", padding: "2px 8px", background: "rgba(139,92,246,.1)", borderRadius: 8 }}>{appScope}</span>}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={onFullChat} style={{ fontSize: 11, color: "rgba(139,92,246,.6)", background: "none", border: "none", cursor: "pointer" }}>Full Chat</button>
-          <button onClick={() => { setOpen(false); setResponse(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.3)" }}>
+          <button onClick={() => { setMessages([]); }} style={{ fontSize: 11, color: "rgba(255,255,255,.3)", background: "none", border: "none", cursor: "pointer" }}>Clear</button>
+          <button onClick={() => { setOpen(false); }} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,.3)" }}>
             <X size={16} />
           </button>
         </div>
       </div>
       
-      {/* Response */}
-      {response && (
-        <div style={{ padding: "12px 16px", flex: 1, overflowY: "auto", maxHeight: "40vh" }}>
-          <p style={{ fontSize: 13, color: "rgba(255,255,255,.8)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{response}</p>
-        </div>
-      )}
+      {/* Messages */}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "8px 16px", maxHeight: "40vh" }}>
+        {messages.length === 0 && <p style={{ color: "rgba(255,255,255,.25)", fontSize: 12, textAlign: "center", padding: 20 }}>Ask ABA anything about this app</p>}
+        {messages.map((m, i) => (
+          <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", marginBottom: 8 }}>
+            <div style={{
+              maxWidth: "85%", padding: "8px 12px", borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+              background: m.role === "user" ? "rgba(139,92,246,.2)" : "rgba(255,255,255,.06)",
+              border: "1px solid " + (m.role === "user" ? "rgba(139,92,246,.2)" : "rgba(255,255,255,.08)")
+            }}>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,.8)", lineHeight: 1.5, margin: 0, whiteSpace: "pre-wrap" }}>{m.text || "..."}</p>
+            </div>
+          </div>
+        ))}
+      </div>
       
       {/* Input */}
-      <div style={{ display: "flex", gap: 8, padding: "10px 16px 16px", borderTop: response ? "1px solid rgba(255,255,255,.06)" : "none" }}>
+      <div style={{ display: "flex", gap: 8, padding: "10px 16px 16px", borderTop: "1px solid rgba(255,255,255,.06)" }}>
         <input type="text" value={msg} onChange={e => setMsg(e.target.value)}
           onKeyDown={e => e.key === "Enter" && ask()}
           placeholder="Ask ABA anything..."
@@ -576,7 +1139,7 @@ function CARAButton({ appScope, userId, onFullChat }) {
           padding: "10px 16px", borderRadius: 12, border: "none", cursor: "pointer",
           background: loading ? "rgba(139,92,246,.2)" : "rgba(139,92,246,.3)", color: "#a78bfa"
         }}>
-          {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+          {loading ? "..." : "Go"}
         </button>
       </div>
     </div>
@@ -584,35 +1147,70 @@ function CARAButton({ appScope, userId, onFullChat }) {
 }
 
 
-
 function CCWAView({ userId }) {
   const [query, setQuery] = useState("");
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState([]);
+  const [devMode, setDevMode] = useState("prod"); // prod | dev | compare
   const ask = async () => {
     if (!query.trim()) return; setLoading(true);
     setHistory(prev => [...prev, { role: "user", text: query }]); const msg = query; setQuery("");
+    // Compare mode: fire both channels, show results
+    if (devMode === "compare") {
+      const channels = ["ccwa", "incuaba"];
+      const results = await Promise.allSettled(channels.map(ch =>
+        fetch(ABABASE + "/api/air/process", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: msg, user_id: userId, userId, channel: ch, appScope: "ccwa" }) }).then(r => r.json())
+      ));
+      const prodResp = results[0]?.value?.response || "Production error";
+      const devResp = results[1]?.value?.response || "Dev error";
+      const prodTools = (results[0]?.value?.toolsExecuted || []).map(t => typeof t === "object" ? t.tool_name : t).filter(Boolean);
+      const devTools = (results[1]?.value?.toolsExecuted || []).map(t => typeof t === "object" ? t.tool_name : t).filter(Boolean);
+      setHistory(prev => [...prev, { role: "compare", prod: prodResp, dev: devResp, prodTools, devTools }]);
+      setLoading(false); return;
+    }
     try {
-      const res = await fetch(ABABASE + "/api/air/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg, user_id: userId, userId, channel: "ccwa", appScope: "ccwa" }) });
+      const res = await fetch(ABABASE + "/api/air/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg, user_id: userId, userId, channel: devMode === "dev" ? "incuaba" : "ccwa", appScope: "ccwa" }) });
       const reader = res.body.getReader(); const decoder = new TextDecoder(); let acc = "";
       while (true) { const { done, value } = await reader.read(); if (done) break;
         for (const line of decoder.decode(value, { stream: true }).split("\n").filter(l => l.startsWith("data: "))) {
           try { const d = JSON.parse(line.slice(6)); if (d.type === "chunk") { acc += d.text; setResponse(acc); } else if (d.type === "done") { acc = d.fullResponse || acc; setResponse(acc); } } catch {} } }
-      setHistory(prev => [...prev, { role: "assistant", text: acc }]); setResponse(null);
+      setHistory(prev => { const c = [...prev]; if (c.length > 0 && c[c.length-1].role === "assistant") c[c.length-1] = { ...c[c.length-1], text: acc }; else c.push({ role: "assistant", text: acc }); return c; }); setResponse(null);
     } catch { setHistory(prev => [...prev, { role: "assistant", text: "Could not reach ABA." }]); }
     setLoading(false);
   };
   return (<div style={{flex:1,display:"flex",flexDirection:"column"}}>
     <div style={{flex:1,overflowY:"auto",padding:16}}>
+      {/* INCUABA Dev Toggle */}
+      <div style={{display:"flex",gap:4,padding:"0 0 8px",borderBottom:"1px solid rgba(255,255,255,.04)",marginBottom:8}}>
+        {[{id:"prod",label:"Production",color:"#f59e0b"},{id:"dev",label:"Dev (Haiku)",color:"#22d3ee"},{id:"compare",label:"Compare",color:"#a78bfa"}].map(m=>
+          <button key={m.id} onClick={()=>setDevMode(m.id)} style={{flex:1,padding:"6px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:devMode===m.id?700:400,background:devMode===m.id?m.color+"20":"transparent",color:devMode===m.id?m.color:"rgba(255,255,255,.3)"}}>{m.label}</button>)}
+      </div>
+      {devMode==="dev"&&<div style={{padding:"4px 8px",borderRadius:6,background:"rgba(34,211,238,.08)",border:"1px solid rgba(34,211,238,.15)",marginBottom:8,fontSize:10,color:"rgba(34,211,238,.7)"}}>INCUABA: Running on Haiku. 10-20x cheaper. Same agents, cheaper model.</div>}
       {history.length === 0 && !response && <div style={{textAlign:"center",padding:"40px 20px"}}>
-        <Code size={40} style={{margin:"0 auto 12px",opacity:.3,color:"#f59e0b"}} />
+        <Code size={40} style={{margin:"0 auto 12px",opacity:.3,color:devMode==="dev"?"#22d3ee":"#f59e0b"}} />
         <p style={{fontSize:15,color:"rgba(255,255,255,.6)",marginBottom:8}}>Code with ABA</p>
         <p style={{fontSize:12,color:"rgba(255,255,255,.3)"}}>Build, debug, audit, or deploy code across the ABA ecosystem</p>
         <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:16}}>
           {["Audit last deploy","Check Render status","Agent roster","Show recent errors"].map(s => <button key={s} onClick={()=>setQuery(s)} style={{padding:"8px 14px",borderRadius:20,border:"1px solid rgba(245,158,11,.2)",background:"rgba(245,158,11,.08)",color:"rgba(245,158,11,.7)",fontSize:11,cursor:"pointer"}}>{s}</button>)}
         </div></div>}
-      {history.map((m,i) => <div key={i} style={{marginBottom:12,display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}><div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:m.role==="user"?"rgba(245,158,11,.15)":"rgba(255,255,255,.05)",border:"1px solid "+(m.role==="user"?"rgba(245,158,11,.2)":"rgba(255,255,255,.08)")}}><p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{m.text}</p></div></div>)}
+      {history.map((m,i) => <div key={i} style={{marginBottom:12}}>
+        {m.role==="compare" ? <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <div style={{padding:"10px 12px",borderRadius:12,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.15)"}}>
+            <p style={{fontSize:10,color:"#f59e0b",marginBottom:4,fontWeight:600}}>PRODUCTION (Sonnet)</p>
+            <p style={{fontSize:12,color:"rgba(255,255,255,.8)",lineHeight:1.5,whiteSpace:"pre-wrap",margin:0}}>{m.prod}</p>
+            {m.prodTools?.length>0&&<div style={{display:"flex",gap:3,flexWrap:"wrap",marginTop:4}}>{m.prodTools.map((t,j)=><span key={j} style={{fontSize:8,padding:"1px 5px",borderRadius:3,background:"rgba(245,158,11,.1)",color:"#f59e0b"}}>{t}</span>)}</div>}
+          </div>
+          <div style={{padding:"10px 12px",borderRadius:12,background:"rgba(34,211,238,.08)",border:"1px solid rgba(34,211,238,.15)"}}>
+            <p style={{fontSize:10,color:"#22d3ee",marginBottom:4,fontWeight:600}}>DEV (Haiku)</p>
+            <p style={{fontSize:12,color:"rgba(255,255,255,.8)",lineHeight:1.5,whiteSpace:"pre-wrap",margin:0}}>{m.dev}</p>
+            {m.devTools?.length>0&&<div style={{display:"flex",gap:3,flexWrap:"wrap",marginTop:4}}>{m.devTools.map((t,j)=><span key={j} style={{fontSize:8,padding:"1px 5px",borderRadius:3,background:"rgba(34,211,238,.1)",color:"#22d3ee"}}>{t}</span>)}</div>}
+          </div>
+        </div>
+        : <><div style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}><div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:m.role==="user"?"rgba(245,158,11,.15)":"rgba(255,255,255,.05)",border:"1px solid "+(m.role==="user"?"rgba(245,158,11,.2)":"rgba(255,255,255,.08)")}}><p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap",margin:0}}>{m.text}</p></div></div>
+        {m.tools && m.tools.length > 0 && <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4,justifyContent:"flex-start"}}>{m.tools.map((t,j)=><span key={j} style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:"rgba(139,92,246,.1)",color:"#a78bfa"}}>{t}</span>)}</div>}</>}
+      </div>)}
       {response && <div style={{marginBottom:12}}><div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:16,background:"rgba(255,255,255,.05)",border:"1px solid rgba(245,158,11,.15)"}}><p style={{fontSize:13,color:"rgba(255,255,255,.85)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{response}</p></div></div>}
     </div>
     <div style={{display:"flex",gap:8,padding:"10px 16px 16px"}}>
@@ -670,6 +1268,644 @@ function ClosedCaptions({ text, visible }) {
       <p style={{ fontSize: 13, color: "rgba(255,255,255,.9)", lineHeight: 1.5, margin: 0, textAlign: "center" }}>{text}</p>
     </div>
   );
+}
+
+// ═══════════════════════════════════════════════════════════
+// MEETING MODE — 3-panel: Transcript | ABA Answers | Glossary
+// ⬡B:cip.meeting_mode:VIEW:tim_cook_v2:20260326⬡
+// TIM (Temporary Interim Model) quick cues via Groq + COOK (Conversational Optimization) polished answers via Sonnet
+// Visually upgraded: dark glass panels, cyan accents, TIM cue banner, COOK streaming answers
+// ═══════════════════════════════════════════════════════════
+function MeetingModeView({ userId }) {
+  const [running, setRunning] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [transcript, setTranscript] = useState([]);
+  const [timCues, setTimCues] = useState([]);
+  const [cookAnswers, setCookAnswers] = useState([]);
+  const [glossary, setGlossary] = useState([]);
+  const [panel, setPanel] = useState("transcript");
+  const [recording, setRecording] = useState(false);
+  const [askInput, setAskInput] = useState("");
+  const [askLoading, setAskLoading] = useState(false);
+  const [summary, setSummary] = useState(null);
+  const [activeCue, setActiveCue] = useState(null);
+  const [cookStreaming, setCookStreaming] = useState(false);
+  const recRef = useRef(null);
+  const streamRef = useRef(null);
+  const intervalRef = useRef(null);
+  const secondsRef = useRef(0);
+  const cueTimeoutRef = useRef(null);
+  const transcriptRef = useRef([]);
+  const analyserRef = useRef(null);
+  const audioCtxRef = useRef(null);
+
+  useEffect(() => {
+    if (running) { intervalRef.current = setInterval(() => { setSeconds(s => { secondsRef.current = s + 1; return s + 1; }); }, 1000); }
+    else clearInterval(intervalRef.current);
+    return () => clearInterval(intervalRef.current);
+  }, [running]);
+
+  const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+
+  // TIM quick cue fetcher
+  const fetchTimCue = async (text) => {
+    try {
+      const res = await fetch(`${ABABASE}/api/tim/cue`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "meeting", userId })
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.cue) {
+          const cue = { text: d.cue, type: d.type, time: fmt(secondsRef.current), latency: d.latency_ms };
+          setTimCues(prev => [...prev, cue]);
+          setActiveCue(cue);
+          clearTimeout(cueTimeoutRef.current);
+          cueTimeoutRef.current = setTimeout(() => setActiveCue(null), 8000);
+        }
+      }
+    } catch {}
+  };
+
+  // COOK polished answer fetcher (SSE streaming)
+  const fetchCookAnswer = async (question) => {
+    setCookStreaming(true);
+    let fullText = "";
+    try {
+      const res = await fetch(`${ABABASE}/api/cook/answer`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "meeting", userId })
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n").filter(l => l.startsWith("data: "));
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line.slice(6));
+            if (parsed.type === "text") { fullText += parsed.text; setCookAnswers(prev => { const updated = [...prev]; if (updated.length > 0 && updated[updated.length-1].streaming) { updated[updated.length-1].text = fullText; } else { updated.push({ q: question.substring(0, 80), text: fullText, time: fmt(secondsRef.current), streaming: true }); } return updated; }); }
+            if (parsed.type === "done") { setCookAnswers(prev => { const updated = [...prev]; if (updated.length > 0) updated[updated.length-1].streaming = false; return updated; }); }
+          } catch {}
+        }
+      }
+    } catch { if (fullText) setCookAnswers(prev => { const u = [...prev]; if (u.length > 0) u[u.length-1].streaming = false; return u; }); }
+    setCookStreaming(false);
+  };
+
+  const processSegment = async (text) => {
+    fetchTimCue(text);
+    // Detect if segment contains a question (for COOK)
+    if (text.includes("?") || text.length > 80) {
+      setTimeout(() => fetchCookAnswer(text), 2000); // Delay to let TIM fire first
+    }
+  };
+
+  const startMeeting = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      // ⬡B:FIX:meeting_vad:silence_detection:20260330⬡
+      // Set up AudioContext + AnalyserNode for voice activity detection
+      // Polls every 200ms — if no voice detected in a 5s chunk, skip Deepgram call
+      try {
+        const actx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = actx.createMediaStreamSource(stream);
+        const analyser = actx.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        audioCtxRef.current = actx;
+        analyserRef.current = { node: analyser, hadVoice: false, buf: new Uint8Array(analyser.fftSize) };
+        // Poll audio level every 200ms
+        analyserRef.current.interval = setInterval(() => {
+          if (!analyserRef.current) return;
+          const a = analyserRef.current;
+          a.node.getByteTimeDomainData(a.buf);
+          let maxDev = 0;
+          for (let i = 0; i < a.buf.length; i++) maxDev = Math.max(maxDev, Math.abs(a.buf[i] - 128));
+          if (maxDev > 8) a.hadVoice = true;
+        }, 200);
+      } catch (vadErr) { console.log("[MEETING] VAD setup skipped:", vadErr.message); }
+      const mimes = ["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus",""];
+      let mime = "";
+      for (const m of mimes) { if (!m || MediaRecorder.isTypeSupported(m)) { mime = m; break; } }
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      let emptyChunks = 0;
+      rec.ondataavailable = async (e) => {
+        // Check VAD — skip Deepgram if no voice detected in this chunk
+        const vad = analyserRef.current;
+        const hadVoice = vad ? vad.hadVoice : true; // default to true if VAD not available
+        if (vad) vad.hadVoice = false; // reset for next chunk
+        if (e.data.size > 500 && hadVoice) {
+          const audioBlob_meeting = new Blob([e.data], { type: mime || "audio/webm" });
+          console.log("[MEETING] Audio chunk:", audioBlob_meeting.size, "bytes, type:", audioBlob_meeting.type);
+          const text = await reachTranscribe(audioBlob_meeting);
+          if (text && text.trim()) {
+            emptyChunks = 0;
+            const entry = { text, time: fmt(secondsRef.current) };
+            setTranscript(prev => [...prev, entry]);
+            transcriptRef.current = [...transcriptRef.current, entry];
+            processSegment(text);
+          } else {
+            emptyChunks++;
+            if (emptyChunks === 3) {
+              setTranscript(prev => [...prev, { text: "ABA is having trouble hearing. Try moving closer to the microphone.", time: fmt(secondsRef.current), isSystem: true }]);
+            }
+          }
+        } else if (!hadVoice) {
+          console.log("[MEETING] Silent chunk — skipping Deepgram call");
+        } else {
+          console.log("[MEETING] Audio chunk too small:", e.data.size, "bytes — skipping");
+        }
+      };
+      rec.start(5000);
+      recRef.current = rec;
+      setRecording(true);
+      setRunning(true);
+    } catch { alert("Microphone access denied"); }
+  };
+
+  const endMeeting = async () => {
+    recRef.current?.stop();
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    // Clean up VAD
+    if (analyserRef.current?.interval) clearInterval(analyserRef.current.interval);
+    if (audioCtxRef.current) { try { audioCtxRef.current.close(); } catch {} }
+    analyserRef.current = null; audioCtxRef.current = null;
+    setRunning(false);
+    setRecording(false);
+    if (transcriptRef.current.length > 0) {
+      try {
+        const res = await fetch(`${ABABASE}/api/meeting/summary`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcript: transcriptRef.current.map(t=>`[${t.time}] ${t.text}`).join("\n"), duration: fmt(seconds), mode: "meeting", userId })
+        });
+        if (res.ok) { const d = await res.json(); setSummary(d.summary || ""); }
+      } catch {}
+    }
+  };
+
+  const askABA = async () => {
+    if (!askInput.trim()) return;
+    setAskLoading(true);
+    const q = askInput; setAskInput("");
+    fetchCookAnswer(q);
+    setAskLoading(false);
+  };
+
+  const panels = [
+    { id: "transcript", label: "Transcript", count: transcript.length, Icon: FileText },
+    { id: "coaching", label: "Coaching", count: cookAnswers.length, Icon: MessageSquare },
+    { id: "glossary", label: "Glossary", count: glossary.length, Icon: BookOpen }
+  ];
+
+  const panelStyle = (id) => ({
+    flex: 1, padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer",
+    fontSize: 11, fontWeight: panel === id ? 700 : 400, letterSpacing: panel === id ? "0.5px" : "0",
+    background: panel === id ? "linear-gradient(135deg, rgba(6,182,212,.2), rgba(6,182,212,.08))" : "transparent",
+    color: panel === id ? "#22d3ee" : "rgba(255,255,255,.35)",
+    transition: "all 0.3s ease", display: "flex", alignItems: "center", justifyContent: "center", gap: 5
+  });
+
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(6,182,212,.03) 0%, transparent 40%)"}}>
+    {/* TIM Cue Banner */}
+    {activeCue && <div style={{
+      padding:"10px 14px",margin:"6px 8px 0",borderRadius:12,
+      background: activeCue.type === "ALERT" ? "linear-gradient(135deg, rgba(239,68,68,.15), rgba(239,68,68,.05))" : "linear-gradient(135deg, rgba(6,182,212,.15), rgba(6,182,212,.05))",
+      border: activeCue.type === "ALERT" ? "1px solid rgba(239,68,68,.2)" : "1px solid rgba(6,182,212,.15)",
+      boxShadow: activeCue.type === "ALERT" ? "0 0 20px rgba(239,68,68,.1)" : "0 0 20px rgba(6,182,212,.08)",
+      animation:"mf .4s ease",transition:"all 0.3s ease"
+    }}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+        <div style={{width:6,height:6,borderRadius:"50%",background:activeCue.type==="ALERT"?"#ef4444":"#22d3ee",boxShadow:activeCue.type==="ALERT"?"0 0 8px rgba(239,68,68,.5)":"0 0 8px rgba(6,182,212,.5)",animation:"mb 1.5s infinite"}}/>
+        <span style={{fontSize:9,fontWeight:700,color:activeCue.type==="ALERT"?"#fca5a5":"rgba(6,182,212,.7)",letterSpacing:"1px",textTransform:"uppercase"}}>{activeCue.type==="ALERT"?"Alert":"TIM Cue"}</span>
+        <span style={{fontSize:8,color:"rgba(255,255,255,.2)",marginLeft:"auto"}}>{activeCue.latency}ms</span>
+      </div>
+      <p style={{fontSize:13,color:"rgba(255,255,255,.9)",margin:0,lineHeight:1.5,fontWeight:500}}>{activeCue.text}</p>
+    </div>}
+
+    {/* Header */}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",borderBottom:"1px solid rgba(6,182,212,.08)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12}}>
+        {recording && <div style={{width:10,height:10,borderRadius:"50%",background:"#ef4444",animation:"mb 1.5s infinite",boxShadow:"0 0 12px rgba(239,68,68,.4)"}}/>}
+        <span style={{fontFamily:"'SF Mono',monospace",fontSize:24,color:running?"#22d3ee":"rgba(255,255,255,.15)",fontWeight:200,letterSpacing:"2px"}}>{fmt(seconds)}</span>
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        {!running ? <button onClick={startMeeting} style={{padding:"8px 18px",borderRadius:12,border:"1px solid rgba(6,182,212,.3)",background:"linear-gradient(135deg, rgba(6,182,212,.15), rgba(6,182,212,.05))",color:"#22d3ee",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6,boxShadow:"0 0 15px rgba(6,182,212,.1)",transition:"all 0.2s ease"}}><Mic size={14}/>Start Meeting</button>
+        : <button onClick={endMeeting} style={{padding:"8px 18px",borderRadius:12,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.08)",color:"#f87171",fontSize:12,fontWeight:600,cursor:"pointer",transition:"all 0.2s ease"}}>End Meeting</button>}
+      </div>
+    </div>
+
+    {/* Panel Tabs */}
+    <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
+      {panels.map(p => <button key={p.id} onClick={()=>setPanel(p.id)} style={panelStyle(p.id)}>
+        {p.Icon&&<p.Icon size={12}/>}{p.label}{p.count>0&&<span style={{fontSize:9,background:panel===p.id?"rgba(6,182,212,.3)":"rgba(255,255,255,.06)",padding:"2px 6px",borderRadius:8,fontWeight:600}}>{p.count}</span>}
+      </button>)}
+    </div>
+
+    {/* Panel Content */}
+    <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+      {panel==="transcript" && (transcript.length===0
+        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><Mic size={36} style={{margin:"0 auto 12px",display:"block",opacity:.2}}/><p style={{fontSize:13,margin:0,fontWeight:300}}>{running?"Listening for speech...":"Tap Start Meeting to begin"}</p></div>
+        : transcript.map((t,i) => <div key={i} style={{padding:"10px 12px",marginBottom:5,borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)",animation:"mf .3s ease",transition:"all 0.2s ease"}}><span style={{color:"rgba(6,182,212,.35)",fontSize:9,fontWeight:600,marginRight:8,fontFamily:"monospace"}}>{t.time}</span><span style={{color:"rgba(255,255,255,.8)",fontSize:12.5,lineHeight:1.6}}>{t.text}</span></div>)
+      )}
+      {panel==="coaching" && (cookAnswers.length===0
+        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><Sparkles size={36} style={{margin:"0 auto 12px",display:"block",opacity:.2}}/><p style={{fontSize:13,margin:0,fontWeight:300}}>COOK's polished answers appear here as the meeting progresses</p><p style={{fontSize:10,color:"rgba(255,255,255,.08)",marginTop:4}}>TIM fires quick cues at the top, COOK delivers substance here</p></div>
+        : cookAnswers.map((a,i) => <div key={i} style={{padding:14,marginBottom:8,borderRadius:14,background:"linear-gradient(135deg, rgba(139,92,246,.06), rgba(139,92,246,.02))",border:"1px solid rgba(139,92,246,.1)",boxShadow:a.streaming?"0 0 15px rgba(139,92,246,.08)":"none",transition:"all 0.3s ease"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+            <div style={{width:5,height:5,borderRadius:"50%",background:a.streaming?"#a78bfa":"rgba(139,92,246,.3)",...(a.streaming?{animation:"mb 1s infinite"}:{})}}/>
+            <span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",letterSpacing:"1px",textTransform:"uppercase"}}>{a.streaming?"COOK is thinking...":"COOK"}</span>
+            <span style={{fontSize:8,color:"rgba(255,255,255,.15)",marginLeft:"auto"}}>{a.time}</span>
+          </div>
+          {a.q && <p style={{color:"rgba(139,92,246,.5)",fontSize:10,margin:"0 0 6px",fontStyle:"italic"}}>Re: {a.q}</p>}
+          <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{a.text}</p>
+        </div>)
+      )}
+      {panel==="glossary" && (glossary.length===0
+        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><p style={{fontSize:13,margin:0,fontWeight:300}}>Key terms will appear here as they are mentioned</p></div>
+        : glossary.map((g,i) => <div key={i} style={{padding:10,marginBottom:5,borderRadius:10,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}><span style={{color:"#22d3ee",fontSize:12,fontWeight:600}}>{g.term}</span><p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"3px 0 0",lineHeight:1.5}}>{g.definition}</p></div>)
+      )}
+      {summary && <div style={{padding:16,borderRadius:14,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.12)",marginTop:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><CheckCircle size={14} color="#34d399"/><span style={{fontSize:11,fontWeight:700,color:"#34d399",letterSpacing:"0.5px"}}>Meeting Summary</span></div>
+        <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{summary}</p>
+      </div>}
+    </div>
+
+    {/* Ask ABA input */}
+    {running && <div style={{padding:"10px 12px",borderTop:"1px solid rgba(6,182,212,.08)",display:"flex",gap:8,background:"rgba(0,0,0,.2)"}}>
+      <input value={askInput} onChange={e=>setAskInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&askABA()} placeholder="Ask ABA anything during this meeting..." style={{flex:1,padding:"10px 14px",borderRadius:12,border:"1px solid rgba(6,182,212,.12)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:12,outline:"none",transition:"border-color 0.2s"}}/>
+      <button onClick={askABA} disabled={askLoading||!askInput.trim()} style={{padding:"10px 16px",borderRadius:12,border:"none",background:askInput.trim()?"linear-gradient(135deg, rgba(139,92,246,.25), rgba(139,92,246,.1))":"rgba(255,255,255,.03)",color:askInput.trim()?"#c4b5fd":"rgba(255,255,255,.15)",cursor:"pointer",fontSize:12,fontWeight:600,transition:"all 0.2s ease"}}>{askLoading?<Loader2 size={14} style={{animation:"spin 1s linear infinite"}}/>:<Send size={14}/>}</button>
+    </div>}
+  </div>);
+}
+
+// ⬡B:cip.interview_mode:VIEW:tim_cook_v2:20260326⬡
+// TIM quick cues + COOK STAR-method polished answers for interviews
+// 3 sub-modes: Prep (job-specific), Live (real-time coaching), Mock (ABA as interviewer)
+// ═══════════════════════════════════════════════════════════
+function InterviewModeView({ userId }) {
+  const [mode, setMode] = useState("prep");
+  const [jobs, setJobs] = useState([]);
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [prepData, setPrepData] = useState(null);
+  const [prepLoading, setPrepLoading] = useState(false);
+  const [transcript, setTranscript] = useState([]);
+  const [timCues, setTimCues] = useState([]);
+  const [cookAnswers, setCookAnswers] = useState([]);
+  const [activeCue, setActiveCue] = useState(null);
+  const [cookStreaming, setCookStreaming] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [mockQ, setMockQ] = useState(null);
+  const [mockHistory, setMockHistory] = useState([]);
+  const [mockAnswer, setMockAnswer] = useState("");
+  const [mockLoading, setMockLoading] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [running, setRunning] = useState(false);
+  const [panel, setPanel] = useState("transcript");
+  const [summary, setSummary] = useState(null);
+  const recRef = useRef(null);
+  const streamRef = useRef(null);
+  const intervalRef = useRef(null);
+  const secondsRef = useRef(0);
+  const cueTimeoutRef = useRef(null);
+  const transcriptRef = useRef([]);
+  const analyserRef_iv = useRef(null);
+  const audioCtxRef_iv = useRef(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${ABABASE}/api/awa/jobs?assignee=${encodeURIComponent(userId)}&limit=15`);
+        if (res.ok) { const d = await res.json(); setJobs((d.jobs || d.data || []).slice(0, 15)); }
+      } catch {}
+    })();
+  }, [userId]);
+
+  useEffect(() => {
+    if (running) { intervalRef.current = setInterval(() => { setSeconds(s => { secondsRef.current = s + 1; return s + 1; }); }, 1000); }
+    else clearInterval(intervalRef.current);
+    return () => clearInterval(intervalRef.current);
+  }, [running]);
+
+  const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+  const amber = (opacity) => `rgba(245,158,11,${opacity})`;
+
+  const fetchTimCue = async (text) => {
+    try {
+      const res = await fetch(`${ABABASE}/api/tim/cue`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, userId })
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.cue) {
+          const cue = { text: d.cue, type: d.type, time: fmt(secondsRef.current), latency: d.latency_ms };
+          setTimCues(prev => [...prev, cue]);
+          setActiveCue(cue);
+          clearTimeout(cueTimeoutRef.current);
+          cueTimeoutRef.current = setTimeout(() => setActiveCue(null), 8000);
+        }
+      }
+    } catch {}
+  };
+
+  const fetchCookAnswer = async (question) => {
+    setCookStreaming(true);
+    let fullText = "";
+    try {
+      const res = await fetch(`${ABABASE}/api/cook/answer`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId })
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n").filter(l => l.startsWith("data: "));
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line.slice(6));
+            if (parsed.type === "text") { fullText += parsed.text; setCookAnswers(prev => { const u = [...prev]; if (u.length > 0 && u[u.length-1].streaming) { u[u.length-1].text = fullText; } else { u.push({ q: question.substring(0, 80), text: fullText, time: fmt(secondsRef.current), streaming: true }); } return u; }); }
+            if (parsed.type === "done") { setCookAnswers(prev => { const u = [...prev]; if (u.length > 0) u[u.length-1].streaming = false; return u; }); }
+          } catch {}
+        }
+      }
+    } catch { if (fullText) setCookAnswers(prev => { const u = [...prev]; if (u.length > 0) u[u.length-1].streaming = false; return u; }); }
+    setCookStreaming(false);
+  };
+
+  const processSegment = async (text) => {
+    fetchTimCue(text);
+    if (text.includes("?") || text.length > 60) {
+      setTimeout(() => fetchCookAnswer(text), 2000);
+    }
+  };
+
+  const loadPrep = async (job) => {
+    setSelectedJob(job); setPrepLoading(true);
+    try {
+      const res = await fetch(`${ABABASE}/api/awa/interview-prep`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job, userId })
+      });
+      if (res.ok) { const d = await res.json(); setPrepData(d.prep || d.response || d); }
+    } catch {}
+    setPrepLoading(false);
+  };
+
+  const startMock = async () => {
+    setMode("mock"); setMockHistory([]); setMockLoading(true);
+    try {
+      const res = await fetch(`${ABABASE}/api/air/stream`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: `You are interviewing me for "${selectedJob?.title || "a professional position"}" at ${selectedJob?.organization || "an organization"}. Ask me one interview question. Just the question, nothing else.`, user_id: userId, channel: "myaba", appScope: "interview" })
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let q = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n").filter(l => l.startsWith("data: "));
+        for (const line of lines) {
+          try { const p = JSON.parse(line.slice(6)); if (p.type === "text") q += p.text; } catch {}
+        }
+      }
+      setMockQ(q || "Tell me about yourself.");
+    } catch { setMockQ("Tell me about yourself."); }
+    setMockLoading(false);
+  };
+
+  const submitMockAnswer = async () => {
+    if (!mockAnswer.trim()) return;
+    setMockLoading(true);
+    const answer = mockAnswer; setMockAnswer("");
+    setMockHistory(prev => [...prev, { q: mockQ, a: answer, scoring: true }]);
+    try {
+      const res = await fetch(`${ABABASE}/api/air/stream`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: `Mock interview for "${selectedJob?.title || "a role"}" at ${selectedJob?.organization || "org"}.\nQuestion: "${mockQ}"\nAnswer: "${answer}"\n\nScore 1-10 with feedback. Use STAR method. Then next question.\n\nFormat:\nSCORE: X/10\nSTRENGTHS: ...\nIMPROVE: ...\nBETTER ANSWER: ...\nNEXT QUESTION: ...`, user_id: userId, channel: "myaba", appScope: "interview" })
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n").filter(l => l.startsWith("data: "));
+        for (const line of lines) {
+          try { const p = JSON.parse(line.slice(6)); if (p.type === "text") fullText += p.text; } catch {}
+        }
+      }
+      const scoreM = fullText.match(/SCORE:\s*(\d+)/i);
+      const strM = fullText.match(/STRENGTHS?:\s*(.+?)(?=IMPROVE|BETTER|NEXT|$)/is);
+      const impM = fullText.match(/IMPROVE:\s*(.+?)(?=BETTER|NEXT|$)/is);
+      const betM = fullText.match(/BETTER ANSWER:\s*(.+?)(?=NEXT|$)/is);
+      const nqM = fullText.match(/NEXT QUESTION:\s*(.+)/is);
+      setMockHistory(prev => { const u = [...prev]; const last = u[u.length-1]; if(last) { last.score = scoreM?scoreM[1]:"?"; last.strengths = strM?strM[1].trim():""; last.improve = impM?impM[1].trim():""; last.better = betM?betM[1].trim():""; last.scoring = false; } return [...u]; });
+      setMockQ(nqM ? nqM[1].trim() : "Tell me more about your experience.");
+    } catch {}
+    setMockLoading(false);
+  };
+
+  const toggleRecord = async () => {
+    if (recording) { recRef.current?.stop(); streamRef.current?.getTracks().forEach(t=>t.stop()); setRecording(false); if(analyserRef_iv.current?.interval)clearInterval(analyserRef_iv.current.interval); if(audioCtxRef_iv.current){try{audioCtxRef_iv.current.close()}catch{}} analyserRef_iv.current=null; audioCtxRef_iv.current=null; return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      // ⬡B:FIX:interview_vad:silence_detection:20260330⬡
+      try {
+        const actx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = actx.createMediaStreamSource(stream);
+        const analyser = actx.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        audioCtxRef_iv.current = actx;
+        analyserRef_iv.current = { node: analyser, hadVoice: false, buf: new Uint8Array(analyser.fftSize) };
+        analyserRef_iv.current.interval = setInterval(() => {
+          if (!analyserRef_iv.current) return;
+          const a = analyserRef_iv.current;
+          a.node.getByteTimeDomainData(a.buf);
+          let maxDev = 0;
+          for (let i = 0; i < a.buf.length; i++) maxDev = Math.max(maxDev, Math.abs(a.buf[i] - 128));
+          if (maxDev > 8) a.hadVoice = true;
+        }, 200);
+      } catch (vadErr) { console.log("[INTERVIEW] VAD setup skipped:", vadErr.message); }
+      const mimes = ["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus",""];
+      let mime = "";
+      for (const m of mimes) { if (!m || MediaRecorder.isTypeSupported(m)) { mime = m; break; } }
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      rec.ondataavailable = async (e) => {
+        const vad = analyserRef_iv.current;
+        const hadVoice = vad ? vad.hadVoice : true;
+        if (vad) vad.hadVoice = false;
+        if (e.data.size > 500 && hadVoice) {
+          const audioBlob_interview = new Blob([e.data], { type: mime || "audio/webm" });
+          const text = await reachTranscribe(audioBlob_interview);
+          if (text && text.trim()) {
+            const entry = { text, time: fmt(secondsRef.current) };
+            setTranscript(prev => [...prev, entry]);
+            transcriptRef.current = [...transcriptRef.current, entry];
+            if (mode === "mock") setMockAnswer(prev => prev ? prev + " " + text : text);
+            else processSegment(text);
+          }
+        } else if (!hadVoice) {
+          console.log("[INTERVIEW] Silent chunk — skipping Deepgram call");
+        }
+      };
+      rec.start(5000); recRef.current = rec; setRecording(true);
+      if (!running) setRunning(true);
+    } catch { alert("Microphone access denied"); }
+  };
+
+  const endInterview = async () => {
+    recRef.current?.stop();
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    if(analyserRef_iv.current?.interval)clearInterval(analyserRef_iv.current.interval);
+    if(audioCtxRef_iv.current){try{audioCtxRef_iv.current.close()}catch{}}
+    analyserRef_iv.current=null; audioCtxRef_iv.current=null;
+    setRunning(false); setRecording(false);
+    if (transcriptRef.current.length > 0) {
+      try {
+        const res = await fetch(`${ABABASE}/api/meeting/summary`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcript: transcriptRef.current.map(t=>`[${t.time}] ${t.text}`).join("\n"), duration: fmt(seconds), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, userId })
+        });
+        if (res.ok) { const d = await res.json(); setSummary(d.summary || ""); }
+      } catch {}
+    }
+  };
+
+  const modeTab = (id, label, emoji) => <button onClick={()=>{ if(id==="mock"&&selectedJob) startMock(); else setMode(id); }} style={{
+    flex:1,padding:"9px 0",borderRadius:10,border:"none",cursor:"pointer",fontSize:11,fontWeight:mode===id?700:400,
+    letterSpacing: mode===id?"0.5px":"0",
+    background:mode===id?`linear-gradient(135deg, ${amber(.2)}, ${amber(.08)})`:"transparent",
+    color:mode===id?"#fbbf24":"rgba(255,255,255,.3)",transition:"all 0.3s ease",display:"flex",alignItems:"center",justifyContent:"center",gap:5
+  }}>{typeof emoji==="string"?<span>{emoji}</span>:React.createElement(emoji,{size:12})}{label}</button>;
+
+  // ═══════ PREP MODE ═══════
+  if (mode === "prep") return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
+    <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:`1px solid ${amber(.08)}`}}>
+      {modeTab("prep","Prep",FileText)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+      {!selectedJob ? (<>
+        <p style={{fontSize:13,fontWeight:600,color:"rgba(255,255,255,.7)",margin:"0 0 10px"}}>Select a job to prepare for</p>
+        {jobs.length===0 ? <p style={{textAlign:"center",padding:30,color:"rgba(255,255,255,.15)",fontSize:12}}>No jobs in pipeline yet.</p>
+        : jobs.map((j,i) => <button key={j.id||i} onClick={()=>loadPrep(j)} style={{display:"block",width:"100%",textAlign:"left",padding:"12px 14px",marginBottom:6,borderRadius:14,background:"linear-gradient(135deg, rgba(255,255,255,.03), rgba(255,255,255,.01))",border:`1px solid ${amber(.08)}`,cursor:"pointer",color:"#fff",transition:"all 0.2s ease"}}>
+          <p style={{fontSize:13,fontWeight:600,margin:0,color:"rgba(255,255,255,.85)"}}>{j.title||"Untitled"}</p>
+          <p style={{fontSize:10,color:amber(.4),margin:"3px 0 0",fontWeight:500}}>{j.organization||""}</p>
+        </button>)}
+      </>) : (<>
+        <button onClick={()=>{setSelectedJob(null);setPrepData(null)}} style={{background:"none",border:"none",color:amber(.5),cursor:"pointer",fontSize:11,padding:0,marginBottom:8,fontWeight:500}}>← Back to jobs</button>
+        <div style={{padding:"14px 16px",borderRadius:14,background:`linear-gradient(135deg, ${amber(.06)}, ${amber(.02)})`,border:`1px solid ${amber(.12)}`,marginBottom:12}}>
+          <p style={{fontSize:15,fontWeight:700,color:"rgba(255,255,255,.9)",margin:"0 0 3px"}}>{selectedJob.title}</p>
+          <p style={{fontSize:11,color:amber(.5),margin:0,fontWeight:500}}>{selectedJob.organization}</p>
+        </div>
+        {prepLoading ? <div style={{textAlign:"center",padding:40}}><Loader2 size={20} style={{color:"#fbbf24",animation:"spin 1s linear infinite"}}/><p style={{fontSize:11,color:"rgba(255,255,255,.2)",marginTop:8}}>Generating prep package...</p></div>
+        : prepData ? <div style={{fontSize:12.5,color:"rgba(255,255,255,.75)",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{typeof prepData === "string" ? prepData : JSON.stringify(prepData, null, 2)}</div>
+        : null}
+      </>)}
+    </div>
+  </div>);
+
+  // ═══════ MOCK MODE ═══════
+  if (mode === "mock") return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
+    <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:`1px solid ${amber(.08)}`}}>
+      {modeTab("prep","Prep",FileText)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+      {mockHistory.map((h,i) => <div key={i} style={{marginBottom:14}}>
+        <div style={{padding:"12px 14px",borderRadius:"14px 14px 4px 14px",background:`linear-gradient(135deg, ${amber(.08)}, ${amber(.03)})`,border:`1px solid ${amber(.12)}`,marginBottom:4}}>
+          <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}><span style={{fontSize:9,fontWeight:700,color:amber(.6),letterSpacing:"0.5px",textTransform:"uppercase"}}>Interviewer</span></div>
+          <p style={{fontSize:12.5,color:"rgba(255,255,255,.8)",margin:0,lineHeight:1.6}}>{h.q}</p>
+        </div>
+        <div style={{padding:"12px 14px",borderRadius:"4px 14px 14px 14px",background:"linear-gradient(135deg, rgba(139,92,246,.06), rgba(139,92,246,.02))",border:"1px solid rgba(139,92,246,.1)",marginBottom:4}}>
+          <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}><span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",letterSpacing:"0.5px",textTransform:"uppercase"}}>You</span></div>
+          <p style={{fontSize:12.5,color:"rgba(255,255,255,.75)",margin:0,lineHeight:1.6}}>{h.a}</p>
+        </div>
+        {h.scoring ? <div style={{padding:10,textAlign:"center"}}><Loader2 size={14} style={{color:"#fbbf24",animation:"spin 1s linear infinite"}}/></div>
+        : h.score && <div style={{padding:"12px 14px",borderRadius:12,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.1)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+            <span style={{fontSize:22,fontWeight:800,color:parseInt(h.score)>=7?"#34d399":parseInt(h.score)>=5?"#fbbf24":"#f87171"}}>{h.score}<span style={{fontSize:12,fontWeight:400,color:"rgba(255,255,255,.3)"}}>/10</span></span>
+          </div>
+          {h.strengths && <div style={{marginBottom:6}}><span style={{fontSize:9,fontWeight:700,color:"rgba(16,185,129,.6)",letterSpacing:"0.5px"}}>STRENGTHS</span><p style={{fontSize:11.5,color:"rgba(255,255,255,.6)",margin:"2px 0 0",lineHeight:1.5}}>{h.strengths}</p></div>}
+          {h.improve && <div style={{marginBottom:6}}><span style={{fontSize:9,fontWeight:700,color:amber(.6),letterSpacing:"0.5px"}}>IMPROVE</span><p style={{fontSize:11.5,color:"rgba(255,255,255,.6)",margin:"2px 0 0",lineHeight:1.5}}>{h.improve}</p></div>}
+          {h.better && <div><span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",letterSpacing:"0.5px"}}>POLISHED VERSION</span><p style={{fontSize:11.5,color:"rgba(255,255,255,.7)",margin:"2px 0 0",lineHeight:1.5,fontStyle:"italic"}}>{h.better}</p></div>}
+        </div>}
+      </div>)}
+      {mockQ && <div style={{padding:"14px 16px",borderRadius:14,background:`linear-gradient(135deg, ${amber(.1)}, ${amber(.04)})`,border:`1px solid ${amber(.15)}`,boxShadow:`0 0 20px ${amber(.05)}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}><span style={{fontSize:9,fontWeight:700,color:amber(.7),letterSpacing:"1px",textTransform:"uppercase"}}>Interviewer asks</span></div>
+        <p style={{fontSize:14,color:"rgba(255,255,255,.9)",margin:0,lineHeight:1.6,fontWeight:500}}>{mockQ}</p>
+      </div>}
+    </div>
+    <div style={{padding:"10px 12px",borderTop:`1px solid ${amber(.08)}`,display:"flex",gap:6,background:"rgba(0,0,0,.2)"}}>
+      <button onClick={toggleRecord} style={{padding:"9px 12px",borderRadius:10,border:"none",cursor:"pointer",background:recording?"rgba(239,68,68,.12)":"rgba(255,255,255,.04)",color:recording?"#fca5a5":"rgba(255,255,255,.35)",display:"flex",alignItems:"center",gap:4}}>{recording?<MicOff size={13}/>:<Mic size={13}/>}</button>
+      <input value={mockAnswer} onChange={e=>setMockAnswer(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submitMockAnswer()} placeholder="Type or speak your answer..." style={{flex:1,padding:"9px 12px",borderRadius:10,border:`1px solid ${amber(.1)}`,background:"rgba(255,255,255,.03)",color:"#fff",fontSize:12,outline:"none"}}/>
+      <button onClick={submitMockAnswer} disabled={mockLoading||!mockAnswer.trim()} style={{padding:"9px 16px",borderRadius:10,border:"none",cursor:"pointer",background:mockAnswer.trim()?`linear-gradient(135deg, ${amber(.25)}, ${amber(.1)})`:"rgba(255,255,255,.03)",color:"#fbbf24",fontSize:12,fontWeight:600}}>{mockLoading?<Loader2 size={13} style={{animation:"spin 1s linear infinite"}}/>:<Send size={13}/>}</button>
+    </div>
+  </div>);
+
+  // ═══════ LIVE MODE ═══════
+  const livePanels = [
+    { id: "transcript", label: "Transcript", count: transcript.length, Icon: FileText },
+    { id: "coaching", label: "Coaching", count: cookAnswers.length, Icon: MessageSquare }
+  ];
+
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
+    <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:`1px solid ${amber(.08)}`}}>
+      {modeTab("prep","Prep",FileText)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
+    </div>
+    {activeCue && <div style={{padding:"10px 14px",margin:"6px 8px 0",borderRadius:12,background:activeCue.type==="ALERT"?"linear-gradient(135deg, rgba(239,68,68,.15), rgba(239,68,68,.05))":`linear-gradient(135deg, ${amber(.15)}, ${amber(.05)})`,border:activeCue.type==="ALERT"?"1px solid rgba(239,68,68,.2)":`1px solid ${amber(.15)}`,boxShadow:activeCue.type==="ALERT"?"0 0 20px rgba(239,68,68,.1)":`0 0 20px ${amber(.08)}`,animation:"mf .4s ease"}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+        <div style={{width:6,height:6,borderRadius:"50%",background:activeCue.type==="ALERT"?"#ef4444":"#fbbf24",animation:"mb 1.5s infinite"}}/>
+        <span style={{fontSize:9,fontWeight:700,color:activeCue.type==="ALERT"?"#fca5a5":amber(.7),letterSpacing:"1px",textTransform:"uppercase"}}>{activeCue.type==="ALERT"?"Alert":"TIM Cue"}</span>
+        <span style={{fontSize:8,color:"rgba(255,255,255,.2)",marginLeft:"auto"}}>{activeCue.latency}ms</span>
+      </div>
+      <p style={{fontSize:13,color:"rgba(255,255,255,.9)",margin:0,lineHeight:1.5,fontWeight:500}}>{activeCue.text}</p>
+    </div>}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",borderBottom:`1px solid ${amber(.06)}`}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        {recording && <div style={{width:10,height:10,borderRadius:"50%",background:"#ef4444",animation:"mb 1.5s infinite",boxShadow:"0 0 12px rgba(239,68,68,.4)"}}/>}
+        <span style={{fontFamily:"'SF Mono',monospace",fontSize:22,color:running?"#fbbf24":"rgba(255,255,255,.15)",fontWeight:200,letterSpacing:"2px"}}>{fmt(seconds)}</span>
+        {selectedJob && <span style={{fontSize:9,color:amber(.4),fontWeight:500,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selectedJob.title}</span>}
+      </div>
+      <div style={{display:"flex",gap:6}}>
+        <button onClick={toggleRecord} style={{padding:"8px 14px",borderRadius:10,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:recording?"rgba(239,68,68,.12)":`linear-gradient(135deg, ${amber(.15)}, ${amber(.05)})`,color:recording?"#fca5a5":"#fbbf24",display:"flex",alignItems:"center",gap:5}}>{recording?<><MicOff size={12}/>Stop</>:<><Mic size={12}/>Record</>}</button>
+        {running && <button onClick={endInterview} style={{padding:"8px 14px",borderRadius:10,border:"1px solid rgba(239,68,68,.15)",background:"transparent",color:"#f87171",fontSize:11,fontWeight:600,cursor:"pointer"}}>End</button>}
+      </div>
+    </div>
+    <div style={{display:"flex",gap:3,padding:"6px 10px",borderBottom:"1px solid rgba(255,255,255,.03)"}}>
+      {livePanels.map(p => <button key={p.id} onClick={()=>setPanel(p.id)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:panel===p.id?700:400,background:panel===p.id?`linear-gradient(135deg, ${amber(.15)}, ${amber(.05)})`:"transparent",color:panel===p.id?"#fbbf24":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>{p.Icon&&<p.Icon size={12}/>}{p.label}{p.count>0&&<span style={{fontSize:9,background:amber(.2),padding:"2px 6px",borderRadius:8,fontWeight:600}}>{p.count}</span>}</button>)}
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
+      {panel==="transcript" && (transcript.length===0
+        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><Mic size={36} style={{margin:"0 auto 12px",display:"block",opacity:.2}}/><p style={{fontSize:13,margin:0,fontWeight:300}}>{running?"Listening...":"Tap Record to start"}</p></div>
+        : transcript.map((t,i) => <div key={i} style={{padding:"10px 12px",marginBottom:5,borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)",animation:"mf .3s ease"}}><span style={{color:amber(.35),fontSize:9,fontWeight:600,marginRight:8,fontFamily:"monospace"}}>{t.time}</span><span style={{color:"rgba(255,255,255,.8)",fontSize:12.5,lineHeight:1.6}}>{t.text}</span></div>)
+      )}
+      {panel==="coaching" && (cookAnswers.length===0
+        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><Sparkles size={36} style={{margin:"0 auto 12px",display:"block",opacity:.2}}/><p style={{fontSize:13,margin:0,fontWeight:300}}>COOK's STAR-method answers appear here</p></div>
+        : cookAnswers.map((a,i) => <div key={i} style={{padding:14,marginBottom:8,borderRadius:14,background:"linear-gradient(135deg, rgba(139,92,246,.06), rgba(139,92,246,.02))",border:"1px solid rgba(139,92,246,.1)",boxShadow:a.streaming?"0 0 15px rgba(139,92,246,.08)":"none"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+            <div style={{width:5,height:5,borderRadius:"50%",background:a.streaming?"#a78bfa":"rgba(139,92,246,.3)",...(a.streaming?{animation:"mb 1s infinite"}:{})}}/>
+            <span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",letterSpacing:"1px",textTransform:"uppercase"}}>{a.streaming?"COOK is preparing...":"COOK"}</span>
+          </div>
+          {a.q && <p style={{color:"rgba(139,92,246,.5)",fontSize:10,margin:"0 0 6px",fontStyle:"italic"}}>Re: {a.q}</p>}
+          <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{a.text}</p>
+        </div>)
+      )}
+      {summary && <div style={{padding:16,borderRadius:14,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.12)",marginTop:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><CheckCircle size={14} color="#34d399"/><span style={{fontSize:11,fontWeight:700,color:"#34d399"}}>Interview Performance Summary</span></div>
+        <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{summary}</p>
+      </div>}
+    </div>
+  </div>);
 }
 
 function AppLauncher({ userId, onAppSelect, currentApp }) {
@@ -733,7 +1969,9 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
   const APP_COLORS = {
     chat: "#a78bfa", briefing: "#f59e0b", jobs: "#f97316", email: "#3b82f6",
     memos: "#84cc16", nura: "#06b6d4", guide: "#10b981", approve: "#8b5cf6",
-    phone: "#22c55e", settings: "#6b7280", gmg_university: "#ec4899", incidents: "#ef4444"
+    phone: "#22c55e", settings: "#6b7280", gmg_university: "#ec4899", incidents: "#ef4444",
+    journal: "#818cf8", tasks: "#f472b6", notes: "#fbbf24", calendar: "#2dd4bf",
+    crm: "#fb923c", ccwa: "#a78bfa", aoa: "#64748b"
   };
 
   if (loading) return (
@@ -751,17 +1989,17 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 4px" }}>
       {/* Time + greeting header */}
-      <div style={{ textAlign: "center", padding: "24px 0 20px", userSelect: "none" }}>
-        <div style={{ fontSize: 44, fontWeight: 200, color: "rgba(255,255,255,.85)", letterSpacing: -1, lineHeight: 1 }}>{timeStr}</div>
-        <div style={{ fontSize: 14, color: "rgba(255,255,255,.4)", marginTop: 4 }}>{dateStr}</div>
+      <div style={{ textAlign: "center", padding: "32px 0 16px", userSelect: "none" }}>
+        <div style={{ fontSize: 56, fontWeight: 100, color: "rgba(255,255,255,.9)", letterSpacing: -2, lineHeight: 1, fontFamily: "'SF Pro Display',-apple-system,sans-serif" }}>{timeStr}</div>
+        <div style={{ fontSize: 13, color: "rgba(255,255,255,.35)", marginTop: 6, fontWeight: 400, letterSpacing: .5 }}>{dateStr}</div>
       </div>
 
       {/* App grid */}
       <div style={{
         display: "grid",
         gridTemplateColumns: "repeat(4, 1fr)",
-        gap: 16,
-        padding: "8px 12px",
+        gap: 10,
+        padding: "4px 8px",
         flex: 1,
         alignContent: "start"
       }}
@@ -790,13 +2028,14 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
                 background: isDragged ? "rgba(139,92,246,.15)" : "transparent",
                 cursor: "pointer",
                 WebkitTapHighlightColor: "transparent",
+                WebkitUserSelect: "none",
                 opacity: isDragged ? 0.6 : 1,
                 transform: isDragged ? "scale(1.08)" : "scale(1)",
                 transition: "all .15s"
               }}
             >
               <div style={{
-                width: 58, height: 58, borderRadius: 16,
+                width: 52, height: 52, borderRadius: 14,
                 background: `linear-gradient(135deg, ${accent}22, ${accent}11)`,
                 border: `1px solid ${accent}33`,
                 display: "flex", alignItems: "center", justifyContent: "center",
@@ -1167,6 +2406,15 @@ async function uploadAttachmentsBatch(files, userId, conversationId) {
 
 async function reachTranscribe(audioBlob) {
   try {
+    if (!audioBlob || !(audioBlob instanceof Blob)) {
+      console.warn("[VOICE] reachTranscribe called with non-Blob:", typeof audioBlob);
+      return null;
+    }
+    if (audioBlob.size < 1000) { 
+      console.log("[VOICE] Audio chunk too small:", audioBlob.size, "bytes — skipping"); 
+      return null; 
+    }
+    console.log("[VOICE] Transcribing", audioBlob.size, "bytes,", audioBlob.type);
     const contentType = audioBlob.type || "audio/webm";
     const res = await fetch(`${ABABASE}/api/voice/transcribe`, { 
       method: "POST", 
@@ -1174,7 +2422,11 @@ async function reachTranscribe(audioBlob) {
       body: audioBlob 
     });
     if (!res.ok) { console.error("[VOICE] Transcribe HTTP", res.status); return null; }
-    return (await res.json()).transcript || null;
+    const data = await res.json();
+    const text = data.transcript || data.text || null;
+    if (text) console.log("[VOICE] Got:", text.substring(0, 80));
+    else console.log("[VOICE] Empty transcript from Deepgram");
+    return text;
   } catch (e) { console.error("[VOICE] Transcribe error:", e); return null; }
 }
 
@@ -1184,7 +2436,7 @@ async function reachSynthesize(text) {
     const res = await fetch(`${ABABASE}/api/voice/synthesize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voiceId: "6aDn1KB0hjpdcocrUkmq", model: "eleven_turbo_v2_5" }),
+      body: JSON.stringify({ text, voiceId: "AIFDUhRnM6s61433WMNu", model: "eleven_turbo_v2_5" }),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -1617,17 +2869,17 @@ function CommandCenterView({ open, onClose, userEmail }) {
 async function fetchBriefing(userId) {
   try {
     // Use v2 MyABA briefing endpoint
-    const response = await fetch(`https://abacia-services.onrender.com/api/myaba/briefing?userId=${encodeURIComponent(userId)}`);
+    const response = await fetch(`${ABABASE}/api/briefing?userId=${encodeURIComponent(userId)}`);
     if (!response.ok) throw new Error('Briefing fetch failed');
     const data = await response.json();
     // Transform v2 response to expected format
     const briefing = data.briefing || data;
     return {
-      summary: briefing.spoken_summary || briefing.greeting || '',
-      handled: briefing.sections?.find(s => s.type === 'handled')?.items || [],
-      pending: briefing.sections?.find(s => s.type === 'pending' || s.type === 'approvals')?.items || [],
-      upcoming: briefing.sections?.find(s => s.type === 'calendar')?.items || [],
-      jobs: briefing.sections?.find(s => s.type === 'jobs')?.items || [],
+      summary: data.summary || briefing.spoken_summary || briefing.summary || briefing.greeting || '',
+      handled: data.handled || briefing.sections?.find(s => s.type === 'handled')?.items || [],
+      pending: data.pending || briefing.sections?.find(s => s.type === 'pending' || s.type === 'approvals')?.items || [],
+      upcoming: data.upcoming || briefing.sections?.find(s => s.type === 'calendar')?.items || [],
+      jobs: data.jobs || briefing.sections?.find(s => s.type === 'jobs')?.items || [],
       raw: briefing
     };
   } catch (e) {
@@ -1652,6 +2904,13 @@ async function fetchBriefing(userId) {
 import { ABAPresence } from './ABAPresence.jsx';
 
 // Alias for backward compatibility
+
+// ⬡B:CIP:ABA_LOGO:brand_mark:20260325⬡ Real ABA logo SVG component
+function ABALogo({size=24,color="#a78bfa",glow=false}){
+  return <img src="https://i.imgur.com/0be7HCF.png" alt="ABA" style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",filter:glow?"drop-shadow(0 0 6px rgba(139,92,246,.5))":"none"}} />;
+}
+
+
 function Blob({state="idle",size=160}){
   return <ABAPresence state={state} size={size} />;
 }
@@ -1704,8 +2963,8 @@ function OutputCard({output}){const[exp,setExp]=useState(false);const icons={ema
 function Bubble({msg,userPhoto,onSpeak}){const isU=msg.role==="user";const time=msg.timestamp?new Date(msg.timestamp).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):"";
   const isImg=t=>(t||"").startsWith("image/");
   return(<div style={{display:"flex",justifyContent:isU?"flex-end":"flex-start",padding:"4px 0",gap:10,alignItems:"flex-end"}}>
-    {!isU&&<div style={{width:28,height:28,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 2px 8px rgba(139,92,246,.3)"}}><Sparkles size={14} style={{color:"white"}}/></div>}
-    <div style={{maxWidth:"80%"}}><div style={{padding:"12px 16px",borderRadius:isU?"20px 20px 6px 20px":"20px 20px 20px 6px",background:isU?"linear-gradient(135deg,rgba(139,92,246,.35),rgba(99,102,241,.3))":"rgba(255,255,255,.08)",backdropFilter:"blur(12px)",border:`1px solid ${isU?"rgba(139,92,246,.3)":"rgba(255,255,255,.1)"}`,boxShadow:isU?"0 4px 16px rgba(139,92,246,.15)":"inset 0 1px 1px rgba(255,255,255,.08), 0 4px 12px rgba(0,0,0,.15)"}}>{msg.output?<OutputCard output={msg.output}/>:<div>{renderMd(msg.content)}</div>}
+    {!isU&&<div style={{width:28,height:28,borderRadius:99,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ABALogo size={28} glow/></div>}
+    <div style={{maxWidth:"80%"}}><div style={{padding:"12px 16px",borderRadius:isU?"20px 20px 6px 20px":"20px 20px 20px 6px",background:isU?"linear-gradient(135deg,rgba(139,92,246,.35),rgba(99,102,241,.3))":"rgba(255,255,255,.08)",minHeight:isU?undefined:24,backdropFilter:"blur(12px)",border:`1px solid ${isU?"rgba(139,92,246,.3)":"rgba(255,255,255,.1)"}`,boxShadow:isU?"0 4px 16px rgba(139,92,246,.15)":"inset 0 1px 1px rgba(255,255,255,.08), 0 4px 12px rgba(0,0,0,.15)"}}>{msg.output?<OutputCard output={msg.output}/>:<div>{renderMd(msg.content)||(!msg.role?.includes("user")&&msg.streaming?<span style={{color:"rgba(255,255,255,.3)",fontSize:12}}>Thinking...</span>:null)}</div>}
       {/* ⬡B:MYABA:FILE_ATTACHMENTS_DISPLAY:20260319⬡ */}
       {msg.attachments&&msg.attachments.length>0&&(
       <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>
@@ -1741,7 +3000,7 @@ function Bubble({msg,userPhoto,onSpeak}){const isU=msg.role==="user";const time=
     {isU&&<div style={{width:28,height:28,borderRadius:99,overflow:"hidden",flexShrink:0,background:"linear-gradient(135deg,rgba(139,92,246,.4),rgba(99,102,241,.3))",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(139,92,246,.2)"}}>{userPhoto?<img src={userPhoto} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<User size={13} style={{color:"rgba(255,255,255,.7)"}}/>}</div>}
   </div>)}
 
-function Typing(){return(<div style={{display:"flex",justifyContent:"flex-start",padding:"3px 0",gap:8,alignItems:"flex-end"}}><div style={{width:26,height:26,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Sparkles size={12} style={{color:"white"}}/></div><div style={{padding:"12px 18px",borderRadius:"18px 18px 18px 4px",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.08)",display:"flex",gap:5,alignItems:"center"}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:99,background:"rgba(139,92,246,.6)",animation:`mp 1.4s ease-in-out ${i*.2}s infinite`}}/>)}</div></div>)}
+function Typing(){return(<div style={{display:"flex",justifyContent:"flex-start",padding:"3px 0",gap:8,alignItems:"flex-end"}}><div style={{width:26,height:26,borderRadius:99,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ABALogo size={26} glow/></div><div style={{padding:"12px 18px",borderRadius:"18px 18px 18px 4px",background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.08)",display:"flex",gap:5,alignItems:"center"}}>{[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:99,background:"rgba(139,92,246,.6)",animation:`mp 1.4s ease-in-out ${i*.2}s infinite`}}/>)}</div></div>)}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ELEVENLABS CONVERSATIONAL AI - Talk to ABA
@@ -1765,7 +3024,13 @@ function TalkToABA({userId}){
     onError:(msg)=>{console.error("[TALK] ElevenLabs error:",msg);setOrbState("error");setErrorMsg(String(msg));setStatusText("Error. Tap to retry.")},
     onMessage:({message,source})=>{
       if(source==="user"){setOrbState("thinking");setStatusText("ABA is thinking...");setLastMsg("")}
-      if(source==="ai")setLastMsg(prev=>prev+message)
+      if(source==="ai"){
+        setLastMsg(prev=>{const next=prev+message;
+          // Fire real-time caption event so ClosedCaptions overlay shows during speech
+          window.dispatchEvent(new CustomEvent("vara-caption",{detail:{text:next.slice(-150),source:"ABA"}}));
+          return next;
+        });
+      }
     },
     onModeChange:({mode})=>{
       clearTimeout(thinkTimerRef.current);
@@ -1788,6 +3053,8 @@ function TalkToABA({userId}){
       setOrbState("connecting");setStatusText("Requesting microphone...");
       await navigator.mediaDevices.getUserMedia({audio:true});
       setStatusText("Connecting to ABA...");
+      // ⬡B:voice.audit:FIX:preload_identity:20260330⬡ Warm VARA cache with HAM identity before WebRTC starts
+      try{await fetch(ABABASE+"/vara/preload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,conversation_id:"webrtc_"+Date.now()})});}catch(pe){console.log("[TALK] Preload failed (non-fatal):",pe.message)}
       await conversation.startSession({
         agentId:"agent_0601khe2q0gben08ws34bzf7a0sa",
         connectionType:"webrtc"
@@ -1823,7 +3090,7 @@ function TalkToABA({userId}){
         animation:orbState==="listening"?"breathe 1s ease-in-out infinite":orbState==="speaking"?"breathe 1.5s ease-in-out infinite":"breathe 3s ease-in-out infinite",
         transition:"all .3s"
       }}>
-        {orbState==="thinking"||orbState==="connecting"?<div style={{animation:"spin 1s linear infinite"}}><Sparkles size={44}/></div>:<Icon size={44}/>}
+        {orbState==="thinking"||orbState==="connecting"?<div style={{animation:"spin 1s linear infinite"}}><ABALogo size={44} color="white"/></div>:<Icon size={44}/>}
         <span style={{fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>{labels[orbState]}</span>
       </button>
 
@@ -1839,12 +3106,13 @@ function TalkToABA({userId}){
       </div>
 
       {/* Last response */}
-      {lastMsg&&orbState==="idle"&&<div style={{position:"absolute",bottom:20,left:16,right:16,padding:"12px 16px",background:"rgba(0,0,0,.5)",backdropFilter:"blur(12px)",borderRadius:16,border:"1px solid rgba(139,92,246,.15)"}}>
+      {lastMsg&&<div style={{position:"absolute",bottom:20,left:16,right:16,padding:"12px 16px",background:"rgba(0,0,0,.6)",backdropFilter:"blur(12px)",borderRadius:16,border:`1px solid rgba(${c},.2)`,transition:"all .3s",maxHeight:120,overflow:"hidden"}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-          <Sparkles size={10} style={{color:"rgba(139,92,246,.7)"}}/>
-          <span style={{color:"rgba(139,92,246,.6)",fontSize:9,fontWeight:600}}>ABA SAID</span>
+          <ABALogo size={14}/>
+          <span style={{color:`rgba(${c},.7)`,fontSize:9,fontWeight:600}}>{orbState==="speaking"?"ABA IS SAYING":orbState==="thinking"?"ABA IS THINKING":"ABA SAID"}</span>
+          {orbState==="speaking"&&<div style={{width:6,height:6,borderRadius:3,background:`rgba(${c},.8)`,animation:"mb 1s ease infinite"}}/>}
         </div>
-        <p style={{color:"rgba(255,255,255,.7)",fontSize:12,margin:0,lineHeight:1.4,maxHeight:60,overflow:"hidden"}}>{lastMsg.substring(0,180)}{lastMsg.length>180?"...":""}</p>
+        <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:0,lineHeight:1.5,maxHeight:80,overflow:"auto"}}>{lastMsg}</p>
       </div>}
     </div>
   );
@@ -1881,9 +3149,9 @@ function FirstLoginTour({user,onComplete}){
     (async()=>{
       setSpeaking(true);
       try{
-        const res=await fetch("https://abacia-services.onrender.com/api/voice/synthesize",{
+        const res=await fetch(`${ABABASE}/api/voice/synthesize`,{
           method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({text:currentStep.voice,voiceId:"6aDn1KB0hjpdcocrUkmq"})
+          body:JSON.stringify({text:currentStep.voice,voiceId:"AIFDUhRnM6s61433WMNu"})
         });
         if(res.ok&&!cancelled){
           const data=await res.json();
@@ -1918,7 +3186,7 @@ function FirstLoginTour({user,onComplete}){
     <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"rgba(8,8,13,.95)",backdropFilter:"blur(20px)",padding:20}}>
       {/* ABA orb */}
       <div style={{width:100,height:100,borderRadius:"50%",background:`radial-gradient(circle at 30% 30%, ${color}66, ${color}33)`,boxShadow:`0 0 60px ${color}44`,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:24,animation:speaking?"breathe 1.5s ease-in-out infinite":"breathe 3s ease-in-out infinite"}}>
-        {speaking?<Volume2 size={36} style={{color:"white"}}/>:<Sparkles size={36} style={{color:"white"}}/>}
+        {speaking?<Volume2 size={36} style={{color:"white"}}/>:<ABALogo size={40} color="white"/>}
       </div>
 
       {/* Step indicator */}
@@ -1935,8 +3203,7 @@ function FirstLoginTour({user,onComplete}){
         {currentStep.action==="connect_email"&&(
           <button onClick={()=>{
             const email=(user?.email||"").toLowerCase();
-            const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselane@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
-            const hamId=hamMap[email]||email.split("@")[0];
+            const hamId=resolveHamId(email);
             window.open(`https://abacia-services.onrender.com/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
           }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#10B981,#059669)",color:"white",cursor:"pointer",fontSize:14,fontWeight:600,marginTop:16,boxShadow:"0 4px 20px rgba(16,185,129,.3)"}}>
             <Mail size={18}/>Connect Email with Google
@@ -1971,8 +3238,126 @@ function VoiceMode({mode,setMode}){const modes=[{k:"chat",i:MessageSquare,l:"Cha
 // ⬡B:MYABA:EMAIL_VIEW:20260321⬡
 // Calls backend which calls Nylas. 90% backend, 10% frontend.
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ⬡B:CIP:EMAIL_DETAIL:mark_read_ask_aba:20260325⬡
+function EmailDetail({email,onBack,userId}){
+  const[askOpen,setAskOpen]=useState(false);
+  const[askInput,setAskInput]=useState("");
+  const[askResult,setAskResult]=useState("");
+  const[askLoading,setAskLoading]=useState(false);
+
+  // Mark as read after 3 seconds via direct Nylas PATCH (not AIR)
+  useEffect(()=>{
+    if(!email?.id||!email.unread)return;
+    const timer=setTimeout(async()=>{
+      try{ await fetch(`${ABABASE}/api/email/${email.id}/read?userId=${encodeURIComponent(userId)}`,{method:"PATCH"}); }catch{}
+    },3000);
+    return()=>clearTimeout(timer);
+  },[email?.id]);
+
+  const askABA=async()=>{
+    if(!askInput.trim())return;
+    setAskLoading(true);
+    const q=askInput; setAskInput("");
+    try{
+      const r=await fetch(`${ABABASE}/api/air/process`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({message:`About this email from ${email.from?.[0]?.name||"someone"} with subject "${email.subject||""}": ${q}\n\nEmail content: ${(email.snippet||email.body||"").substring(0,500)}`,user_id:userId,channel:"myaba"})
+      });
+      if(r.ok){const d=await r.json();setAskResult(d.response||d.message||"");}
+    }catch{setAskResult("Could not reach ABA right now")}
+    setAskLoading(false);
+  };
+
+  return(<div style={{flex:1,overflowY:"auto",padding:8}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:11}}><ChevronRight size={12} style={{transform:"rotate(180deg)"}}/>Back</button>
+      <button onClick={()=>setAskOpen(!askOpen)} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:8,border:"1px solid rgba(139,92,246,.2)",background:askOpen?"rgba(139,92,246,.15)":"rgba(139,92,246,.06)",color:"rgba(139,92,246,.8)",cursor:"pointer",fontSize:11,fontWeight:500}}>
+        <ABALogo size={14}/>Ask ABA
+      </button>
+    </div>
+    <div style={{padding:14,borderRadius:14,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)"}}>
+      <p style={{color:"rgba(255,255,255,.9)",fontSize:14,fontWeight:600,margin:"0 0 4px"}}>{email.subject||"(no subject)"}</p>
+      <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"0 0 2px"}}>From: {email.from?.[0]?.name||email.from?.[0]?.email||"Unknown"}</p>
+      <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"0 0 12px"}}>{email.date?new Date(email.date*1000).toLocaleString():""}</p>
+      <div style={{color:"rgba(255,255,255,.7)",fontSize:12,lineHeight:1.6}} dangerouslySetInnerHTML={{__html:email.body||email.snippet||"No content"}}/>
+    </div>
+    {askOpen&&<div style={{marginTop:8,padding:12,borderRadius:12,background:"rgba(139,92,246,.06)",border:"1px solid rgba(139,92,246,.12)"}}>
+      <div style={{display:"flex",gap:6,marginBottom:askResult?8:0}}>
+        <input value={askInput} onChange={e=>setAskInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&askABA()} placeholder="Ask ABA about this email..." style={{flex:1,padding:"8px 12px",borderRadius:8,border:"1px solid rgba(139,92,246,.15)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:12,outline:"none"}}/>
+        <button onClick={askABA} disabled={askLoading||!askInput.trim()} style={{padding:"8px 14px",borderRadius:8,border:"none",background:"rgba(139,92,246,.2)",color:"#a78bfa",cursor:"pointer",fontSize:12}}>{askLoading?"...":"Ask"}</button>
+      </div>
+      {askResult&&<div style={{padding:10,borderRadius:8,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)"}}><p style={{color:"rgba(255,255,255,.7)",fontSize:12,margin:0,lineHeight:1.5}}>{askResult}</p></div>}
+    </div>}
+  </div>);
+}
+
+
+function ContactsView({userId}){
+  const[contacts,setContacts]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[search,setSearch]=useState("");
+  const[selected,setSelected]=useState(null);
+  const[adding,setAdding]=useState(false);
+  const[newC,setNewC]=useState({contact_name:"",email:"",phone:"",relationship:""});
+  const[saving,setSaving]=useState(false);
+  // ⬡B:911:FIX:contacts_use_backend:20260327⬡
+  // Was: direct Supabase with anon key (RLS blocks writes, reads worked by luck).
+  // Now: uses /api/contacts backend endpoint with service_role key.
+  
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const hamId=(userId||"unknown").split("@")[0];
+        const r=await fetch(`${ABABASE}/api/contacts?ham_id=${hamId}`);
+        if(r.ok){const d=await r.json();setContacts(d.contacts||[]);}
+      }catch{}
+      setLoading(false);
+    })();
+  },[userId]);
+
+  const filtered=contacts.filter(c=>{if(!search)return true;const s=search.toLowerCase();return(c.contact_name||"").toLowerCase().includes(s)||(c.email||"").toLowerCase().includes(s)||(c.relationship||"").toLowerCase().includes(s);});
+  const initials=n=>(n||"?").split(" ").map(w=>w[0]).join("").substring(0,2).toUpperCase();
+  const colors=["#8b5cf6","#06b6d4","#f59e0b","#10b981","#ef4444"];
+  const colorFor=n=>colors[(n||"").length%colors.length];
+
+  return(<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    <div style={{padding:"10px 12px",borderBottom:"1px solid rgba(255,255,255,.06)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <span style={{fontSize:13,fontWeight:600,color:"rgba(255,255,255,.7)"}}>Contacts ({contacts.length})</span>
+      <button onClick={()=>setAdding(!adding)} style={{width:28,height:28,borderRadius:8,border:"none",background:"rgba(139,92,246,.15)",color:"#a78bfa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{adding?<X size={14}/>:<Plus size={14}/>}</button>
+    </div>
+    {adding&&<div style={{padding:"8px 10px",borderBottom:"1px solid rgba(255,255,255,.04)",display:"flex",flexDirection:"column",gap:6}}>
+      <input value={newC.contact_name} onChange={e=>setNewC({...newC,contact_name:e.target.value})} placeholder="Full name *" style={{padding:"7px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:12,outline:"none"}}/>
+      <div style={{display:"flex",gap:4}}>
+        <input value={newC.email} onChange={e=>setNewC({...newC,email:e.target.value})} placeholder="Email" style={{flex:1,padding:"7px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:11,outline:"none"}}/>
+        <input value={newC.phone} onChange={e=>setNewC({...newC,phone:e.target.value})} placeholder="Phone" style={{flex:1,padding:"7px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:11,outline:"none"}}/>
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        <input value={newC.relationship} onChange={e=>setNewC({...newC,relationship:e.target.value})} placeholder="Relationship" style={{flex:1,padding:"7px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:11,outline:"none"}}/>
+        <button onClick={async()=>{if(!newC.contact_name.trim())return;setSaving(true);try{const hamId=(userId||"").split("@")[0];await fetch(`${ABABASE}/api/contacts`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ham_id:hamId,...newC,userId})});setAdding(false);setNewC({contact_name:"",email:"",phone:"",relationship:""});const r2=await fetch(`${ABABASE}/api/contacts?ham_id=${hamId}`);if(r2.ok){const d2=await r2.json();setContacts(d2.contacts||[]);}}catch{}setSaving(false);}} disabled={saving||!newC.contact_name.trim()} style={{padding:"7px 12px",borderRadius:8,border:"none",background:"rgba(139,92,246,.2)",color:"#a78bfa",fontSize:11,cursor:"pointer"}}>{saving?"...":"Save"}</button>
+      </div>
+    </div>}
+    <div style={{padding:"6px 10px"}}><div style={{position:"relative"}}><Search size={12} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"rgba(255,255,255,.2)"}}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." style={{width:"100%",padding:"7px 10px 7px 28px",borderRadius:8,border:"1px solid rgba(255,255,255,.06)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:11,outline:"none"}}/></div></div>
+    <div style={{flex:1,overflowY:"auto",padding:"2px 10px"}}>
+      {loading?<div style={{textAlign:"center",padding:30}}><Loader2 size={16} style={{color:"#a78bfa",animation:"spin 1s linear infinite"}}/></div>
+      :filtered.length===0?<p style={{textAlign:"center",padding:30,color:"rgba(255,255,255,.2)",fontSize:12}}>No contacts</p>
+      :filtered.map((c,i)=><div key={c.id||i} onClick={()=>setSelected(selected?.id===c.id?null:c)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 6px",borderRadius:10,cursor:"pointer",background:selected?.id===c.id?"rgba(139,92,246,.06)":"transparent",marginBottom:2}}>
+        <div style={{width:36,height:36,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:600,color:"white",background:colorFor(c.contact_name)+"33",border:`1px solid ${colorFor(c.contact_name)}44`,flexShrink:0}}>{initials(c.contact_name)}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <p style={{fontSize:13,fontWeight:500,color:"rgba(255,255,255,.85)",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.contact_name}</p>
+          <p style={{fontSize:10,color:"rgba(255,255,255,.3)",margin:0}}>{c.relationship||c.email||""}</p>
+        </div>
+      </div>)}
+      {selected&&<div style={{padding:10,borderRadius:10,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)",marginTop:4}}>
+        {selected.email&&<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}><Mail size={11} style={{color:"rgba(255,255,255,.3)"}}/><span style={{fontSize:11,color:"rgba(255,255,255,.5)"}}>{selected.email}</span></div>}
+        {selected.phone&&<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}><Phone size={11} style={{color:"rgba(255,255,255,.3)"}}/><span style={{fontSize:11,color:"rgba(255,255,255,.5)"}}>{selected.phone}</span></div>}
+        {selected.nicknames?.length>0&&<p style={{fontSize:10,color:"rgba(255,255,255,.25)",margin:0}}>AKA: {selected.nicknames.join(", ")}</p>}
+      </div>}
+    </div>
+  </div>);
+}
+
 function EmailView({userId}){
-  const ABABASE="https://abacia-services.onrender.com";
   const[emails,setEmails]=useState([]);
   const[loading,setLoading]=useState(true);
   const[selectedEmail,setSelectedEmail]=useState(null);
@@ -2002,15 +3387,7 @@ function EmailView({userId}){
     </div>
 
     {/* Selected email detail */}
-    {selectedEmail&&<div style={{flex:1,overflowY:"auto",padding:8}}>
-      <button onClick={()=>setSelectedEmail(null)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:11,marginBottom:8}}><ChevronRight size={12} style={{transform:"rotate(180deg)"}}/>Back</button>
-      <div style={{padding:14,borderRadius:14,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)"}}>
-        <p style={{color:"rgba(255,255,255,.9)",fontSize:14,fontWeight:600,margin:"0 0 4px"}}>{selectedEmail.subject||"(no subject)"}</p>
-        <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"0 0 2px"}}>From: {selectedEmail.from?.[0]?.name||selectedEmail.from?.[0]?.email||"Unknown"}</p>
-        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:"0 0 12px"}}>{selectedEmail.date?new Date(selectedEmail.date*1000).toLocaleString():""}</p>
-        <div style={{color:"rgba(255,255,255,.7)",fontSize:12,lineHeight:1.6}} dangerouslySetInnerHTML={{__html:selectedEmail.body||selectedEmail.snippet||"No content"}}/>
-      </div>
-    </div>}
+    {selectedEmail&&<EmailDetail email={selectedEmail} onBack={()=>setSelectedEmail(null)} userId={userId}/>}
 
     {/* Email list */}
     {!selectedEmail&&<div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:2,padding:"4px 0"}}>
@@ -2066,7 +3443,6 @@ function MainTabSwitcher({tab,setTab}){
 // ═══════════════════════════════════════════════════════════════════════════
 // ⬡B:MYABA:BRIEFING_SETUP:20260321⬡ New user preference collection
 function BriefingSetup({userId,onRefresh}){
-  const ABABASE="https://abacia-services.onrender.com";
   const[selected,setSelected]=useState([]);
   const[custom,setCustom]=useState("");
   const[saving,setSaving]=useState(false);
@@ -2094,14 +3470,11 @@ function BriefingSetup({userId,onRefresh}){
     try{
       await fetch(`${ABABASE}/api/air/process`,{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({message:`Save my news interests for DAWN briefings: ${interests.join(", ")}`,user_id:userId,channel:"myaba"})
+        body:JSON.stringify({message:`Save my news interests for DAWN briefings: ${interests.join(", ")}`,user_id:userId,channel:"cip",appScope:"email"})
       });
-      // Also save directly to brain as HAM preference
-      await fetch(`https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory`,{
-        method:"POST",
-        headers:{"apikey":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw","Content-Type":"application/json","Prefer":"return=minimal"},
-        body:JSON.stringify({source:`ham.preferences.${(userId||"").split("@")[0]}`,memory_type:"ham_preferences",content:JSON.stringify({news_interests:interests,updated:new Date().toISOString()}),importance:7,tags:["preferences","news",userId]})
-      });
+      // ⬡B:911:FIX:no_direct_supabase_write:20260327⬡
+      // REMOVED: Direct Supabase POST with anon key. Anon is for reads only.
+      // AIR call above handles saving preferences to brain.
     }catch(e){console.error("[BRIEFING] Save prefs error:",e)}
     setSaving(false);setDone(true);
     setTimeout(()=>onRefresh(),1000);
@@ -2114,7 +3487,7 @@ function BriefingSetup({userId,onRefresh}){
 
   return(<div style={{flex:1,overflowY:"auto",padding:"8px 4px"}}>
     <div style={{textAlign:"center",marginBottom:16}}>
-      <Sparkles size={32} style={{color:"rgba(139,92,246,.6)",marginBottom:8}}/>
+      <ABALogo size={36} glow/>
       <p style={{color:"rgba(255,255,255,.8)",fontSize:16,fontWeight:600,margin:"0 0 4px"}}>Set up your briefing</p>
       <p style={{color:"rgba(255,255,255,.4)",fontSize:12,margin:0}}>What do you want ABA to keep you updated on?</p>
     </div>
@@ -2224,7 +3597,7 @@ function ApproveView({userId,onAction}){
   useEffect(()=>{
     (async()=>{
       try{
-        const response=await fetch(`https://abacia-services.onrender.com/api/myaba/approvals?userId=${encodeURIComponent(userId)}`);
+        const response=await fetch(`${ABABASE}/api/pending-approvals?userId=${encodeURIComponent(userId)}`);
         if(response.ok){
           const data=await response.json();
           setItems(data.items||[]);
@@ -2242,10 +3615,10 @@ function ApproveView({userId,onAction}){
     
     // Execute action via v2 endpoint — field must be 'action' not 'decision'
     const action=direction==="right"?"approve":"reject";
-    fetch(`https://abacia-services.onrender.com/api/myaba/approvals/${currentItem.id}`,{
+    fetch(`${ABABASE}/api/approve-action`,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action,userId})
+      body:JSON.stringify({item_id:currentItem.id,action,userId})
     }).catch(e=>console.error('[APPROVE] Action failed:',e));
     
     // Animate out then advance
@@ -2311,7 +3684,7 @@ function ApproveView({userId,onAction}){
               <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
                 <span style={{color:"rgba(255,255,255,.6)",fontSize:11}}>{c.type} ({c.approvalRate}% in {c.avgResponseMins}m)</span>
                 <button onClick={async()=>{
-                  try{await fetch("https://abacia-services.onrender.com/api/awa/decisions/auto-approve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,type:c.type,enabled:true})})}catch{}
+                  try{await fetch(`${ABABASE}/api/awa/decisions/auto-approve`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,type:c.type,enabled:true})})}catch{}
                 }} style={{padding:"3px 8px",borderRadius:4,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.1)",color:"#10B981",cursor:"pointer",fontSize:9,fontWeight:600}}>Enable</button>
               </div>
             ))}
@@ -2713,8 +4086,7 @@ function ReferencesView({userId}){
 // ═══════════════════════════════════════════════════════════════════════════
 function JobsView({userId}){
   // Map email to ham_id for default filter
-  const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselane@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
-  const defaultHam=hamMap[(userId||"").toLowerCase()]||(userId||"").split("@")[0]||"all";
+  const defaultHam=resolveHamId(userId);
   
   const[jobs,setJobs]=useState([]);
   const[loading,setLoading]=useState(true);
@@ -3404,17 +4776,16 @@ function PipelineView({userId}){
   const[loading,setLoading]=useState(true);
   const[expandedCol,setExpandedCol]=useState(null);
 
-  const ABABASE="https://abacia-services.onrender.com";
 
   const COLUMNS=[
-    {key:"NEW",label:"New",color:"#6B7280",icon:"📥"},
-    {key:"MATERIALS_READY",label:"Ready",color:"#8B5CF6",icon:"📄"},
-    {key:"APPLIED",label:"Applied",color:"#10B981",icon:"📨"},
-    {key:"WAITING",label:"Waiting",color:"#F59E0B",icon:"⏳"},
-    {key:"INTERVIEW_SCHEDULED",label:"Interview",color:"#EC4899",icon:"🎤"},
-    {key:"INTERVIEWED",label:"Done",color:"#F97316",icon:"✅"},
-    {key:"OFFER",label:"Offer",color:"#A78BFA",icon:"💰"},
-    {key:"ACCEPTED",label:"Won",color:"#34D399",icon:"🎉"},
+    {key:"NEW",label:"New",color:"#6B7280",icon:"inbox"},
+    {key:"MATERIALS_READY",label:"Ready",color:"#8B5CF6",icon:"doc"},
+    {key:"APPLIED",label:"Applied",color:"#10B981",icon:"sent"},
+    {key:"WAITING",label:"Waiting",color:"#F59E0B",icon:"wait"},
+    {key:"INTERVIEW_SCHEDULED",label:"Interview",color:"#EC4899",icon:"mic"},
+    {key:"INTERVIEWED",label:"Done",color:"#F97316",icon:"check"},
+    {key:"OFFER",label:"Offer",color:"#A78BFA",icon:"offer"},
+    {key:"ACCEPTED",label:"Won",color:"#34D399",icon:"won"},
   ];
 
   useEffect(()=>{
@@ -3478,7 +4849,6 @@ function PipelineView({userId}){
 // ⬡B:AWA.v3:proactive:alerts_summary:20260315⬡
 function AlertsSummary({userId}){
   const[alerts,setAlerts]=useState([]);
-  const ABABASE="https://abacia-services.onrender.com";
 
   useEffect(()=>{
     (async()=>{
@@ -3857,35 +5227,66 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
   // ⬡B:MYABA.V2:ghost:20260313⬡ Ghost Mode state
   const[ghostMode,setGhostMode]=useState(false);
   const[ghostLoading,setGhostLoading]=useState(false);
+  // ⬡B:pam:STATE:passcode_ui:20260328⬡
+  const[passcodeSet,setPasscodeSet]=useState(false);
+  const[showPasscodeForm,setShowPasscodeForm]=useState(false);
+  const[newPasscode,setNewPasscode]=useState('');
+  const[confirmPasscode,setConfirmPasscode]=useState('');
+  const[passcodeMsg,setPasscodeMsg]=useState('');
+  const[passcodeLoading,setPasscodeLoading]=useState(false);
+  const[heldItems,setHeldItems]=useState(0);
   
-  // Load ghost mode status on mount
+  // Load PAM status on mount (ghost mode + passcode + held items)
   useEffect(()=>{
     if(!user?.email)return;
     (async()=>{
       try{
-        const res=await fetch(`https://abacia-services.onrender.com/api/myaba/ghost?userId=${encodeURIComponent(user.email)}`);
+        const res=await fetch(`${ABABASE}/api/pam/status?userId=${encodeURIComponent(user.email)}`);
         if(res.ok){
           const data=await res.json();
-          setGhostMode(data.active||false);
+          if(data.success){
+            setGhostMode(data.dark_mode||false);
+            setPasscodeSet(data.passcode_set||false);
+            setHeldItems(data.held_items||0);
+          }
         }
-      }catch(e){console.error("[GHOST] Load failed:",e)}
+      }catch(e){console.error("[PAM] Status load failed:",e)}
     })();
   },[user?.email]);
   
   const handleGhostToggle=async(enable)=>{
     setGhostLoading(true);
     try{
-      const res=await fetch('https://abacia-services.onrender.com/api/myaba/ghost',{
+      const res=await fetch(`${ABABASE}/api/pam/dark`,{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({userId:user?.email||user?.uid||"unknown",enabled:enable,duration:24})
+        body:JSON.stringify({userId:user?.email||user?.uid||"unknown",enabled:enable})
       });
       if(res.ok){
         const data=await res.json();
-        setGhostMode(data.active||enable);
+        setGhostMode(data.dark_mode||enable);
       }
-    }catch(e){console.error("[GHOST] Toggle failed:",e)}
+    }catch(e){console.error("[PAM] Dark toggle failed:",e)}
     setGhostLoading(false);
+  };
+  
+  // ⬡B:pam:HANDLER:passcode_save:20260328⬡
+  const handleSavePasscode=async()=>{
+    if(newPasscode.length<4){setPasscodeMsg('Must be 4+ characters.');return;}
+    if(newPasscode!==confirmPasscode){setPasscodeMsg('Passcodes do not match.');return;}
+    setPasscodeLoading(true);
+    try{
+      const res=await fetch(`${ABABASE}/api/pam/passcode`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({userId:user?.email||user?.uid||'unknown',passcode:newPasscode})
+      });
+      const data=await res.json();
+      if(data.success){
+        setPasscodeSet(true);setShowPasscodeForm(false);
+        setNewPasscode('');setConfirmPasscode('');setPasscodeMsg('');
+      }else{setPasscodeMsg(data.error||'Failed.');}
+    }catch(e){setPasscodeMsg(e.message);}
+    setPasscodeLoading(false);
   };
   
   useEffect(()=>{try{localStorage.setItem("myaba_notifyBriefing",String(notifyBriefing))}catch{}},[notifyBriefing]);
@@ -3982,6 +5383,29 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
         {ghostMode&&<div style={{padding:"10px 0",color:"rgba(139,92,246,.7)",fontSize:11}}>
           ABA is handling your messages autonomously. Toggle off to resume normal notifications.
         </div>}
+        {/* ⬡B:pam:UI:cip_passcode:20260328⬡ Passcode Management */}
+        <div style={{padding:"12px 0",borderTop:"1px solid rgba(255,255,255,.05)"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <p style={{color:"rgba(255,255,255,.85)",fontSize:13,fontWeight:500,margin:0}}>{passcodeSet?"Passcode Set 🔒":"No Passcode 🔓"}</p>
+              <p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:"2px 0 0"}}>{passcodeSet?"Protected content requires your passcode.":"Set one to protect sensitive content."}</p>
+            </div>
+            <button onClick={()=>{setShowPasscodeForm(!showPasscodeForm);setPasscodeMsg('');}} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(139,92,246,.3)",background:"rgba(139,92,246,.1)",color:"#a78bfa",cursor:"pointer",fontSize:11}}>{passcodeSet?"Change":"Set"}</button>
+          </div>
+          {showPasscodeForm&&<div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8}}>
+            <input type="password" value={newPasscode} onChange={e=>setNewPasscode(e.target.value)} placeholder="New passcode (4+ chars)" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.05)",color:"white",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+            <input type="password" value={confirmPasscode} onChange={e=>setConfirmPasscode(e.target.value)} placeholder="Confirm passcode" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.05)",color:"white",fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+            {passcodeMsg&&<p style={{color:"#f87171",fontSize:11,margin:0}}>{passcodeMsg}</p>}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={handleSavePasscode} disabled={passcodeLoading} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"rgba(139,92,246,.3)",color:"#c4b5fd",cursor:"pointer",fontSize:12}}>{passcodeLoading?"Saving...":"Save"}</button>
+              <button onClick={()=>{setShowPasscodeForm(false);setNewPasscode('');setConfirmPasscode('');setPasscodeMsg('');}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:12}}>Cancel</button>
+            </div>
+          </div>}
+          {heldItems>0&&<div style={{marginTop:10,padding:10,borderRadius:8,background:"rgba(251,191,36,.05)",border:"1px solid rgba(251,191,36,.15)"}}>
+            <p style={{color:"#fbbf24",fontSize:12,fontWeight:500,margin:0}}>Aunt PAM is holding {heldItems} item{heldItems>1?"s":""}</p>
+            <p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:"4px 0 0"}}>Say "Aunt PAM, show me what you are holding" in chat.</p>
+          </div>}
+        </div>
       </Section>
       
       {/* Appearance */}
@@ -4002,8 +5426,7 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
       <button onClick={()=>{
         // Map email to ham_id for Nylas OAuth
         const email=(user?.email||"").toLowerCase();
-        const hamMap={"brandonjpiercesr@gmail.com":"brandon","ericreeselane@gmail.com":"eric","bryanjpiercejr@gmail.com":"bj","cj.d.moore32@gmail.com":"cj","shields.devante@gmail.com":"vante","dmurrayjr34@gmail.com":"dwayne"};
-        const hamId=hamMap[email]||email.split("@")[0];
+        const hamId=resolveHamId(email);
         window.open(`https://abacia-services.onrender.com/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
       }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px 16px",borderRadius:14,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.06)",color:"rgba(16,185,129,.8)",cursor:"pointer",fontSize:14,fontWeight:600,marginBottom:8}}>
         <Mail size={18}/>Connect Email
@@ -4040,6 +5463,11 @@ export default function MyABA(){
   const fileInputRef=useRef(null);
   const [scannerOpen,setScannerOpen]=useState(false);
   const[isTyping,setIsTyping]=useState(false);
+  // ⬡B:FIX:chat_bubble_collapsed:setMessages_wrapper:20260330⬡
+  // messages is derived from convos — streaming updates must route through setConvos
+  const setMessages=useCallback((updater)=>{
+    setConvos(prev=>prev.map(c=>c.id===activeId?{...c,messages:typeof updater==='function'?updater(c.messages||[]):updater,updatedAt:Date.now()}:c));
+  },[activeId]);
   
   // v2.16.1: Settings from backend (fallback to localStorage, then defaults)
   const[bg,setBg]=useState(()=>{try{return localStorage.getItem("myaba_bg")||"pinkSmoke"}catch{return "pinkSmoke"}});
@@ -4286,7 +5714,8 @@ export default function MyABA(){
           }
         }catch(e){console.error("[CHAT] Backend create retry failed:",e)}
       }
-      airAddMessage(backendId,msg.role,msg.content).catch(e=>console.error("[CHAT] Save message failed:",e));
+      // Skip saving empty streaming placeholders — final content saved in onDone
+      if(msg.content)airAddMessage(backendId,msg.role,msg.content).catch(e=>console.error("[CHAT] Save message failed:",e));
     }
   },[activeId,user,convos]);
 
@@ -4551,17 +5980,27 @@ export default function MyABA(){
       conversationId:activeId,
       conversationHistory:recentHistory,
       images:imagePayloads,
-      onChunk:(accumulated)=>{
-        // Update the ABA message content in real-time
-        setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:accumulated}:m));
+      onChunk:(accumulated, chunkText, chunkType)=>{
+        if (chunkType === "filler") {
+          // Show filler as temporary italic text in the ABA bubble
+          setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:"_"+chunkText+"_",isFiller:true}:m));
+        } else if (chunkType === "filler_end") {
+          // Clear filler, prepare for real content
+          setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,isFiller:false}:m)); // Keep filler text visible until real chunks replace it
+        } else {
+          // Real content chunk
+          setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:accumulated,isFiller:false}:m));
+        }
       },
       onToolStart:(tool)=>{
         setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:m.content+(m.content?"\n":"")+"_Checking "+tool+"..._"}:m));
       },
       onDone:(data)=>{
-        // Finalize: remove streaming flag, set final content
-        setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:data.fullResponse||m.content,streaming:false}:m));
+        const finalText=data.fullResponse||data.response||"";
+        setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:finalText||m.content,streaming:false}:m));
         setLastABAResponse(data);
+        // Save the finalized ABA response to backend
+        if(finalText&&activeId)airAddMessage(activeId,"aba",finalText).catch(()=>{});
         console.log("[STREAM] Done. Tools:",data.toolsExecuted,"Duration:",data.duration+"ms");
       },
       onError:(err)=>{
@@ -4586,7 +6025,7 @@ export default function MyABA(){
       const url=await reachSynthesize(finalContent);
       if(url){
         const a=new Audio(url);
-        a.onended=()=>{setAbaState("idle");if(liveRef.current&&startListeningRef.current)startListeningRef.current()};
+        a.onended=()=>{setAbaState("idle");if(liveRef.current&&startListeningRef.current){console.log("[VOICE] Auto-listen after speak");setTimeout(()=>{if(liveRef.current&&startListeningRef.current)startListeningRef.current()},500)}};
         a.play().catch(err=>{console.error("[VOICE] Audio play error:",err);setAbaState("idle");if(liveRef.current&&startListeningRef.current)startListeningRef.current()});
       }else{
         setAbaState("idle");
@@ -4731,53 +6170,47 @@ export default function MyABA(){
   // Show tour on first login
   if(!tourComplete)return <FirstLoginTour user={user} onComplete={()=>{try{localStorage.setItem("myaba_tour_complete","true")}catch{};window.location.reload()}}/>;
 
-  return(<div style={{width:"100%",height:"100dvh",minHeight:`${viewportHeight}px`,position:"relative",overflow:"hidden",fontFamily:"'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:"#08080d",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)",boxSizing:"border-box"}}>
-    <style>{`@keyframes mp{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}@keyframes mf{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes mb{0%,100%{opacity:.6}50%{opacity:1}}@keyframes ml{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 12px rgba(239,68,68,0)}}@keyframes kenBurns{0%{transform:scale(1) translate(0,0)}25%{transform:scale(1.08) translate(-1%,-1%)}50%{transform:scale(1.12) translate(1%,0)}75%{transform:scale(1.06) translate(-0.5%,1%)}100%{transform:scale(1) translate(0,0)}}@keyframes pulse{0%{transform:scale(1);opacity:1}100%{transform:scale(1.5);opacity:0}}@keyframes breathe{0%,100%{transform:scale(1);box-shadow:0 0 40px rgba(139,92,246,.3)}50%{transform:scale(1.05);box-shadow:0 0 60px rgba(139,92,246,.5)}}@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(139,92,246,.15);border-radius:99px}`}</style>
+  return(<div style={{width:"100%",height:"100dvh",minHeight:`${viewportHeight}px`,position:"relative",overflow:"hidden",fontFamily:"'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:"linear-gradient(165deg, #0a0a1a 0%, #1a0a2e 30%, #0d1117 60%, #0a0a1a 100%)",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)",boxSizing:"border-box"}}>
+    {/* Ken Burns backgrounds show through — NO gradient overlay */}
+    <style>{`@keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes mp{0%,100%{opacity:.3;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}@keyframes mf{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes mb{0%,100%{opacity:.6}50%{opacity:1}}@keyframes ml{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 12px rgba(239,68,68,0)}}@keyframes kenBurns{0%{transform:scale(1) translate(0,0)}25%{transform:scale(1.08) translate(-1%,-1%)}50%{transform:scale(1.12) translate(1%,0)}75%{transform:scale(1.06) translate(-0.5%,1%)}100%{transform:scale(1) translate(0,0)}}@keyframes pulse{0%{transform:scale(1);opacity:1}100%{transform:scale(1.5);opacity:0}}@keyframes breathe{0%,100%{transform:scale(1);box-shadow:0 0 40px rgba(139,92,246,.3)}50%{transform:scale(1.05);box-shadow:0 0 60px rgba(139,92,246,.5)}}@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(139,92,246,.15);border-radius:99px}`}</style>
     <div style={{position:"absolute",inset:"-10%",zIndex:0,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.4) saturate(.7)",animation:"kenBurns 30s ease-in-out infinite",willChange:"transform",WebkitBackfaceVisibility:"hidden"}}/>
     <div style={{position:"absolute",inset:0,zIndex:1,background:"radial-gradient(ellipse at center,rgba(0,0,0,0) 0%,rgba(0,0,0,.55) 100%)"}}/>
     <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",height:"100%",maxWidth:480,margin:"0 auto",padding:"0 14px"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 2px 4px",flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <button onClick={()=>setSidebarOpen(true)} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.5)",padding:0,display:"flex",minWidth:44,minHeight:44,alignItems:"center",justifyContent:"center"}}><MessageSquare size={18}/></button>
-          <div style={{width:8,height:8,borderRadius:99,background:`rgba(${sc},.9)`,boxShadow:`0 0 10px rgba(${sc},.6)`,animation:"mb 3s ease infinite"}}/>
-          <div style={{width:22,height:22,borderRadius:99,background:"linear-gradient(135deg,#8B5CF6,#6366F1)",display:"flex",alignItems:"center",justifyContent:"center",marginRight:4,boxShadow:"0 0 8px rgba(139,92,246,.4)"}}><Sparkles size={11} style={{color:"white"}}/></div>
-          <span style={{color:"rgba(255,255,255,.75)",fontSize:14,fontWeight:700,letterSpacing:.5}}>MyABA</span>
-          {liveActive&&<span style={{background:"rgba(239,68,68,.2)",color:"#EF4444",fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:99,animation:"ml 2s infinite",letterSpacing:1}}>LIVE</span>}
-          <span style={{color:"rgba(255,255,255,.2)",fontSize:10}}>{abaState!=="idle"?(abaState==="thinking"?"thinking...":abaState==="speaking"?"speaking...":"listening..."):""}</span>
+      {/* ⬡B:CIP:STATUS_BAR:phone_like:20260324⬡ Phone status bar */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 16px 2px",flexShrink:0,height:28}}>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span style={{color:"rgba(255,255,255,.75)",fontSize:12,fontWeight:600}}>{new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span>
+          <div style={{width:6,height:6,borderRadius:99,background:`rgba(${sc},.8)`,boxShadow:`0 0 6px rgba(${sc},.5)`}}/>
         </div>
-        <div style={{display:"flex",gap:4}}>
-          {/* v2.15.0: Admin button for HAM users */}
-          {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{background:lastABAResponse?"rgba(34,197,94,.15)":"rgba(255,255,255,.04)",border:`1px solid ${lastABAResponse?"rgba(34,197,94,.2)":"rgba(255,255,255,.06)"}`,color:lastABAResponse?"rgba(34,197,94,.85)":"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}} title="Admin Mode"><Activity size={15}/></button>}
-          <button onClick={()=>setVoiceOut(!voiceOut)} style={{background:voiceOut?"rgba(139,92,246,.15)":"rgba(255,255,255,.04)",border:`1px solid ${voiceOut?"rgba(139,92,246,.2)":"rgba(255,255,255,.06)"}`,color:voiceOut?"rgba(139,92,246,.85)":"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={15}/>:<VolumeX size={15}/>}</button>
-          <button onClick={()=>setSettingsOpen(true)} style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)",color:"rgba(255,255,255,.3)",borderRadius:99,width:44,height:44,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><Settings size={15}/></button>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {liveActive&&<span style={{background:"rgba(239,68,68,.2)",color:"#EF4444",fontSize:8,fontWeight:700,padding:"1px 6px",borderRadius:99,letterSpacing:1}}>LIVE</span>}
+          <div style={{display:"flex",gap:2,alignItems:"flex-end"}}>{[3,5,7,9].map((h,i)=><div key={i} style={{width:3,height:h,borderRadius:1,background:"rgba(255,255,255,.4)"}}/>)}</div>
+          <svg width="18" height="10" viewBox="0 0 18 10"><rect x="0" y="0" width="15" height="10" rx="2" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="1"/><rect x="16" y="3" width="2" height="4" rx="1" fill="rgba(255,255,255,.3)"/><rect x="1" y="1" width="10" height="8" rx="1" fill="rgba(34,197,94,.7)"/></svg>
         </div>
       </div>
-      {/* F5/F6: Main Tab Switcher - Chat | Briefing | Approve */}
-      {/* ⬡B:aba_skins:NAV:home_button_plus_tabs:20260323⬡ */}
-      {mainTab!=="apps"?<div style={{display:"flex",alignItems:"center",gap:4,padding:"4px 0"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,width:"100%"}}>
-          {mainTab!=="home"&&<button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:36,height:36,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(139,92,246,.12)",color:"rgba(139,92,246,.7)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}} title="Home"><Home size={16}/></button>}
-          {mainTab!=="home"&&<span style={{fontSize:14,fontWeight:600,color:"rgba(255,255,255,.7)"}}>{mainTab==="chat"?"ABA":mainTab==="briefing"?"DAWN":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"CeeCee":mainTab==="nura"?"NURA":mainTab==="phone"?"ABA Dials":mainTab==="settings"?"Settings":mainTab==="gmg_university"?"GMG-U":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"GUIDE":mainTab==="ccwa"?"CCWA":mainTab==="aoa"?"AOA":mainTab}</span>}
+      {/* App title bar — only shows when NOT on home */}
+      {mainTab!=="home"&&mainTab!=="apps"&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 12px 4px",flexShrink:0}}>
+        <button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ChevronLeft size={18}/></button>
+        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"Talk to ABA":mainTab==="briefing"?"Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"Command Center":mainTab==="nura"?"Nutrition":mainTab==="phone"?"ABA Dials":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"ABA Guides":mainTab==="sports"?"Scoreboard":mainTab==="music"?"Music":mainTab==="ccwa"?"Come Code with ABA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"Meeting Mode":mainTab==="interview"?"Interview Prep":mainTab.replace(/_/g," ")}</span>
+        <div style={{display:"flex",gap:4}}>
+          {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:lastABAResponse?"rgba(34,197,94,.1)":"rgba(255,255,255,.04)",color:lastABAResponse?"rgba(34,197,94,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}><Activity size={14}/></button>}
+          <button onClick={()=>setVoiceOut(!voiceOut)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:voiceOut?"rgba(139,92,246,.1)":"rgba(255,255,255,.04)",color:voiceOut?"rgba(139,92,246,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={13}/>:<VolumeX size={13}/>}</button>
+          <button onClick={()=>setSettingsOpen(true)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}><Settings size={13}/></button>
         </div>
-        {/* Legacy tab switcher hidden — launcher is the new nav */}
-        <div style={{display:"none"}}><MainTabSwitcher tab={mainTab} setTab={async(t)=>{
-          setMainTab(t);
-          if(t==="briefing"&&!briefingData&&!briefingLoading){
-            setBriefingLoading(true);
-            const data=await fetchBriefing(user?.email||user?.uid||"unknown");
-            setBriefingData(data);
-            setBriefingLoading(false);
-          }
-        }}/></div>
-      </div>:null}
-      
+      </div>}
+            
       {/* ⬡B:aba_skins:RENDER:app_launcher_view:20260323⬡ */}
-      {(mainTab==="home"||mainTab==="apps")&&<div style={{flex:1,overflowY:"auto",padding:"16px 8px",display:"flex",flexDirection:"column"}}>
+      {(mainTab==="home"||mainTab==="apps")&&<div style={{flex:1,overflowY:"auto",padding:"8px 8px calc(56px + env(safe-area-inset-bottom, 0px))",display:"flex",flexDirection:"column"}}>
         <AppLauncher 
           userId={user?.email||user?.uid||"unknown"} 
           currentApp={null}
           onAppSelect={(app)=>{
             setAppScope(app.app_scope||null);
+            // ⬡B:FIX:dismiss_chat_on_switch:20260324⬡ Reset voice/chat state when leaving chat
+            if(app.id!=="chat"&&app.id!=="phone"&&app.id!=="incidents"){
+              if(voiceMode==="talk")setVoiceMode("chat");
+              setSnapOpen(false);setClipboardOpen(false);
+            }
             if(app.id==="chat"){setMainTab("chat")}
             else if(app.id==="briefing"){setMainTab("briefing");if(!briefingData&&!briefingLoading){setBriefingLoading(true);fetchBriefing(user?.email||user?.uid||"unknown").then(d=>{setBriefingData(d);setBriefingLoading(false)})}}
             else if(app.id==="jobs"){setMainTab("jobs")}
@@ -4798,13 +6231,17 @@ export default function MyABA(){
             else if(app.id==="crm"){setMainTab("crm")}
             else if(app.id==="journal"){setMainTab("journal")}
             else if(app.id==="guide"){setMainTab("guide")}
+            else if(app.id==="sports"){setMainTab("sports")}
+            else if(app.id==="music"){setMainTab("music")}
+            else if(app.id==="meeting"){setMainTab("meeting")}
+            else if(app.id==="interview"){setMainTab("interview")}
             else{setMainTab(app.id)}
           }}
         />
       </div>}
       
       {/* Chat Mode */}
-      {mainTab==="chat"&&<>
+      {mainTab==="chat"&&<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",paddingBottom:"calc(48px + env(safe-area-inset-bottom, 0px))"}}>
       <div style={{flexShrink:0,padding:"4px 0"}}><VoiceMode mode={voiceMode} setMode={m=>{setVoiceMode(m);if(m!=="talk"&&liveActive){liveRef.current=false;setLiveActive(false);stopListening()}}}/></div>
       
       {/* Hide chat elements when in Talk mode */}
@@ -4850,17 +6287,12 @@ export default function MyABA(){
           <TalkToABA userId={user?.email||user?.uid||"unknown"}/>
         </div>}
       </div>
-      </>}
-      
-      {/* Briefing Mode */}
-      {mainTab==="briefing"&&<BriefingView data={briefingData} loading={briefingLoading} userId={user?.email||user?.uid||"unknown"} onRefresh={async()=>{
-        setBriefingLoading(true);
-        const data=await fetchBriefing(user?.email||user?.uid||"unknown");
-        setBriefingData(data);
-        setBriefingLoading(false);
-      }}/>}
+      </div>}
       
       {/* Jobs Mode - AWA Integration */}
+      {/* ⬡B:CIP:APP_CARD:fullscreen_glass:20260324⬡ Apps render fullscreen in glass over wallpaper */}
+      {mainTab!=="home"&&mainTab!=="apps"&&mainTab!=="chat"&&(
+        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"rgba(8,8,13,.82)",backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"20px 20px 0 0",marginTop:2,paddingBottom:"calc(52px + env(safe-area-inset-bottom, 0px))",animation:"slideUp .25s ease-out"}}>
       {mainTab==="jobs"&&<JobsView userId={user?.email||user?.uid||"unknown"}/>}
       
       {/* Pipeline Mode - Kanban ⬡B:AWA.v3:Phase6:pipeline_tab:20260315⬡ */}
@@ -4881,35 +6313,63 @@ export default function MyABA(){
       {mainTab==="crm"&&<CRMView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="journal"&&<JournalView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="guide"&&<GuideView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="sports"&&<SportsView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="music"&&<MusicView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="ccwa"&&<CCWAView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="aoa"&&<AOAView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="meeting"&&<MeetingModeView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="interview"&&<InterviewModeView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="nura"&&<NURAView userId={user?.email||user?.uid||"unknown"} onScan={()=>setScannerOpen(true)}/>}
+      {mainTab==="briefing"&&<BriefingView data={briefingData} loading={briefingLoading} userId={user?.email||user?.uid||"unknown"} onRefresh={async()=>{
+        setBriefingLoading(true);const data=await fetchBriefing(user?.email||user?.uid||"unknown");setBriefingData(data);setBriefingLoading(false);
+      }}/>}
+
+      {/* ⬡B:CIP:ASK_ABA:floating_context:20260325⬡ Floating Ask ABA on every app screen */}
+      <button onClick={()=>{
+        const currentContext = mainTab.replace(/_/g, " ");
+        setMainTab("chat");
+        setInput("I'm looking at " + currentContext + " and need help: ");
+      }} style={{
+        position:"absolute",bottom:16,right:16,display:"flex",alignItems:"center",gap:6,
+        padding:"10px 16px",borderRadius:99,
+        background:"linear-gradient(135deg,rgba(139,92,246,.9),rgba(99,102,241,.85))",
+        border:"none",color:"white",fontSize:12,fontWeight:600,cursor:"pointer",
+        boxShadow:"0 4px 20px rgba(139,92,246,.4)",zIndex:10
+      }}>
+        <ABALogo size={16} color="white"/>Ask ABA
+      </button>
+        </div>
+      )}
 
       
-      {/* ⬡B:aba_skins:RENDER:app_scoped_chat:20260323⬡ */}
-      {/* Catch-all: apps from launcher that aren't native tabs get scoped chat */}
-      {!["apps","chat","briefing","jobs","pipeline","memos","email","approve"].includes(mainTab)&&<>
-        <div style={{padding:"8px 12px",background:"rgba(139,92,246,.08)",borderRadius:12,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
-          <div style={{width:8,height:8,borderRadius:4,background:"rgba(139,92,246,.6)"}}/>
-          <span style={{color:"rgba(139,92,246,.8)",fontSize:13,fontWeight:500}}>{mainTab.replace(/_/g," ").toUpperCase()}</span>
-          <span style={{color:"rgba(255,255,255,.3)",fontSize:11,marginLeft:"auto"}}>{appScope||"full"} scope</span>
-        </div>
-        <div style={{flexShrink:0,display:"flex",justifyContent:"center",padding:"2px 0"}}><Blob state={abaState} size={messages.length<=1?80:40}/></div>
-        <div ref={scrollRef} style={{flex:1,overflowY:"auto",padding:"4px 2px",display:"flex",flexDirection:"column",gap:2,maskImage:"linear-gradient(transparent 0%,black 2%,black 96%,transparent 100%)",WebkitMaskImage:"linear-gradient(transparent 0%,black 2%,black 96%,transparent 100%)"}}>
-          {messages.map(msg=><div key={msg.id} style={{animation:"mf .3s ease"}}><Bubble msg={msg} userPhoto={user?.photoURL} onSpeak={speakText}/></div>)}
-          {isTyping&&<Typing/>}
-        </div>
-        <div style={{flexShrink:0,padding:"6px 0 14px",display:"flex",flexDirection:"column"}}>
-          <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-            <div style={{flex:1,display:"flex",alignItems:"flex-end",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:20,padding:"4px 4px 4px 14px",minHeight:48}}>
-              <textarea value={input} onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px"}} onKeyDown={handleKey} placeholder={"Ask about "+mainTab.replace(/_/g," ")+"..."} rows={1} style={{flex:1,background:"transparent",border:"none",color:"white",fontSize:15,outline:"none",resize:"none",lineHeight:"22px",maxHeight:120,fontFamily:"system-ui"}}/>
-            </div>
-            <button onClick={()=>sendMessage(input)} disabled={!input.trim()} style={{width:48,height:48,borderRadius:99,border:"none",cursor:input.trim()?"pointer":"default",background:input.trim()?"rgba(139,92,246,.4)":"rgba(255,255,255,.04)",color:input.trim()?"white":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Send size={18}/></button>
-          </div>
-        </div>
-      </>}
+      {/* Catch-all chat REMOVED — apps are their own views, chat is just an app */}
     </div>
-    <Sidebar open={sidebarOpen} convos={convos} activeId={activeId} onSelect={setActiveId} onCreate={()=>setNewChatModal(true)} onClose={()=>setSidebarOpen(false)} onDelete={deleteConv} onArchive={archiveConv} onShare={c=>setShareModal(c)} projects={projects} activeProject={activeProject} onSelectProject={setActiveProject} onCreateProject={()=>setNewChatModal(true)} onProjectDetail={p=>setProjectDetailModal(p)} user={user}/>
+    {/* ⬡B:CIP:ASK_ABA_FAB:context_button:20260325⬡ Floating Ask ABA button on every screen */}
+    {mainTab!=="chat"&&mainTab!=="home"&&mainTab!=="apps"&&!snapOpen&&(
+      <button onClick={()=>{
+        const context=mainTab.replace(/_/g," ");
+        setMainTab("chat");
+        setInput("I have a question about "+context+": ");
+      }} style={{
+        position:"fixed",bottom:"calc(64px + env(safe-area-inset-bottom, 0px))",right:16,
+        width:48,height:48,borderRadius:99,
+        background:"linear-gradient(135deg,#8B5CF6,#6366F1)",
+        border:"none",boxShadow:"0 4px 20px rgba(139,92,246,.4)",
+        cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+        zIndex:40,animation:"breathe 3s ease-in-out infinite"
+      }}>
+        <ABALogo size={24} color="white"/>
+      </button>
+    )}
+        {/* ⬡B:CIP:BOTTOM_NAV:android_style:20260324⬡ Android-style gesture nav */}
+    <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:"8px 0 calc(6px + env(safe-area-inset-bottom, 0px))",background:"linear-gradient(transparent, rgba(0,0,0,.6) 30%)",pointerEvents:"none"}}>
+      <div style={{display:"flex",alignItems:"center",gap:32,pointerEvents:"auto"}}>
+        {mainTab!=="home"&&<button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:40,height:40,borderRadius:99,background:"rgba(255,255,255,.08)",backdropFilter:"blur(8px)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><Home size={18}/></button>}
+        <div style={{width:120,height:5,borderRadius:99,background:"rgba(255,255,255,.3)"}}/>
+        {mainTab!=="home"&&<button onClick={()=>setSidebarOpen(true)} style={{width:40,height:40,borderRadius:99,background:"rgba(255,255,255,.08)",backdropFilter:"blur(8px)",border:"1px solid rgba(255,255,255,.1)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><MessageSquare size={16}/></button>}
+      </div>
+    </div>
+        <Sidebar open={sidebarOpen} convos={convos} activeId={activeId} onSelect={setActiveId} onCreate={()=>setNewChatModal(true)} onClose={()=>setSidebarOpen(false)} onDelete={deleteConv} onArchive={archiveConv} onShare={c=>setShareModal(c)} projects={projects} activeProject={activeProject} onSelectProject={setActiveProject} onCreateProject={()=>setNewChatModal(true)} onProjectDetail={p=>setProjectDetailModal(p)} user={user}/>
     <ShareModal open={!!shareModal} conversation={shareModal} onClose={()=>setShareModal(null)} onShare={shareConversation}/>
     <NewChatModal open={newChatModal} onClose={()=>setNewChatModal(false)} onCreate={(shared,projectId,projectName)=>{if(projectName){const pId=createProject(projectName);createConv(shared,pId)}else{createConv(shared,projectId)}}} projects={projects} onCreateProject={createProject}/>
     <ProjectDetailModal open={!!projectDetailModal} project={projectDetailModal} onClose={()=>setProjectDetailModal(null)} onRename={renameProject} onDelete={deleteProject} onAddFile={addFileToProject} onRemoveFile={removeFileFromProject}/>
