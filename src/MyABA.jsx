@@ -3053,6 +3053,8 @@ function TalkToABA({userId}){
       setOrbState("connecting");setStatusText("Requesting microphone...");
       await navigator.mediaDevices.getUserMedia({audio:true});
       setStatusText("Connecting to ABA...");
+      // ⬡B:voice.audit:FIX:preload_identity:20260330⬡ Warm VARA cache with HAM identity before WebRTC starts
+      try{await fetch(ABABASE+"/vara/preload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,conversation_id:"webrtc_"+Date.now()})});}catch(pe){console.log("[TALK] Preload failed (non-fatal):",pe.message)}
       await conversation.startSession({
         agentId:"agent_0601khe2q0gben08ws34bzf7a0sa",
         connectionType:"webrtc"
