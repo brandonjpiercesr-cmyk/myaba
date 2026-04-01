@@ -336,6 +336,7 @@ function GMGUniversityView() {
   const TITLES = { v1:["The Four Sources of Money","Why People Actually Give","The Donor Lifecycle","The Donor Pyramid","Quiz 1-4","Annual Giving Programs","Foundation Grants Reality","Corporate Partnerships","Earned Revenue Strategies","Quiz 6-9","Board Fundraising Responsibility","Grant Research Methods","Donor Retention Fundamentals","Fundraising Systems and Tools","Quiz 11-14","Grant Writing Basics","Major Donor Identification","Planned Giving Basics","Corporate Sponsorship Strategy","Quiz 16-19","Digital Fundraising","Storytelling for Fundraising","Capital Campaigns","Monthly Giving Programs","Quiz 21-24","Board Development","Prospect Research Deep Dive","Fundraising Metrics","Strategic Fundraising Planning","Volume 1 Capstone"], v2:["What Makes GMG Different","Both Sides of the Table","Brandon's Writing Standards","The 360 Assessment","Quiz 1-4","Data Science Development Planning","Prospect Precision System","Grant Catalyst Method","Implementation Engine","Quiz 6-9","Tic-Tac-Toe Framework Intro","Tic-Tac-Toe Implementation","Recipe Pitch Framework","Board Training GMG Style","Quiz 11-14","Foundation Pipeline Management","Major Donor Strategy","Corporate Small-Dollar Approach","Merchandise Programs","Quiz 16-19","Monthly Giving as Default","Membership Programs","Tax-Advantaged Giving","Event Strategy GMG Way","Quiz 21-24","CRM Optimization","AI in Fundraising","Building Your Tech Stack","Final Assessment Prep","Volume 2 Certification"], v3:["What Is CPP","Legal Structure","Money Flow","Capacity Planning","Quiz 1-4","Building Your Resume","Certifications","Online Presence","Crafting Your Pitch","Quiz 6-9","Client Interviews","Documentation Mastery","Folder Structure","Client Communication","CPP Final Assessment"] };
   const BG = { pink:"https://i.imgur.com/3RkebB2.jpeg", embers:"https://i.imgur.com/9HZYnlX.png", nebula:"https://i.imgur.com/nLBRQ82.jpeg", city:"https://i.imgur.com/h8zNCw1.jpeg" };
   const ABA_LOGO = "https://i.imgur.com/0be7HCF.png";
+  const GMG_LOGO = "https://i.imgur.com/qslzgTU.png";
   const glass = { background:"rgba(255,255,255,0.08)", backdropFilter:"blur(12px)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:16, padding:16 };
 
   useEffect(() => { if (gmgUid) loadProfile(); }, [gmgUid]);
@@ -487,6 +488,7 @@ function GMGUniversityView() {
     <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)"}}/>
     <div style={{position:"relative",zIndex:1}}>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+        <img src={GMG_LOGO} alt="GMG" style={{width:36,height:36,opacity:0.7}}/>
         <img src={ABA_LOGO} alt="ABA" style={{width:48,height:48}}/>
         <div><h1 style={{fontSize:18,color:"white",margin:0}}>Hey, <span style={{color:"#a78bfa"}}>{firstName}</span></h1><p style={{color:"rgba(255,255,255,.4)",fontSize:13,margin:0}}>{cnt===0?"Ready to start?":pct+"% complete"}</p></div>
       </div>
