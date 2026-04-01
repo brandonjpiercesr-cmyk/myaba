@@ -1593,6 +1593,12 @@ function MeetingModeView({ userId }) {
 // ═══════════════════════════════════════════════════════════
 function InterviewModeView({ userId }) {
   const [mode, setMode] = useState("prep");
+  const [starAnswer, setStarAnswer] = useState("");
+  const [starScoring, setStarScoring] = useState(null);
+  const [starLoading, setStarLoading] = useState(false);
+  const [starQuestion, setStarQuestion] = useState("Tell me about a time you led a team through a challenging situation.");
+  const [research, setResearch] = useState(null);
+  const [researchLoading, setResearchLoading] = useState(false);
   const [jobs, setJobs] = useState([]);
   const [selectedJob, setSelectedJob] = useState(null);
   const [prepData, setPrepData] = useState(null);
@@ -1632,7 +1638,32 @@ function InterviewModeView({ userId }) {
   useEffect(() => {
     if (running) { intervalRef.current = setInterval(() => { setSeconds(s => { secondsRef.current = s + 1; return s + 1; }); }, 1000); }
     else clearInterval(intervalRef.current);
-    return () => clearInterval(intervalRef.current);
+    const doResearch = async () => {
+    if (!selectedJob) return;
+    setResearchLoading(true);
+    try {
+      const r = await fetch(ABABASE+"/api/air/process", { method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ message:"Research "+selectedJob.organization+" for an interview for "+selectedJob.title+". Include: mission, recent news, culture, key leaders, interview questions specific to this org.",
+          user_id:userId, channel:"myaba", appScope:"interview" }) });
+      const d = await r.json(); setResearch(d.response||d.text||JSON.stringify(d));
+    } catch { setResearch("Research failed. Try again."); }
+    setResearchLoading(false);
+  };
+  const scoreSTAR = async () => {
+    if (!starAnswer.trim()) return;
+    setStarLoading(true);
+    try {
+      const r = await fetch(ABABASE+"/api/air/process", { method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ message:'Score this STAR interview answer 0-5 per component. Question: "'+starQuestion+'" Answer: "'+starAnswer+'" Return JSON: situation_score, task_score, action_score, result_score, total_percent (S=20% T=20% A=35% R=25%), coaching_tip. Only JSON.',
+          user_id:userId, channel:"myaba", appScope:"interview" }) });
+      const d = await r.json(); const text = d.response||d.text||"";
+      try { setStarScoring(JSON.parse(text.match(/\{[\s\S]*\}/)?.[0]||text)); }
+      catch { setStarScoring({coaching_tip:text,total_percent:0}); }
+    } catch { setStarScoring({coaching_tip:"Scoring failed.",total_percent:0}); }
+    setStarLoading(false);
+  };
+
+  return () => clearInterval(intervalRef.current);
   }, [running]);
 
   const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
@@ -1835,10 +1866,45 @@ function InterviewModeView({ userId }) {
     color:mode===id?"#fbbf24":"rgba(255,255,255,.3)",transition:"all 0.3s ease",display:"flex",alignItems:"center",justifyContent:"center",gap:5
   }}>{typeof emoji==="string"?<span>{emoji}</span>:React.createElement(emoji,{size:12})}{label}</button>;
 
+  // ═══════ RESEARCH MODE ═══════
+  if (mode === "research") return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
+    <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:"1px solid rgba(245,158,11,.08)"}}>
+      {modeTab("prep","Prep",FileText)}{modeTab("research","Research",Search)}{modeTab("practice","Practice",Award)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:12}}>
+      {!selectedJob?<p style={{color:"rgba(255,255,255,.4)",textAlign:"center",padding:40}}>Select a job first to research the company.</p>:<>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div><p style={{color:"white",fontSize:14,fontWeight:600,margin:0}}>{selectedJob.organization}</p><p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:0}}>{selectedJob.title||selectedJob.job_title}</p></div>
+          <button onClick={doResearch} disabled={researchLoading} style={{padding:"6px 14px",borderRadius:8,border:"none",background:"#d97706",color:"white",fontSize:11,cursor:"pointer",fontWeight:600}}>{researchLoading?"Researching...":research?"Refresh":"Research Company"}</button>
+        </div>
+        {research&&<div style={{background:"rgba(255,255,255,.05)",border:"1px solid rgba(245,158,11,.15)",borderRadius:10,padding:12}}><p style={{color:"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.7,whiteSpace:"pre-wrap",margin:0}}>{research}</p></div>}
+      </>}
+    </div>
+  </div>);
+  // ═══════ PRACTICE MODE (STAR Coach) ═══════
+  if (mode === "practice") return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
+    <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:"1px solid rgba(245,158,11,.08)"}}>
+      {modeTab("prep","Prep",FileText)}{modeTab("research","Research",Search)}{modeTab("practice","Practice",Award)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:12}}>
+      <p style={{color:"#fbbf24",fontSize:10,fontWeight:600,letterSpacing:1,marginBottom:4}}>QUESTION:</p>
+      <input value={starQuestion} onChange={e=>setStarQuestion(e.target.value)} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.15)",background:"rgba(255,255,255,.05)",color:"white",fontSize:12,marginBottom:10,boxSizing:"border-box"}}/>
+      <p style={{color:"#fbbf24",fontSize:10,fontWeight:600,letterSpacing:1,marginBottom:4}}>YOUR ANSWER:</p>
+      <textarea value={starAnswer} onChange={e=>setStarAnswer(e.target.value)} placeholder="Situation → Task → Action → Result" rows={8} style={{width:"100%",padding:10,borderRadius:8,border:"1px solid rgba(255,255,255,.15)",background:"rgba(255,255,255,.05)",color:"white",fontSize:12,resize:"vertical",boxSizing:"border-box",lineHeight:1.6}}/>
+      <button onClick={scoreSTAR} disabled={starLoading||!starAnswer.trim()} style={{marginTop:8,padding:"10px 20px",borderRadius:8,border:"none",background:starLoading?"rgba(255,255,255,.1)":"#d97706",color:"white",fontSize:12,cursor:"pointer",fontWeight:600}}>{starLoading?"Scoring...":"Score My Answer"}</button>
+      {starScoring&&<div style={{marginTop:16,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.2)",borderRadius:12,padding:14}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
+          {[["S",starScoring.situation_score,"20%"],["T",starScoring.task_score,"20%"],["A",starScoring.action_score,"35%"],["R",starScoring.result_score,"25%"]].map(([l,s,w])=><div key={l} style={{textAlign:"center",padding:8,borderRadius:8,background:"rgba(255,255,255,.05)"}}><p style={{color:"#fbbf24",fontSize:20,fontWeight:700,margin:0}}>{s||0}</p><p style={{color:"rgba(255,255,255,.4)",fontSize:9,margin:0}}>{l} ({w})</p></div>)}
+        </div>
+        <div style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:3}}><span style={{color:"rgba(255,255,255,.4)"}}>Overall</span><span style={{color:(starScoring.total_percent||0)>=80?"#10b981":"#f59e0b"}}>{starScoring.total_percent||0}%</span></div><div style={{height:6,background:"rgba(255,255,255,.1)",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:(starScoring.total_percent||0)+"%",background:(starScoring.total_percent||0)>=80?"#10b981":"#d97706",borderRadius:3,transition:"width .5s"}}/></div></div>
+        {starScoring.coaching_tip&&<p style={{color:"rgba(255,255,255,.75)",fontSize:12,lineHeight:1.6,marginTop:8,padding:8,background:"rgba(255,255,255,.03)",borderRadius:8}}>{starScoring.coaching_tip}</p>}
+      </div>}
+    </div>
+  </div>);
   // ═══════ PREP MODE ═══════
   if (mode === "prep") return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
     <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:`1px solid ${amber(.08)}`}}>
-      {modeTab("prep","Prep",FileText)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
+      {modeTab("prep","Prep",FileText)}{modeTab("research","Research",Search)}{modeTab("practice","Practice",Award)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
     </div>
     <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
       {!selectedJob ? (<>
@@ -1864,7 +1930,7 @@ function InterviewModeView({ userId }) {
   // ═══════ MOCK MODE ═══════
   if (mode === "mock") return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
     <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:`1px solid ${amber(.08)}`}}>
-      {modeTab("prep","Prep",FileText)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
+      {modeTab("prep","Prep",FileText)}{modeTab("research","Research",Search)}{modeTab("practice","Practice",Award)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
     </div>
     <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
       {mockHistory.map((h,i) => <div key={i} style={{marginBottom:14}}>
@@ -1906,7 +1972,415 @@ function InterviewModeView({ userId }) {
 
   return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
     <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:`1px solid ${amber(.08)}`}}>
-      {modeTab("prep","Prep",FileText)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
+      {modeTab("prep","Prep",FileText)}{modeTab("research","Research",Search)}{modeTab("practice","Practice",Award)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
+    </div>
+    {activeCue && <div style={{padding:"10px 14px",margin:"6px 8px 0",borderRadius:12,background:activeCue.type==="ALERT"?"linear-gradient(135deg, rgba(239,68,68,.15), rgba(239,68,68,.05))":`linear-gradient(135deg, ${amber(.15)}, ${amber(.05)})`,border:activeCue.type==="ALERT"?"1px solid rgba(239,68,68,.2)":`1px solid ${amber(.15)}`,boxShadow:activeCue.type==="ALERT"?"0 0 20px rgba(239,68,68,.1)":`0 0 20px ${amber(.08)}`,animation:"mf .4s ease"}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+        <div style={{width:6,height:6,borderRadius:"50%",background:activeCue.type==="ALERT"?"#ef4444":"#fbbf24",animation:"mb 1.5s infinite"}}/>
+        <span style={{fontSize:9,fontWeight:700,color:activeCue.type==="ALERT"?"#fca5a5":amber(.7),letterSpacing:"1px",textTransform:"uppercase"}}>{activeCue.type==="ALERT"?"Alert":"TIM Cue"}</span>
+        <span style={{fontSize:8,color:"rgba(255,255,255,.2)",marginLeft:"auto"}}>{activeCue.latency}ms</span>
+      </div>
+      <p style={{fontSize:13,color:"rgba(255,255,255,.9)",margin:0,lineHeight:1.5,fontWeight:500}}>{activeCue.text}</p>
+    </div>}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",borderBottom:`1px solid ${amber(.06)}`}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        {recording && <div style={{width:10,height:10,borderRadius:"50%",background:"#ef4444",animation:"mb 1.5s infinite",boxShadow:"0 0 12px rgba(239,68,68,.4)"}}/>}
+        <span style={{fontFamily:"'SF Mono',monospace",fontSize:22,color:running?"#fbbf24":"rgba(255,255,255,.15)",fontWeight:200,letterSpacing:"2px"}}>{fmt(seconds)}</span>
+        {selectedJob && <span style={{fontSize:9,color:amber(.4),fontWeight:500,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selectedJob.title}</span>}
+      </div>
+      <div style={{display:"flex",gap:6}}>
+        <button onClick={toggleRecord} style={{padding:"8px 14px",borderRadius:10,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:recording?"rgba(239,68,68,.12)":`linear-gradient(135deg, ${amber(.15)}, ${amber(.05)})`,color:recording?"#fca5a5":"#fbbf24",display:"flex",alignItems:"center",gap:5}}>{recording?<><MicOff size={12}/>Stop</>:<><Mic size={12}/>Record</>}</button>
+        {running && <button onClick={endInterview} style={{padding:"8px 14px",borderRadius:10,border:"1px solid rgba(239,68,68,.15)",background:"transparent",color:"#f87171",fontSize:11,fontWeight:600,cursor:"pointer"}}>End</button>}
+      </div>
+    </div>
+    <div style={{display:"flex",gap:3,padding:"6px 10px",borderBottom:"1px solid rgba(255,255,255,.03)"}}>
+      {livePanels.map(p => <button key={p.id} onClick={()=>setPanel(p.id)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:panel===p.id?700:400,background:panel===p.id?`linear-gradient(135deg, ${amber(.15)}, ${amber(.05)})`:"transparent",color:panel===p.id?"#fbbf24":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>{p.Icon&&<p.Icon size={12}/>}{p.label}{p.count>0&&<span style={{fontSize:9,background:amber(.2),padding:"2px 6px",borderRadius:8,fontWeight:600}}>{p.count}</span>}</button>)}
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
+      {panel==="transcript" && (transcript.length===0
+        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><Mic size={36} style={{margin:"0 auto 12px",display:"block",opacity:.2}}/><p style={{fontSize:13,margin:0,fontWeight:300}}>{running?"Listening...":"Tap Record to start"}</p></div>
+        : transcript.map((t,i) => <div key={i} style={{padding:"10px 12px",marginBottom:5,borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)",animation:"mf .3s ease"}}><span style={{color:amber(.35),fontSize:9,fontWeight:600,marginRight:8,fontFamily:"monospace"}}>{t.time}</span><span style={{color:"rgba(255,255,255,.8)",fontSize:12.5,lineHeight:1.6}}>{t.text}</span></div>)
+      )}
+      {panel==="coaching" && (cookAnswers.length===0
+        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><Sparkles size={36} style={{margin:"0 auto 12px",display:"block",opacity:.2}}/><p style={{fontSize:13,margin:0,fontWeight:300}}>COOK's STAR-method answers appear here</p></div>
+        : cookAnswers.map((a,i) => <div key={i} style={{padding:14,marginBottom:8,borderRadius:14,background:"linear-gradient(135deg, rgba(139,92,246,.06), rgba(139,92,246,.02))",border:"1px solid rgba(139,92,246,.1)",boxShadow:a.streaming?"0 0 15px rgba(139,92,246,.08)":"none"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+            <div style={{width:5,height:5,borderRadius:"50%",background:a.streaming?"#a78bfa":"rgba(139,92,246,.3)",...(a.streaming?{animation:"mb 1s infinite"}:{})}}/>
+            <span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",letterSpacing:"1px",textTransform:"uppercase"}}>{a.streaming?"COOK is preparing...":"COOK"}</span>
+          </div>
+          {a.q && <p style={{color:"rgba(139,92,246,.5)",fontSize:10,margin:"0 0 6px",fontStyle:"italic"}}>Re: {a.q}</p>}
+          <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{a.text}</p>
+        </div>)
+      )}
+      {summary && <div style={{padding:16,borderRadius:14,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.12)",marginTop:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><CheckCircle size={14} color="#34d399"/><span style={{fontSize:11,fontWeight:700,color:"#34d399"}}>Interview Performance Summary</span></div>
+        <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{summary}</p>
+      </div>}
+    </div>
+  </div>);
+  const [mockHistory, setMockHistory] = useState([]);
+  const [mockAnswer, setMockAnswer] = useState("");
+  const [mockLoading, setMockLoading] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [running, setRunning] = useState(false);
+  const [panel, setPanel] = useState("transcript");
+  const [summary, setSummary] = useState(null);
+  const recRef = useRef(null);
+  const streamRef = useRef(null);
+  const intervalRef = useRef(null);
+  const secondsRef = useRef(0);
+  const cueTimeoutRef = useRef(null);
+  const transcriptRef = useRef([]);
+  const analyserRef_iv = useRef(null);
+  const audioCtxRef_iv = useRef(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${ABABASE}/api/awa/jobs?assignee=${encodeURIComponent(userId)}&limit=15`);
+        if (res.ok) { const d = await res.json(); setJobs((d.jobs || d.data || []).slice(0, 15)); }
+      } catch {}
+    })();
+  }, [userId]);
+
+  useEffect(() => {
+    if (running) { intervalRef.current = setInterval(() => { setSeconds(s => { secondsRef.current = s + 1; return s + 1; }); }, 1000); }
+    else clearInterval(intervalRef.current);
+    const doResearch = async () => {
+    if (!selectedJob) return;
+    setResearchLoading(true);
+    try {
+      const r = await fetch(ABABASE+"/api/air/process", { method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ message:"Research "+selectedJob.organization+" for an interview for "+selectedJob.title+". Include: mission, recent news, culture, key leaders, interview questions specific to this org.",
+          user_id:userId, channel:"myaba", appScope:"interview" }) });
+      const d = await r.json(); setResearch(d.response||d.text||JSON.stringify(d));
+    } catch { setResearch("Research failed. Try again."); }
+    setResearchLoading(false);
+  };
+  const scoreSTAR = async () => {
+    if (!starAnswer.trim()) return;
+    setStarLoading(true);
+    try {
+      const r = await fetch(ABABASE+"/api/air/process", { method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ message:'Score this STAR interview answer 0-5 per component. Question: "'+starQuestion+'" Answer: "'+starAnswer+'" Return JSON: situation_score, task_score, action_score, result_score, total_percent (S=20% T=20% A=35% R=25%), coaching_tip. Only JSON.',
+          user_id:userId, channel:"myaba", appScope:"interview" }) });
+      const d = await r.json(); const text = d.response||d.text||"";
+      try { setStarScoring(JSON.parse(text.match(/\{[\s\S]*\}/)?.[0]||text)); }
+      catch { setStarScoring({coaching_tip:text,total_percent:0}); }
+    } catch { setStarScoring({coaching_tip:"Scoring failed.",total_percent:0}); }
+    setStarLoading(false);
+  };
+
+  return () => clearInterval(intervalRef.current);
+  }, [running]);
+
+  const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+  const amber = (opacity) => `rgba(245,158,11,${opacity})`;
+
+  const fetchTimCue = async (text) => {
+    try {
+      const res = await fetch(`${ABABASE}/api/tim/cue`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, userId })
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.cue) {
+          const cue = { text: d.cue, type: d.type, time: fmt(secondsRef.current), latency: d.latency_ms };
+          setTimCues(prev => [...prev, cue]);
+          setActiveCue(cue);
+          clearTimeout(cueTimeoutRef.current);
+          cueTimeoutRef.current = setTimeout(() => setActiveCue(null), 8000);
+        }
+      }
+    } catch {}
+  };
+
+  const fetchCookAnswer = async (question) => {
+    setCookStreaming(true);
+    let fullText = "";
+    try {
+      const res = await fetch(`${ABABASE}/api/cook/answer`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId })
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n").filter(l => l.startsWith("data: "));
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line.slice(6));
+            if (parsed.type === "text") { fullText += parsed.text; setCookAnswers(prev => { const u = [...prev]; if (u.length > 0 && u[u.length-1].streaming) { u[u.length-1].text = fullText; } else { u.push({ q: question.substring(0, 80), text: fullText, time: fmt(secondsRef.current), streaming: true }); } return u; }); }
+            if (parsed.type === "done") { setCookAnswers(prev => { const u = [...prev]; if (u.length > 0) u[u.length-1].streaming = false; return u; }); }
+          } catch {}
+        }
+      }
+    } catch { if (fullText) setCookAnswers(prev => { const u = [...prev]; if (u.length > 0) u[u.length-1].streaming = false; return u; }); }
+    setCookStreaming(false);
+  };
+
+  const processSegment = async (text) => {
+    fetchTimCue(text);
+    if (text.includes("?") || text.length > 60) {
+      setTimeout(() => fetchCookAnswer(text), 2000);
+    }
+  };
+
+  const loadPrep = async (job) => {
+    setSelectedJob(job); setPrepLoading(true);
+    try {
+      const res = await fetch(`${ABABASE}/api/awa/interview-prep`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job, userId })
+      });
+      if (res.ok) { const d = await res.json(); setPrepData(d.prep || d.response || d); }
+    } catch {}
+    setPrepLoading(false);
+  };
+
+  const startMock = async () => {
+    setMode("mock"); setMockHistory([]); setMockLoading(true);
+    try {
+      const res = await fetch(`${ABABASE}/api/air/stream`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: `You are interviewing me for "${selectedJob?.title || "a professional position"}" at ${selectedJob?.organization || "an organization"}. Ask me one interview question. Just the question, nothing else.`, user_id: userId, channel: "myaba", appScope: "interview" })
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let q = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n").filter(l => l.startsWith("data: "));
+        for (const line of lines) {
+          try { const p = JSON.parse(line.slice(6)); if (p.type === "text") q += p.text; } catch {}
+        }
+      }
+      setMockQ(q || "Tell me about yourself.");
+    } catch { setMockQ("Tell me about yourself."); }
+    setMockLoading(false);
+  };
+
+  const submitMockAnswer = async () => {
+    if (!mockAnswer.trim()) return;
+    setMockLoading(true);
+    const answer = mockAnswer; setMockAnswer("");
+    setMockHistory(prev => [...prev, { q: mockQ, a: answer, scoring: true }]);
+    try {
+      const res = await fetch(`${ABABASE}/api/air/stream`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: `Mock interview for "${selectedJob?.title || "a role"}" at ${selectedJob?.organization || "org"}.\nQuestion: "${mockQ}"\nAnswer: "${answer}"\n\nScore 1-10 with feedback. Use STAR method. Then next question.\n\nFormat:\nSCORE: X/10\nSTRENGTHS: ...\nIMPROVE: ...\nBETTER ANSWER: ...\nNEXT QUESTION: ...`, user_id: userId, channel: "myaba", appScope: "interview" })
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n").filter(l => l.startsWith("data: "));
+        for (const line of lines) {
+          try { const p = JSON.parse(line.slice(6)); if (p.type === "text") fullText += p.text; } catch {}
+        }
+      }
+      const scoreM = fullText.match(/SCORE:\s*(\d+)/i);
+      const strM = fullText.match(/STRENGTHS?:\s*(.+?)(?=IMPROVE|BETTER|NEXT|$)/is);
+      const impM = fullText.match(/IMPROVE:\s*(.+?)(?=BETTER|NEXT|$)/is);
+      const betM = fullText.match(/BETTER ANSWER:\s*(.+?)(?=NEXT|$)/is);
+      const nqM = fullText.match(/NEXT QUESTION:\s*(.+)/is);
+      setMockHistory(prev => { const u = [...prev]; const last = u[u.length-1]; if(last) { last.score = scoreM?scoreM[1]:"?"; last.strengths = strM?strM[1].trim():""; last.improve = impM?impM[1].trim():""; last.better = betM?betM[1].trim():""; last.scoring = false; } return [...u]; });
+      setMockQ(nqM ? nqM[1].trim() : "Tell me more about your experience.");
+    } catch {}
+    setMockLoading(false);
+  };
+
+  const toggleRecord = async () => {
+    if (recording) { recRef.current?.stop(); streamRef.current?.getTracks().forEach(t=>t.stop()); setRecording(false); if(analyserRef_iv.current?.interval)clearInterval(analyserRef_iv.current.interval); if(audioCtxRef_iv.current){try{audioCtxRef_iv.current.close()}catch{}} analyserRef_iv.current=null; audioCtxRef_iv.current=null; return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      // ⬡B:FIX:interview_vad:silence_detection:20260330⬡
+      try {
+        const actx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = actx.createMediaStreamSource(stream);
+        const analyser = actx.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        audioCtxRef_iv.current = actx;
+        analyserRef_iv.current = { node: analyser, hadVoice: false, buf: new Uint8Array(analyser.fftSize) };
+        analyserRef_iv.current.interval = setInterval(() => {
+          if (!analyserRef_iv.current) return;
+          const a = analyserRef_iv.current;
+          a.node.getByteTimeDomainData(a.buf);
+          let maxDev = 0;
+          for (let i = 0; i < a.buf.length; i++) maxDev = Math.max(maxDev, Math.abs(a.buf[i] - 128));
+          if (maxDev > 8) a.hadVoice = true;
+        }, 200);
+      } catch (vadErr) { console.log("[INTERVIEW] VAD setup skipped:", vadErr.message); }
+      const mimes = ["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus",""];
+      let mime = "";
+      for (const m of mimes) { if (!m || MediaRecorder.isTypeSupported(m)) { mime = m; break; } }
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      rec.ondataavailable = async (e) => {
+        const vad = analyserRef_iv.current;
+        const hadVoice = vad ? vad.hadVoice : true;
+        if (vad) vad.hadVoice = false;
+        if (e.data.size > 500 && hadVoice) {
+          const audioBlob_interview = new Blob([e.data], { type: mime || "audio/webm" });
+          const text = await reachTranscribe(audioBlob_interview);
+          if (text && text.trim()) {
+            const entry = { text, time: fmt(secondsRef.current) };
+            setTranscript(prev => [...prev, entry]);
+            transcriptRef.current = [...transcriptRef.current, entry];
+            if (mode === "mock") setMockAnswer(prev => prev ? prev + " " + text : text);
+            else processSegment(text);
+          }
+        } else if (!hadVoice) {
+          console.log("[INTERVIEW] Silent chunk — skipping Deepgram call");
+        }
+      };
+      rec.start(5000); recRef.current = rec; setRecording(true);
+      if (!running) setRunning(true);
+    } catch { alert("Microphone access denied"); }
+  };
+
+  const endInterview = async () => {
+    recRef.current?.stop();
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    if(analyserRef_iv.current?.interval)clearInterval(analyserRef_iv.current.interval);
+    if(audioCtxRef_iv.current){try{audioCtxRef_iv.current.close()}catch{}}
+    analyserRef_iv.current=null; audioCtxRef_iv.current=null;
+    setRunning(false); setRecording(false);
+    if (transcriptRef.current.length > 0) {
+      try {
+        const res = await fetch(`${ABABASE}/api/meeting/summary`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcript: transcriptRef.current.map(t=>`[${t.time}] ${t.text}`).join("\n"), duration: fmt(seconds), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, userId })
+        });
+        if (res.ok) { const d = await res.json(); setSummary(d.summary || ""); }
+      } catch {}
+    }
+  };
+
+  const modeTab = (id, label, emoji) => <button onClick={()=>{ if(id==="mock"&&selectedJob) startMock(); else setMode(id); }} style={{
+    flex:1,padding:"9px 0",borderRadius:10,border:"none",cursor:"pointer",fontSize:11,fontWeight:mode===id?700:400,
+    letterSpacing: mode===id?"0.5px":"0",
+    background:mode===id?`linear-gradient(135deg, ${amber(.2)}, ${amber(.08)})`:"transparent",
+    color:mode===id?"#fbbf24":"rgba(255,255,255,.3)",transition:"all 0.3s ease",display:"flex",alignItems:"center",justifyContent:"center",gap:5
+  }}>{typeof emoji==="string"?<span>{emoji}</span>:React.createElement(emoji,{size:12})}{label}</button>;
+
+  // ═══════ RESEARCH MODE ═══════
+  if (mode === "research") return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
+    <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:"1px solid rgba(245,158,11,.08)"}}>
+      {modeTab("prep","Prep",FileText)}{modeTab("research","Research",Search)}{modeTab("practice","Practice",Award)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:12}}>
+      {!selectedJob?<p style={{color:"rgba(255,255,255,.4)",textAlign:"center",padding:40}}>Select a job first to research the company.</p>:<>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div><p style={{color:"white",fontSize:14,fontWeight:600,margin:0}}>{selectedJob.organization}</p><p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:0}}>{selectedJob.title||selectedJob.job_title}</p></div>
+          <button onClick={doResearch} disabled={researchLoading} style={{padding:"6px 14px",borderRadius:8,border:"none",background:"#d97706",color:"white",fontSize:11,cursor:"pointer",fontWeight:600}}>{researchLoading?"Researching...":research?"Refresh":"Research Company"}</button>
+        </div>
+        {research&&<div style={{background:"rgba(255,255,255,.05)",border:"1px solid rgba(245,158,11,.15)",borderRadius:10,padding:12}}><p style={{color:"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.7,whiteSpace:"pre-wrap",margin:0}}>{research}</p></div>}
+      </>}
+    </div>
+  </div>);
+  // ═══════ PRACTICE MODE (STAR Coach) ═══════
+  if (mode === "practice") return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
+    <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:"1px solid rgba(245,158,11,.08)"}}>
+      {modeTab("prep","Prep",FileText)}{modeTab("research","Research",Search)}{modeTab("practice","Practice",Award)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:12}}>
+      <p style={{color:"#fbbf24",fontSize:10,fontWeight:600,letterSpacing:1,marginBottom:4}}>QUESTION:</p>
+      <input value={starQuestion} onChange={e=>setStarQuestion(e.target.value)} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.15)",background:"rgba(255,255,255,.05)",color:"white",fontSize:12,marginBottom:10,boxSizing:"border-box"}}/>
+      <p style={{color:"#fbbf24",fontSize:10,fontWeight:600,letterSpacing:1,marginBottom:4}}>YOUR ANSWER:</p>
+      <textarea value={starAnswer} onChange={e=>setStarAnswer(e.target.value)} placeholder="Situation → Task → Action → Result" rows={8} style={{width:"100%",padding:10,borderRadius:8,border:"1px solid rgba(255,255,255,.15)",background:"rgba(255,255,255,.05)",color:"white",fontSize:12,resize:"vertical",boxSizing:"border-box",lineHeight:1.6}}/>
+      <button onClick={scoreSTAR} disabled={starLoading||!starAnswer.trim()} style={{marginTop:8,padding:"10px 20px",borderRadius:8,border:"none",background:starLoading?"rgba(255,255,255,.1)":"#d97706",color:"white",fontSize:12,cursor:"pointer",fontWeight:600}}>{starLoading?"Scoring...":"Score My Answer"}</button>
+      {starScoring&&<div style={{marginTop:16,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.2)",borderRadius:12,padding:14}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
+          {[["S",starScoring.situation_score,"20%"],["T",starScoring.task_score,"20%"],["A",starScoring.action_score,"35%"],["R",starScoring.result_score,"25%"]].map(([l,s,w])=><div key={l} style={{textAlign:"center",padding:8,borderRadius:8,background:"rgba(255,255,255,.05)"}}><p style={{color:"#fbbf24",fontSize:20,fontWeight:700,margin:0}}>{s||0}</p><p style={{color:"rgba(255,255,255,.4)",fontSize:9,margin:0}}>{l} ({w})</p></div>)}
+        </div>
+        <div style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:3}}><span style={{color:"rgba(255,255,255,.4)"}}>Overall</span><span style={{color:(starScoring.total_percent||0)>=80?"#10b981":"#f59e0b"}}>{starScoring.total_percent||0}%</span></div><div style={{height:6,background:"rgba(255,255,255,.1)",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:(starScoring.total_percent||0)+"%",background:(starScoring.total_percent||0)>=80?"#10b981":"#d97706",borderRadius:3,transition:"width .5s"}}/></div></div>
+        {starScoring.coaching_tip&&<p style={{color:"rgba(255,255,255,.75)",fontSize:12,lineHeight:1.6,marginTop:8,padding:8,background:"rgba(255,255,255,.03)",borderRadius:8}}>{starScoring.coaching_tip}</p>}
+      </div>}
+    </div>
+  </div>);
+  // ═══════ PREP MODE ═══════
+  if (mode === "prep") return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
+    <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:`1px solid ${amber(.08)}`}}>
+      {modeTab("prep","Prep",FileText)}{modeTab("research","Research",Search)}{modeTab("practice","Practice",Award)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+      {!selectedJob ? (<>
+        <p style={{fontSize:13,fontWeight:600,color:"rgba(255,255,255,.7)",margin:"0 0 10px"}}>Select a job to prepare for</p>
+        {jobs.length===0 ? <p style={{textAlign:"center",padding:30,color:"rgba(255,255,255,.15)",fontSize:12}}>No jobs in pipeline yet.</p>
+        : jobs.map((j,i) => <button key={j.id||i} onClick={()=>loadPrep(j)} style={{display:"block",width:"100%",textAlign:"left",padding:"12px 14px",marginBottom:6,borderRadius:14,background:"linear-gradient(135deg, rgba(255,255,255,.03), rgba(255,255,255,.01))",border:`1px solid ${amber(.08)}`,cursor:"pointer",color:"#fff",transition:"all 0.2s ease"}}>
+          <p style={{fontSize:13,fontWeight:600,margin:0,color:"rgba(255,255,255,.85)"}}>{j.title||"Untitled"}</p>
+          <p style={{fontSize:10,color:amber(.4),margin:"3px 0 0",fontWeight:500}}>{j.organization||""}</p>
+        </button>)}
+      </>) : (<>
+        <button onClick={()=>{setSelectedJob(null);setPrepData(null)}} style={{background:"none",border:"none",color:amber(.5),cursor:"pointer",fontSize:11,padding:0,marginBottom:8,fontWeight:500}}>← Back to jobs</button>
+        <div style={{padding:"14px 16px",borderRadius:14,background:`linear-gradient(135deg, ${amber(.06)}, ${amber(.02)})`,border:`1px solid ${amber(.12)}`,marginBottom:12}}>
+          <p style={{fontSize:15,fontWeight:700,color:"rgba(255,255,255,.9)",margin:"0 0 3px"}}>{selectedJob.title}</p>
+          <p style={{fontSize:11,color:amber(.5),margin:0,fontWeight:500}}>{selectedJob.organization}</p>
+        </div>
+        {prepLoading ? <div style={{textAlign:"center",padding:40}}><Loader2 size={20} style={{color:"#fbbf24",animation:"spin 1s linear infinite"}}/><p style={{fontSize:11,color:"rgba(255,255,255,.2)",marginTop:8}}>Generating prep package...</p></div>
+        : prepData ? <div style={{fontSize:12.5,color:"rgba(255,255,255,.75)",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{typeof prepData === "string" ? prepData : JSON.stringify(prepData, null, 2)}</div>
+        : null}
+      </>)}
+    </div>
+  </div>);
+
+  // ═══════ MOCK MODE ═══════
+  if (mode === "mock") return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
+    <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:`1px solid ${amber(.08)}`}}>
+      {modeTab("prep","Prep",FileText)}{modeTab("research","Research",Search)}{modeTab("practice","Practice",Award)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+      {mockHistory.map((h,i) => <div key={i} style={{marginBottom:14}}>
+        <div style={{padding:"12px 14px",borderRadius:"14px 14px 4px 14px",background:`linear-gradient(135deg, ${amber(.08)}, ${amber(.03)})`,border:`1px solid ${amber(.12)}`,marginBottom:4}}>
+          <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}><span style={{fontSize:9,fontWeight:700,color:amber(.6),letterSpacing:"0.5px",textTransform:"uppercase"}}>Interviewer</span></div>
+          <p style={{fontSize:12.5,color:"rgba(255,255,255,.8)",margin:0,lineHeight:1.6}}>{h.q}</p>
+        </div>
+        <div style={{padding:"12px 14px",borderRadius:"4px 14px 14px 14px",background:"linear-gradient(135deg, rgba(139,92,246,.06), rgba(139,92,246,.02))",border:"1px solid rgba(139,92,246,.1)",marginBottom:4}}>
+          <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}><span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",letterSpacing:"0.5px",textTransform:"uppercase"}}>You</span></div>
+          <p style={{fontSize:12.5,color:"rgba(255,255,255,.75)",margin:0,lineHeight:1.6}}>{h.a}</p>
+        </div>
+        {h.scoring ? <div style={{padding:10,textAlign:"center"}}><Loader2 size={14} style={{color:"#fbbf24",animation:"spin 1s linear infinite"}}/></div>
+        : h.score && <div style={{padding:"12px 14px",borderRadius:12,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.1)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+            <span style={{fontSize:22,fontWeight:800,color:parseInt(h.score)>=7?"#34d399":parseInt(h.score)>=5?"#fbbf24":"#f87171"}}>{h.score}<span style={{fontSize:12,fontWeight:400,color:"rgba(255,255,255,.3)"}}>/10</span></span>
+          </div>
+          {h.strengths && <div style={{marginBottom:6}}><span style={{fontSize:9,fontWeight:700,color:"rgba(16,185,129,.6)",letterSpacing:"0.5px"}}>STRENGTHS</span><p style={{fontSize:11.5,color:"rgba(255,255,255,.6)",margin:"2px 0 0",lineHeight:1.5}}>{h.strengths}</p></div>}
+          {h.improve && <div style={{marginBottom:6}}><span style={{fontSize:9,fontWeight:700,color:amber(.6),letterSpacing:"0.5px"}}>IMPROVE</span><p style={{fontSize:11.5,color:"rgba(255,255,255,.6)",margin:"2px 0 0",lineHeight:1.5}}>{h.improve}</p></div>}
+          {h.better && <div><span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",letterSpacing:"0.5px"}}>POLISHED VERSION</span><p style={{fontSize:11.5,color:"rgba(255,255,255,.7)",margin:"2px 0 0",lineHeight:1.5,fontStyle:"italic"}}>{h.better}</p></div>}
+        </div>}
+      </div>)}
+      {mockQ && <div style={{padding:"14px 16px",borderRadius:14,background:`linear-gradient(135deg, ${amber(.1)}, ${amber(.04)})`,border:`1px solid ${amber(.15)}`,boxShadow:`0 0 20px ${amber(.05)}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}><span style={{fontSize:9,fontWeight:700,color:amber(.7),letterSpacing:"1px",textTransform:"uppercase"}}>Interviewer asks</span></div>
+        <p style={{fontSize:14,color:"rgba(255,255,255,.9)",margin:0,lineHeight:1.6,fontWeight:500}}>{mockQ}</p>
+      </div>}
+    </div>
+    <div style={{padding:"10px 12px",borderTop:`1px solid ${amber(.08)}`,display:"flex",gap:6,background:"rgba(0,0,0,.2)"}}>
+      <button onClick={toggleRecord} style={{padding:"9px 12px",borderRadius:10,border:"none",cursor:"pointer",background:recording?"rgba(239,68,68,.12)":"rgba(255,255,255,.04)",color:recording?"#fca5a5":"rgba(255,255,255,.35)",display:"flex",alignItems:"center",gap:4}}>{recording?<MicOff size={13}/>:<Mic size={13}/>}</button>
+      <input value={mockAnswer} onChange={e=>setMockAnswer(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submitMockAnswer()} placeholder="Type or speak your answer..." style={{flex:1,padding:"9px 12px",borderRadius:10,border:`1px solid ${amber(.1)}`,background:"rgba(255,255,255,.03)",color:"#fff",fontSize:12,outline:"none"}}/>
+      <button onClick={submitMockAnswer} disabled={mockLoading||!mockAnswer.trim()} style={{padding:"9px 16px",borderRadius:10,border:"none",cursor:"pointer",background:mockAnswer.trim()?`linear-gradient(135deg, ${amber(.25)}, ${amber(.1)})`:"rgba(255,255,255,.03)",color:"#fbbf24",fontSize:12,fontWeight:600}}>{mockLoading?<Loader2 size={13} style={{animation:"spin 1s linear infinite"}}/>:<Send size={13}/>}</button>
+    </div>
+  </div>);
+
+  // ═══════ LIVE MODE ═══════
+  const livePanels = [
+    { id: "transcript", label: "Transcript", count: transcript.length, Icon: FileText },
+    { id: "coaching", label: "Coaching", count: cookAnswers.length, Icon: MessageSquare }
+  ];
+
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
+    <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:`1px solid ${amber(.08)}`}}>
+      {modeTab("prep","Prep",FileText)}{modeTab("research","Research",Search)}{modeTab("practice","Practice",Award)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
     </div>
     {activeCue && <div style={{padding:"10px 14px",margin:"6px 8px 0",borderRadius:12,background:activeCue.type==="ALERT"?"linear-gradient(135deg, rgba(239,68,68,.15), rgba(239,68,68,.05))":`linear-gradient(135deg, ${amber(.15)}, ${amber(.05)})`,border:activeCue.type==="ALERT"?"1px solid rgba(239,68,68,.2)":`1px solid ${amber(.15)}`,boxShadow:activeCue.type==="ALERT"?"0 0 20px rgba(239,68,68,.1)":`0 0 20px ${amber(.08)}`,animation:"mf .4s ease"}}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
