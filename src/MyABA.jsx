@@ -4133,6 +4133,12 @@ function ReferencesView({userId}){
 function JobsView({userId}){
   // Map email to ham_id for default filter
   const defaultHam=resolveHamId(userId);
+  const[sortBy,setSortBy]=useState('newest');
+  const[miniChat,setMiniChat]=useState('');
+  const[miniChatResult,setMiniChatResult]=useState(null);
+  const[miniChatLoading,setMiniChatLoading]=useState(false);
+  const[bulkSelected,setBulkSelected]=useState(new Set());
+  const[bulkLoading,setBulkLoading]=useState(false);
   
   const[jobs,setJobs]=useState([]);
   const[loading,setLoading]=useState(true);
@@ -4240,6 +4246,8 @@ function JobsView({userId}){
     return title.includes(f)||company.includes(f)||assignees.includes(f);
   });
   
+  const toggleBulk=(id)=>{setBulkSelected(p=>{const n=new Set(p);if(n.has(id))n.delete(id);else n.add(id);return n;});};
+  const bulkGenerate=async()=>{setBulkLoading(true);for(const j of filtered.filter(j=>bulkSelected.has(j.id))){const a=(j.assignees||[])[0]||'unmatched';try{await fetch(ABABASE+"/api/awa/cover-letter",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({job:j,userId:a})});await fetch(ABABASE+"/api/awa/resume",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({job:j,userId:a})})}catch{}}setBulkLoading(false);setBulkSelected(new Set());};
   const handleGenerate=async(type)=>{
     if(!selectedJob)return;
     setGenerating(type);setOutput(null);
