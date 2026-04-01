@@ -327,6 +327,7 @@ function GMGUniversityView() {
   const [msgs, setMsgs] = useState([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
+  let sentBuf = "";
   const [isTyping, setIsTyping] = useState(false);
   const audioRef = useRef();
   const endRef = useRef();
@@ -356,7 +357,17 @@ function GMGUniversityView() {
     return null;
   };
 
-  const startLesson = async (v, d) => {
+  // ⬡B:fix:cip_tts_sentence:20260401⬡ Sentence-level TTS like CIB
+  const speak = async (text) => {
+    if (!voice || !text.trim()) return;
+    try {
+      const r = await fetch(ABABASE+"/api/tts/speak", { method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({text:text.substring(0,500), voice_id:"AIFDUhRnM6s61433WMNu"}) });
+      if (r.ok && audioRef.current) { audioRef.current.src = URL.createObjectURL(await r.blob()); audioRef.current.play().catch(()=>{}); }
+    } catch {}
+  };
+
+    const startLesson = async (v, d) => {
     setVol(v); setDay(d); setView("lesson"); setMsgs([]);
     const title = (TITLES[v]||[])[d-1]||"Day "+d;
     // ⬡B:fix:cip_gmgu_auto_teach:20260401⬡ Stream from GURU instead of static welcome
@@ -371,7 +382,11 @@ function GMGUniversityView() {
         for (const line of decoder.decode(value,{stream:true}).split("\n").filter(l=>l.startsWith("data: "))) {
           try { const d=JSON.parse(line.slice(6));
             if (d.type==="chunk") { acc+=d.text; setMsgs([{aba:true,text:acc,streaming:true}]); }
-            else if (d.type==="done") { setMsgs([{aba:true,text:d.fullResponse||acc,streaming:false}]); }
+            else if (d.type==="done") { 
+                const finalText = d.fullResponse||acc;
+                setMsgs([{aba:true,text:finalText,streaming:false}]);
+                // Remaining sentence buffer spoken via sentence-level TTS above
+              }
           } catch {}
         }
       }
@@ -391,7 +406,11 @@ function GMGUniversityView() {
         const {done,value} = await reader.read(); if (done) break;
         for (const line of decoder.decode(value,{stream:true}).split("\n").filter(l=>l.startsWith("data: "))) {
           try { const d=JSON.parse(line.slice(6));
-            if (d.type==="chunk") { acc+=d.text; setMsgs(p=>{const c=[...p];const l=c[c.length-1];if(l?.aba)c[c.length-1]={...l,text:acc};return c;}); }
+            if (d.type==="chunk") { 
+                acc+=d.text; sentBuf+=d.text;
+                setMsgs(p=>{const c=[...p];const l=c[c.length-1];if(l?.aba)c[c.length-1]={...l,text:acc};return c;});
+                if (voice && sentBuf.match(/[.!?]\s*$/)) { speak(sentBuf.trim()); sentBuf=""; }
+              }
             else if (d.type==="done") { setMsgs(p=>{const c=[...p];const l=c[c.length-1];if(l?.aba)c[c.length-1]={...l,text:d.fullResponse||acc,streaming:false};return c;}); }
           } catch {}
         }
@@ -414,10 +433,12 @@ function GMGUniversityView() {
   if (view==="lesson" && day) {
     const dn = profile?.completedDays?.includes(vol+"-d"+day);
     const title = (TITLES[vol]||[])[day-1]||"Day "+day;
-    return (<div style={{flex:1,display:"flex",flexDirection:"column",position:"relative",background:`url(${BG.embers}) center/cover`}}>
+    return (<div style={{flex:1,display:"flex",flexDirection:"column",position:"relative",background:`url(${BG.embers}) center/cover`,overflow:"hidden"}}>
+      <img src={BG.embers} alt="" style={{position:"absolute",width:"120%",height:"120%",top:"-10%",left:"-10%",objectFit:"cover",animation:"slowZoom 30s ease-in-out infinite",opacity:0.7}}/>
       <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)"}}/>
       <div style={{position:"relative",zIndex:1,display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderBottom:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",backdropFilter:"blur(12px)"}}>
         <button onClick={()=>setView("home")} style={{color:"rgba(255,255,255,.5)",background:"none",border:"none",cursor:"pointer",fontSize:16}}>←</button>
+        <button onClick={()=>setVoice(!voice)} style={{color:voice?"#a78bfa":"rgba(255,255,255,.3)",background:"none",border:"none",cursor:"pointer",fontSize:14}}>{voice?"🔊":"🔇"}</button>
         <img src={ABA_LOGO} alt="ABA" style={{width:28,height:28}}/>
         <div style={{flex:1}}><p style={{color:"#a78bfa",fontSize:9,letterSpacing:2,margin:0}}>DAY {day} OF {VOL[vol].d}</p><p style={{color:"white",fontSize:13,margin:0}}>{title}</p></div>
       </div>
@@ -438,7 +459,7 @@ function GMGUniversityView() {
         {!isTyping && <button onClick={markComplete} style={{width:"100%",marginTop:10,padding:14,borderRadius:12,border:"none",background:dn?"rgba(255,255,255,0.1)":"linear-gradient(to right,#10b981,#14b8a6)",color:dn?"rgba(255,255,255,0.4)":"white",fontSize:14,fontWeight:500,cursor:"pointer"}}>{dn?"Completed":"Mark Complete +100 XP"}</button>}
       </div>
       <audio ref={audioRef}/>
-      <style>{"@keyframes pulse{0%,100%{opacity:1}50%{opacity:0}}"}</style>
+      <style>{"@keyframes pulse{0%,100%{opacity:1}50%{opacity:0}} @keyframes slowZoom{0%{transform:scale(1) translate(0,0)}50%{transform:scale(1.1) translate(-2%,-1%)}100%{transform:scale(1) translate(0,0)}}"}</style>
     </div>);
   }
 
