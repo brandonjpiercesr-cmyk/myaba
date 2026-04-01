@@ -4138,6 +4138,7 @@ function JobsView({userId}){
   const[miniChatResult,setMiniChatResult]=useState(null);
   const[miniChatLoading,setMiniChatLoading]=useState(false);
   const[bulkSelected,setBulkSelected]=useState(new Set());
+  const[splitPane,setSplitPane]=useState(null);
   const[bulkLoading,setBulkLoading]=useState(false);
   
   const[jobs,setJobs]=useState([]);
@@ -4248,6 +4249,18 @@ function JobsView({userId}){
   
   const toggleBulk=(id)=>{setBulkSelected(p=>{const n=new Set(p);if(n.has(id))n.delete(id);else n.add(id);return n;});};
   const bulkGenerate=async()=>{setBulkLoading(true);for(const j of filtered.filter(j=>bulkSelected.has(j.id))){const a=(j.assignees||[])[0]||'unmatched';try{await fetch(ABABASE+"/api/awa/cover-letter",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({job:j,userId:a})});await fetch(ABABASE+"/api/awa/resume",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({job:j,userId:a})})}catch{}}setBulkLoading(false);setBulkSelected(new Set());};
+  const openSplitPane=async(job)=>{
+    const a=(job.assignees||[])[0]||userId;
+    setSplitPane({job,cl:'',res:'',loading:true});
+    try{
+      const[clR,resR]=await Promise.all([
+        fetch(ABABASE+"/api/awa/cover-letter",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({job,userId:a})}),
+        fetch(ABABASE+"/api/awa/resume",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({job,userId:a})})
+      ]);
+      const clD=await clR.json(), resD=await resR.json();
+      setSplitPane(p=>({...p,cl:clD.coverLetter||clD.response||'',res:resD.resume||resD.response||'',loading:false}));
+    }catch{setSplitPane(p=>({...p,loading:false}));}
+  };
   const handleGenerate=async(type)=>{
     if(!selectedJob)return;
     setGenerating(type);setOutput(null);
