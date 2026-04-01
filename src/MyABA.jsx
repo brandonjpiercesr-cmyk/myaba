@@ -356,11 +356,26 @@ function GMGUniversityView() {
     return null;
   };
 
-  const startLesson = (v, d) => {
+  const startLesson = async (v, d) => {
     setVol(v); setDay(d); setView("lesson"); setMsgs([]);
     const title = (TITLES[v]||[])[d-1]||"Day "+d;
-    setIsTyping(true);
-    setMsgs([{ aba:true, text:firstName+", welcome to "+VOL[v].f+", Day "+d+": "+title+". Let me walk you through today's material.", typing:true }]);
+    // ⬡B:fix:cip_gmgu_auto_teach:20260401⬡ Stream from GURU instead of static welcome
+    setMsgs([{ aba:true, text:"", streaming:true }]);
+    try {
+      const r = await fetch(ABABASE+"/api/air/stream", { method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ message:"Start teaching "+VOL[v].f+" Day "+d+": "+title+". Welcome "+firstName+" and teach the full lesson.", user_id:userEmail, userId:userEmail, channel:"gmg-university", conversationHistory:[] })
+      });
+      const reader = r.body.getReader(); const decoder = new TextDecoder(); let acc = "";
+      while (true) {
+        const {done,value} = await reader.read(); if (done) break;
+        for (const line of decoder.decode(value,{stream:true}).split("\n").filter(l=>l.startsWith("data: "))) {
+          try { const d=JSON.parse(line.slice(6));
+            if (d.type==="chunk") { acc+=d.text; setMsgs([{aba:true,text:acc,streaming:true}]); }
+            else if (d.type==="done") { setMsgs([{aba:true,text:d.fullResponse||acc,streaming:false}]); }
+          } catch {}
+        }
+      }
+    } catch { setMsgs([{aba:true,text:firstName+", welcome to "+VOL[v].f+", Day "+d+": "+title+". Ask me anything to get started!"}]); }
   };
 
   const send = async () => {
