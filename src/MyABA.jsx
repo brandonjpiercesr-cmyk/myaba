@@ -1515,7 +1515,7 @@ function MeetingModeView({ userId }) {
     transition: "all 0.3s ease", display: "flex", alignItems: "center", justifyContent: "center", gap: 5
   });
 
-  return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(6,182,212,.03) 0%, transparent 40%)"}}>
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",backdropFilter:"blur(12px)",overflow:"hidden",background:"linear-gradient(180deg, rgba(6,182,212,.03) 0%, transparent 40%)"}}>
     {/* TIM Cue Banner */}
     {activeCue && <div style={{
       padding:"10px 14px",margin:"6px 8px 0",borderRadius:12,
@@ -1576,6 +1576,7 @@ function MeetingModeView({ userId }) {
       {summary && <div style={{padding:16,borderRadius:14,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.12)",marginTop:10}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><CheckCircle size={14} color="#34d399"/><span style={{fontSize:11,fontWeight:700,color:"#34d399",letterSpacing:"0.5px"}}>Meeting Summary</span></div>
         <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{summary}</p>
+        <button onClick={()=>navigator.clipboard.writeText(summary||"").catch(()=>{})} style={{marginTop:8,padding:"6px 12px",borderRadius:8,border:"1px solid rgba(52,211,153,.2)",background:"rgba(52,211,153,.06)",color:"rgba(52,211,153,.6)",fontSize:11,cursor:"pointer"}}>Copy</button>
       </div>}
     </div>
 
