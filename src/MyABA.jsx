@@ -687,7 +687,8 @@ function JournalView({ userId }) {
       rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
       rec.onstop = async () => {
         const blob = new Blob(chunks, { type: mimeType || "audio/webm" });
-        const transcript = await reachTranscribe(blob);
+        const result = await reachTranscribe(blob);
+        const transcript = result?.text || (typeof result === 'string' ? result : null);
         if (transcript) setText(prev => prev ? prev + " " + transcript : transcript);
       };
       rec.start();
@@ -1317,10 +1318,10 @@ function ClosedCaptions({ text, visible }) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// MEETING MODE — 3-panel: Transcript | ABA Answers | Glossary
-// ⬡B:cip.meeting_mode:VIEW:tim_cook_v2:20260326⬡
-// TIM (Temporary Interim Model) quick cues via Groq + COOK (Conversational Optimization) polished answers via Sonnet
-// Visually upgraded: dark glass panels, cyan accents, TIM cue banner, COOK streaming answers
+// MESA (Meeting Executive Strategy Assistant) — 3-panel: Transcript | ABA Answers | Glossary
+// ⬡B:cip.mesa:VIEW:tim_cook_v2:20260401⬡
+// TIM: verbal filler HAM says out loud (Groq). COOK: one-paragraph copy-paste script (Sonnet SSE).
+// Deepgram diarization identifies speakers. Speaker 0 = HAM (device holder).
 // ═══════════════════════════════════════════════════════════
 function MeetingModeView({ userId }) {
   const [running, setRunning] = useState(false);
@@ -1344,6 +1345,8 @@ function MeetingModeView({ userId }) {
   const transcriptRef = useRef([]);
   const analyserRef = useRef(null);
   const audioCtxRef = useRef(null);
+  const hamSpeakerRef = useRef(0);
+  const lastSaidByHamRef = useRef("");
 
   useEffect(() => {
     if (running) { intervalRef.current = setInterval(() => { setSeconds(s => { secondsRef.current = s + 1; return s + 1; }); }, 1000); }
@@ -1353,12 +1356,13 @@ function MeetingModeView({ userId }) {
 
   const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 
-  // TIM quick cue fetcher
-  const fetchTimCue = async (text) => {
+  // TIM verbal filler — fires every 5 seconds, HAM says this out loud
+  const fetchTimCue = async (text, speakerId) => {
     try {
+      const isHamTurn = speakerId === null || speakerId === hamSpeakerRef.current;
       const res = await fetch(`${ABABASE}/api/tim/cue`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "meeting", userId })
+        body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "meeting", userId, whose_turn: isHamTurn ? "ham" : "other" })
       });
       if (res.ok) {
         const d = await res.json();
@@ -1373,14 +1377,14 @@ function MeetingModeView({ userId }) {
     } catch {}
   };
 
-  // COOK polished answer fetcher (SSE streaming)
+  // COOK full script — one paragraph, copy-paste ready, SSE streaming
   const fetchCookAnswer = async (question) => {
     setCookStreaming(true);
     let fullText = "";
     try {
       const res = await fetch(`${ABABASE}/api/cook/answer`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "meeting", userId })
+        body: JSON.stringify({ question, transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "meeting", userId, last_said_by_ham: lastSaidByHamRef.current })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1401,8 +1405,12 @@ function MeetingModeView({ userId }) {
     setCookStreaming(false);
   };
 
-  const processSegment = async (text) => {
-    fetchTimCue(text);
+  const processSegment = async (text, speakerId) => {
+    // Track what the HAM last said (for COOK reheat prevention)
+    if (speakerId === null || speakerId === hamSpeakerRef.current) {
+      lastSaidByHamRef.current = text;
+    }
+    fetchTimCue(text, speakerId);
     // Detect if segment contains a question (for COOK)
     if (text.includes("?") || text.length > 80) {
       setTimeout(() => fetchCookAnswer(text), 2000); // Delay to let TIM fire first
@@ -1446,14 +1454,16 @@ function MeetingModeView({ userId }) {
         if (vad) vad.hadVoice = false; // reset for next chunk
         if (e.data.size > 500 && hadVoice) {
           const audioBlob_meeting = new Blob([e.data], { type: mime || "audio/webm" });
-          console.log("[MEETING] Audio chunk:", audioBlob_meeting.size, "bytes, type:", audioBlob_meeting.type);
-          const text = await reachTranscribe(audioBlob_meeting);
+          console.log("[MESA] Audio chunk:", audioBlob_meeting.size, "bytes, type:", audioBlob_meeting.type);
+          const result = await reachTranscribe(audioBlob_meeting);
+          const text = result?.text || (typeof result === 'string' ? result : null);
+          const speakerId = result?.speaker !== undefined ? result.speaker : null;
           if (text && text.trim()) {
             emptyChunks = 0;
-            const entry = { text, time: fmt(secondsRef.current) };
+            const entry = { text, time: fmt(secondsRef.current), speaker: speakerId };
             setTranscript(prev => [...prev, entry]);
             transcriptRef.current = [...transcriptRef.current, entry];
-            processSegment(text);
+            processSegment(text, speakerId);
           } else {
             emptyChunks++;
             if (emptyChunks === 3) {
@@ -1588,8 +1598,9 @@ function MeetingModeView({ userId }) {
   </div>);
 }
 
-// ⬡B:cip.interview_mode:VIEW:tim_cook_v2:20260326⬡
-// TIM quick cues + COOK STAR-method polished answers for interviews
+// ⬡B:cip.iris:VIEW:tim_cook_v2:20260401⬡
+// IRIS (Interview Response and Intelligence System)
+// TIM: verbal filler. COOK: one-paragraph copy-paste script.
 // 3 sub-modes: Prep (job-specific), Live (real-time coaching), Mock (ABA as interviewer)
 // ═══════════════════════════════════════════════════════════
 function InterviewModeView({ userId }) {
@@ -1626,6 +1637,8 @@ function InterviewModeView({ userId }) {
   const transcriptRef = useRef([]);
   const analyserRef_iv = useRef(null);
   const audioCtxRef_iv = useRef(null);
+  const hamSpeakerRef_iv = useRef(0);
+  const lastSaidByHamRef_iv = useRef("");
 
   useEffect(() => {
     (async () => {
@@ -1670,11 +1683,12 @@ function InterviewModeView({ userId }) {
   const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
   const amber = (opacity) => `rgba(245,158,11,${opacity})`;
 
-  const fetchTimCue = async (text) => {
+  const fetchTimCue = async (text, speakerId) => {
     try {
+      const isHamTurn = speakerId === null || speakerId === hamSpeakerRef_iv.current;
       const res = await fetch(`${ABABASE}/api/tim/cue`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, userId })
+        body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, userId, whose_turn: isHamTurn ? "ham" : "other" })
       });
       if (res.ok) {
         const d = await res.json();
@@ -1695,7 +1709,7 @@ function InterviewModeView({ userId }) {
     try {
       const res = await fetch(`${ABABASE}/api/cook/answer`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId })
+        body: JSON.stringify({ question, transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId, last_said_by_ham: lastSaidByHamRef_iv.current })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1716,8 +1730,11 @@ function InterviewModeView({ userId }) {
     setCookStreaming(false);
   };
 
-  const processSegment = async (text) => {
-    fetchTimCue(text);
+  const processSegment = async (text, speakerId) => {
+    if (speakerId === null || speakerId === hamSpeakerRef_iv.current) {
+      lastSaidByHamRef_iv.current = text;
+    }
+    fetchTimCue(text, speakerId);
     if (text.includes("?") || text.length > 60) {
       setTimeout(() => fetchCookAnswer(text), 2000);
     }
@@ -2078,11 +2095,12 @@ function InterviewModeView({ userId }) {
   const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
   const amber = (opacity) => `rgba(245,158,11,${opacity})`;
 
-  const fetchTimCue = async (text) => {
+  const fetchTimCue = async (text, speakerId) => {
     try {
+      const isHamTurn = speakerId === null || speakerId === hamSpeakerRef_iv.current;
       const res = await fetch(`${ABABASE}/api/tim/cue`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, userId })
+        body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, userId, whose_turn: isHamTurn ? "ham" : "other" })
       });
       if (res.ok) {
         const d = await res.json();
@@ -2103,7 +2121,7 @@ function InterviewModeView({ userId }) {
     try {
       const res = await fetch(`${ABABASE}/api/cook/answer`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId })
+        body: JSON.stringify({ question, transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId, last_said_by_ham: lastSaidByHamRef_iv.current })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -2124,8 +2142,11 @@ function InterviewModeView({ userId }) {
     setCookStreaming(false);
   };
 
-  const processSegment = async (text) => {
-    fetchTimCue(text);
+  const processSegment = async (text, speakerId) => {
+    if (speakerId === null || speakerId === hamSpeakerRef_iv.current) {
+      lastSaidByHamRef_iv.current = text;
+    }
+    fetchTimCue(text, speakerId);
     if (text.includes("?") || text.length > 60) {
       setTimeout(() => fetchCookAnswer(text), 2000);
     }
@@ -2945,9 +2966,10 @@ async function reachTranscribe(audioBlob) {
     if (!res.ok) { console.error("[VOICE] Transcribe HTTP", res.status); return null; }
     const data = await res.json();
     const text = data.transcript || data.text || null;
-    if (text) console.log("[VOICE] Got:", text.substring(0, 80));
+    const speaker = data.speaker !== undefined ? data.speaker : null;
+    if (text) console.log("[VOICE] Got:", text.substring(0, 80), "| Speaker:", speaker);
     else console.log("[VOICE] Empty transcript from Deepgram");
-    return text;
+    return text ? { text, speaker } : null;
   } catch (e) { console.error("[VOICE] Transcribe error:", e); return null; }
 }
 
@@ -6733,7 +6755,7 @@ export default function MyABA(){
       {/* App title bar — only shows when NOT on home */}
       {mainTab!=="home"&&mainTab!=="apps"&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 12px 4px",flexShrink:0}}>
         <button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ChevronLeft size={18}/></button>
-        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"Talk to ABA":mainTab==="briefing"?"Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"Command Center":mainTab==="nura"?"Nutrition":mainTab==="phone"?"ABA Dials":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"ABA Guides":mainTab==="sports"?"Scoreboard":mainTab==="music"?"Music":mainTab==="ccwa"?"Come Code with ABA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"Meeting Mode":mainTab==="interview"?"Interview Prep":mainTab.replace(/_/g," ")}</span>
+        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"Talk to ABA":mainTab==="briefing"?"Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"Command Center":mainTab==="nura"?"Nutrition":mainTab==="phone"?"ABA Dials":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"ABA Guides":mainTab==="sports"?"Scoreboard":mainTab==="music"?"Music":mainTab==="ccwa"?"Come Code with ABA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"MESA":mainTab==="interview"?"IRIS":mainTab.replace(/_/g," ")}</span>
         <div style={{display:"flex",gap:4}}>
           {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:lastABAResponse?"rgba(34,197,94,.1)":"rgba(255,255,255,.04)",color:lastABAResponse?"rgba(34,197,94,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}><Activity size={14}/></button>}
           <button onClick={()=>setVoiceOut(!voiceOut)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:voiceOut?"rgba(139,92,246,.1)":"rgba(255,255,255,.04)",color:voiceOut?"rgba(139,92,246,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={13}/>:<VolumeX size={13}/>}</button>
