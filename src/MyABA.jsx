@@ -1799,7 +1799,7 @@ function InterviewModeView({ userId }) {
     try {
       const res = await fetch(`${ABABASE}/api/air/stream`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: `Mock interview for "${selectedJob?.title || "a role"}" at ${selectedJob?.organization || "org"}.\nQuestion: "${mockQ}"\nAnswer: "${answer}"\n\nScore 1-10 with feedback. Use STAR method. Then next question.\n\nFormat:\nSCORE: X/10\nSTRENGTHS: ...\nIMPROVE: ...\nBETTER ANSWER: ...\nNEXT QUESTION: ...`, user_id: userId, channel: "myaba", appScope: "interview" })
+        body: JSON.stringify({ message: `Mock interview for "${selectedJob?.title || "a role"}" at ${selectedJob?.organization || "org"}.\nQuestion: "${mockQ}"\nAnswer: "${answer}"\n\nScore the answer using STAR components:\nSITUATION (20%): Did they set the scene with specific context?\nTASK (20%): Did they clarify their role and responsibility?\nACTION (35%): Did they describe specific actions THEY took?\nRESULT (25%): Did they quantify outcomes and impact?\n\nFormat:\nSCORE: X/10\nS: X/10 - [feedback]\nT: X/10 - [feedback]\nA: X/10 - [feedback]\nR: X/10 - [feedback]\nSTRENGTHS: ...\nIMPROVE: ...\nBETTER ANSWER: ...\nNEXT QUESTION: ...`, user_id: userId, channel: "myaba", appScope: "interview" })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1814,11 +1814,15 @@ function InterviewModeView({ userId }) {
         }
       }
       const scoreM = fullText.match(/SCORE:\s*(\d+)/i);
+      const sM = fullText.match(/\bS:\s*(\d+)\/10\s*-?\s*(.+?)(?=\bT:|STRENGTHS|$)/is);
+      const tM = fullText.match(/\bT:\s*(\d+)\/10\s*-?\s*(.+?)(?=\bA:|STRENGTHS|$)/is);
+      const aM = fullText.match(/\bA:\s*(\d+)\/10\s*-?\s*(.+?)(?=\bR:|STRENGTHS|$)/is);
+      const rM = fullText.match(/\bR:\s*(\d+)\/10\s*-?\s*(.+?)(?=STRENGTHS|IMPROVE|$)/is);
       const strM = fullText.match(/STRENGTHS?:\s*(.+?)(?=IMPROVE|BETTER|NEXT|$)/is);
       const impM = fullText.match(/IMPROVE:\s*(.+?)(?=BETTER|NEXT|$)/is);
       const betM = fullText.match(/BETTER ANSWER:\s*(.+?)(?=NEXT|$)/is);
       const nqM = fullText.match(/NEXT QUESTION:\s*(.+)/is);
-      setMockHistory(prev => { const u = [...prev]; const last = u[u.length-1]; if(last) { last.score = scoreM?scoreM[1]:"?"; last.strengths = strM?strM[1].trim():""; last.improve = impM?impM[1].trim():""; last.better = betM?betM[1].trim():""; last.scoring = false; } return [...u]; });
+      setMockHistory(prev => { const u = [...prev]; const last = u[u.length-1]; if(last) { last.score = scoreM?scoreM[1]:"?"; last.star = { s: sM?{score:sM[1],note:sM[2].trim()}:null, t: tM?{score:tM[1],note:tM[2].trim()}:null, a: aM?{score:aM[1],note:aM[2].trim()}:null, r: rM?{score:rM[1],note:rM[2].trim()}:null }; last.strengths = strM?strM[1].trim():""; last.improve = impM?impM[1].trim():""; last.better = betM?betM[1].trim():""; last.scoring = false; } return [...u]; });
       setMockQ(nqM ? nqM[1].trim() : "Tell me more about your experience.");
     } catch {}
     setMockLoading(false);
@@ -1982,6 +1986,15 @@ function InterviewModeView({ userId }) {
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
             <span style={{fontSize:22,fontWeight:800,color:parseInt(h.score)>=7?"#34d399":parseInt(h.score)>=5?"#fbbf24":"#f87171"}}>{h.score}<span style={{fontSize:12,fontWeight:400,color:"rgba(255,255,255,.3)"}}>/10</span></span>
           </div>
+          {h.star && <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+            {[{k:"S",label:"Situation",w:"20%",data:h.star.s},{k:"T",label:"Task",w:"20%",data:h.star.t},{k:"A",label:"Action",w:"35%",data:h.star.a},{k:"R",label:"Result",w:"25%",data:h.star.r}].map(c => c.data && <div key={c.k} style={{flex:"1 1 45%",padding:"6px 8px",borderRadius:8,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
+                <span style={{fontSize:9,fontWeight:700,color:amber(.5)}}>{c.k} ({c.w})</span>
+                <span style={{fontSize:11,fontWeight:700,color:parseInt(c.data.score)>=7?"#34d399":parseInt(c.data.score)>=5?"#fbbf24":"#f87171"}}>{c.data.score}/10</span>
+              </div>
+              <p style={{fontSize:10,color:"rgba(255,255,255,.4)",margin:0,lineHeight:1.4}}>{c.data.note}</p>
+            </div>)}
+          </div>}
           {h.strengths && <div style={{marginBottom:6}}><span style={{fontSize:9,fontWeight:700,color:"rgba(16,185,129,.6)",letterSpacing:"0.5px"}}>STRENGTHS</span><p style={{fontSize:11.5,color:"rgba(255,255,255,.6)",margin:"2px 0 0",lineHeight:1.5}}>{h.strengths}</p></div>}
           {h.improve && <div style={{marginBottom:6}}><span style={{fontSize:9,fontWeight:700,color:amber(.6),letterSpacing:"0.5px"}}>IMPROVE</span><p style={{fontSize:11.5,color:"rgba(255,255,255,.6)",margin:"2px 0 0",lineHeight:1.5}}>{h.improve}</p></div>}
           {h.better && <div><span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",letterSpacing:"0.5px"}}>POLISHED VERSION</span><p style={{fontSize:11.5,color:"rgba(255,255,255,.7)",margin:"2px 0 0",lineHeight:1.5,fontStyle:"italic"}}>{h.better}</p></div>}
