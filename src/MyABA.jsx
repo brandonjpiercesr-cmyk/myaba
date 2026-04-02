@@ -1594,6 +1594,7 @@ function MeetingModeView({ userId }) {
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><CheckCircle size={14} color="#34d399"/><span style={{fontSize:11,fontWeight:700,color:"#34d399",letterSpacing:"0.5px"}}>Meeting Summary</span></div>
         <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{summary}</p>
         <button onClick={()=>navigator.clipboard.writeText(summary||"").catch(()=>{})} style={{marginTop:8,padding:"6px 12px",borderRadius:8,border:"1px solid rgba(52,211,153,.2)",background:"rgba(52,211,153,.06)",color:"rgba(52,211,153,.6)",fontSize:11,cursor:"pointer"}}>Copy</button>
+        <p style={{fontSize:10,color:"rgba(139,92,246,.4)",marginTop:6}}>Action items saved to your task list</p>
       </div>}
     </div>
 
@@ -2049,6 +2050,10 @@ function InterviewModeView({ userId }) {
       {summary && <div style={{padding:16,borderRadius:14,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.12)",marginTop:10}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><CheckCircle size={14} color="#34d399"/><span style={{fontSize:11,fontWeight:700,color:"#34d399"}}>Interview Performance Summary</span></div>
         <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{summary}</p>
+        <div style={{display:"flex",gap:8,marginTop:10,alignItems:"center"}}>
+          <button onClick={()=>navigator.clipboard.writeText(summary||"").catch(()=>{})} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(52,211,153,.2)",background:"rgba(52,211,153,.06)",color:"rgba(52,211,153,.6)",fontSize:11,cursor:"pointer"}}>Copy</button>
+          <span style={{fontSize:10,color:"rgba(245,158,11,.4)"}}>Follow-up actions saved to your task list</span>
+        </div>
       </div>}
     </div>
   </div>);
