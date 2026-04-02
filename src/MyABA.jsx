@@ -1368,7 +1368,12 @@ function MeetingModeView({ userId }) {
         const d = await res.json();
         if (d.cue) {
           const cue = { text: d.cue, type: d.type, time: fmt(secondsRef.current), latency: d.latency_ms };
-          setTimCues(prev => [...prev, cue]);
+          setTimCues(prev => {
+            const now = Date.now();
+            // Queue management: max 5 cues, drop stale (older than 30s), ALERT priority
+            const fresh = [...prev, { ...cue, ts: now }].filter(c => now - (c.ts || 0) < 30000).slice(-5);
+            return fresh;
+          });
           setActiveCue(cue);
           clearTimeout(cueTimeoutRef.current);
           cueTimeoutRef.current = setTimeout(() => setActiveCue(null), 8000);
@@ -1412,7 +1417,9 @@ function MeetingModeView({ userId }) {
     }
     fetchTimCue(text, speakerId);
     // Detect if segment contains a question (for COOK)
-    if (text.includes("?") || text.length > 80) {
+    const interrogatives = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on'];
+    const isQuestion = text.includes('?') || interrogatives.some(w => text.toLowerCase().includes(w)) || text.length > 100;
+    if (isQuestion) {
       setTimeout(() => fetchCookAnswer(text), 2000); // Delay to let TIM fire first
     }
   };
@@ -1694,7 +1701,12 @@ function InterviewModeView({ userId }) {
         const d = await res.json();
         if (d.cue) {
           const cue = { text: d.cue, type: d.type, time: fmt(secondsRef.current), latency: d.latency_ms };
-          setTimCues(prev => [...prev, cue]);
+          setTimCues(prev => {
+            const now = Date.now();
+            // Queue management: max 5 cues, drop stale (older than 30s), ALERT priority
+            const fresh = [...prev, { ...cue, ts: now }].filter(c => now - (c.ts || 0) < 30000).slice(-5);
+            return fresh;
+          });
           setActiveCue(cue);
           clearTimeout(cueTimeoutRef.current);
           cueTimeoutRef.current = setTimeout(() => setActiveCue(null), 8000);
@@ -1735,7 +1747,9 @@ function InterviewModeView({ userId }) {
       lastSaidByHamRef_iv.current = text;
     }
     fetchTimCue(text, speakerId);
-    if (text.includes("?") || text.length > 60) {
+    const interrogatives_iv = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on'];
+    const isQuestion_iv = text.includes('?') || interrogatives_iv.some(w => text.toLowerCase().includes(w)) || text.length > 100;
+    if (isQuestion_iv) {
       setTimeout(() => fetchCookAnswer(text), 2000);
     }
   };
