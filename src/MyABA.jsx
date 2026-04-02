@@ -1842,13 +1842,15 @@ function InterviewModeView({ userId }) {
         if (vad) vad.hadVoice = false;
         if (e.data.size > 500 && hadVoice) {
           const audioBlob_interview = new Blob([e.data], { type: mime || "audio/webm" });
-          const text = await reachTranscribe(audioBlob_interview);
+          const result_iv = await reachTranscribe(audioBlob_interview);
+          const text = result_iv?.text || (typeof result_iv === "string" ? result_iv : null);
+          const speakerId_iv = result_iv?.speaker !== undefined ? result_iv.speaker : null;
           if (text && text.trim()) {
-            const entry = { text, time: fmt(secondsRef.current) };
+            const entry = { text, time: fmt(secondsRef.current), speaker: speakerId_iv };
             setTranscript(prev => [...prev, entry]);
             transcriptRef.current = [...transcriptRef.current, entry];
             if (mode === "mock") setMockAnswer(prev => prev ? prev + " " + text : text);
-            else processSegment(text);
+            else processSegment(text, speakerId_iv);
           }
         } else if (!hadVoice) {
           console.log("[INTERVIEW] Silent chunk — skipping Deepgram call");
@@ -2254,13 +2256,15 @@ function InterviewModeView({ userId }) {
         if (vad) vad.hadVoice = false;
         if (e.data.size > 500 && hadVoice) {
           const audioBlob_interview = new Blob([e.data], { type: mime || "audio/webm" });
-          const text = await reachTranscribe(audioBlob_interview);
+          const result_iv = await reachTranscribe(audioBlob_interview);
+          const text = result_iv?.text || (typeof result_iv === "string" ? result_iv : null);
+          const speakerId_iv = result_iv?.speaker !== undefined ? result_iv.speaker : null;
           if (text && text.trim()) {
-            const entry = { text, time: fmt(secondsRef.current) };
+            const entry = { text, time: fmt(secondsRef.current), speaker: speakerId_iv };
             setTranscript(prev => [...prev, entry]);
             transcriptRef.current = [...transcriptRef.current, entry];
             if (mode === "mock") setMockAnswer(prev => prev ? prev + " " + text : text);
-            else processSegment(text);
+            else processSegment(text, speakerId_iv);
           }
         } else if (!hadVoice) {
           console.log("[INTERVIEW] Silent chunk — skipping Deepgram call");
@@ -6663,7 +6667,8 @@ export default function MyABA(){
         console.log("[VOICE] Blob size:",blob.size,"type:",blob.type);
         
         try{
-          const transcript=await reachTranscribe(blob);
+          const vResult=await reachTranscribe(blob);
+          const transcript=vResult?.text||(typeof vResult==="string"?vResult:null);
           console.log("[VOICE] Transcript:",transcript||"(empty)");
           if(transcript&&transcript.trim()){
             if(sendMessageRef.current)sendMessageRef.current(transcript,true);
