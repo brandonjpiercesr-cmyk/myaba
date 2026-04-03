@@ -1337,6 +1337,7 @@ function MeetingModeView({ userId }) {
   const [summary, setSummary] = useState(null);
   const [activeCue, setActiveCue] = useState(null);
   const [cookStreaming, setCookStreaming] = useState(false);
+  const [showPrep, setShowPrep] = useState(true);
   const recRef = useRef(null);
   const streamRef = useRef(null);
   const wsRef = useRef(null);
@@ -1515,6 +1516,29 @@ function MeetingModeView({ userId }) {
     color: panel === id ? "#22d3ee" : "rgba(255,255,255,.35)",
     transition: "all 0.3s ease", display: "flex", alignItems: "center", justifyContent: "center", gap: 5
   });
+
+  // ⬡B:CIP.MESA:UI:cara_prep_gate:20260402⬡
+  if (showPrep) return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"auto",padding:16}}>
+    <div style={{background:"rgba(255,255,255,.04)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.06)",borderRadius:16,padding:"16px 20px",marginBottom:12,display:"flex",gap:12,alignItems:"flex-start"}}>
+      <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg, #6366F1, #8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        <span style={{fontSize:16,fontWeight:900,color:"white"}}>A</span>
+      </div>
+      <div>
+        <div style={{fontSize:10,fontWeight:700,color:"rgba(139,92,246,.6)",marginBottom:3}}>CARA</div>
+        <p style={{fontSize:13,color:"rgba(255,255,255,.75)",margin:0,lineHeight:1.6}}>Hey! Tell me about your meeting, or hit Quick Start to jump right in.</p>
+      </div>
+    </div>
+    <button onClick={()=>setShowPrep(false)} style={{width:"100%",padding:"14px 20px",borderRadius:12,marginBottom:14,background:"linear-gradient(135deg, rgba(6,182,212,.12), rgba(6,182,212,.04))",border:"1px solid rgba(6,182,212,.2)",color:"#22D3EE",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+      Quick Start — Jump to Live Mode
+    </button>
+    <div style={{background:"rgba(255,255,255,.04)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.06)",borderRadius:16,padding:16,marginBottom:12}}>
+      <div style={{fontSize:11,fontWeight:700,color:"rgba(6,182,212,.6)",marginBottom:8,letterSpacing:"0.5px"}}>MEETING CONTEXT</div>
+      <textarea placeholder="What's this meeting about? Who's on the call? Any context ABA should know..." style={{width:"100%",minHeight:80,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:8,padding:10,color:"#e2e8f0",fontSize:13,resize:"vertical",outline:"none"}} />
+    </div>
+    <button onClick={()=>setShowPrep(false)} style={{width:"100%",padding:"12px 20px",borderRadius:12,background:"linear-gradient(135deg, rgba(16,185,129,.12), rgba(16,185,129,.04))",border:"1px solid rgba(16,185,129,.2)",color:"#34D399",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+      Start Meeting with Context
+    </button>
+  </div>);
 
   return (<div style={{flex:1,display:"flex",flexDirection:"column",backdropFilter:"blur(12px)",overflow:"hidden",background:"linear-gradient(180deg, rgba(6,182,212,.03) 0%, transparent 40%)"}}>
     {/* TIM Cue Banner */}
@@ -1930,6 +1954,21 @@ function InterviewModeView({ userId }) {
       {modeTab("prep","Prep",FileText)}{modeTab("research","Research",Search)}{modeTab("practice","Practice",Award)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
     </div>
     <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+      {/* ⬡B:CIP.IRIS:UI:cara_greeting:20260402⬡ */}
+      <div style={{background:"rgba(255,255,255,.04)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.06)",borderRadius:14,padding:"14px 18px",marginBottom:10,display:"flex",gap:10,alignItems:"flex-start"}}>
+        <div style={{width:32,height:32,borderRadius:8,background:"linear-gradient(135deg, #6366F1, #8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <span style={{fontSize:14,fontWeight:900,color:"white"}}>A</span>
+        </div>
+        <div>
+          <div style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",marginBottom:2}}>CARA</div>
+          <p style={{fontSize:12,color:"rgba(255,255,255,.7)",margin:0,lineHeight:1.5}}>
+            {selectedJob ? `Prepping for ${selectedJob.title||selectedJob.job_title} at ${selectedJob.organization}. Jump to Live when ready.` : "Hey! Pick a job below, or hit Quick Start to go live now."}
+          </p>
+        </div>
+      </div>
+      <button onClick={()=>setMode("live")} style={{width:"100%",padding:"10px 16px",borderRadius:10,marginBottom:12,background:`linear-gradient(135deg, ${amber(.12)}, ${amber(.04)})`,border:`1px solid ${amber(.2)}`,color:"#FBBF24",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+        Quick Start — Live Mode
+      </button>
       {!selectedJob ? (<>
         <p style={{fontSize:13,fontWeight:600,color:"rgba(255,255,255,.7)",margin:"0 0 10px"}}>Select a job to prepare for</p>
         {jobs.length===0 ? <p style={{textAlign:"center",padding:30,color:"rgba(255,255,255,.15)",fontSize:12}}>No jobs in pipeline yet.</p>
@@ -3741,27 +3780,22 @@ function ApproveView({userId,onAction}){
   const[velocityData,setVelocityData]=useState(null);
   const[velocityLoading,setVelocityLoading]=useState(false);
   const[showVelocity,setShowVelocity]=useState(false);
-  const[filter,setFilter]=useState('all');
   
-  // ⬡B:audra.ceecee.parity:CIP:category_filter_refresh:20260402⬡
-  const fetchItems=async()=>{
-    setLoading(true);
-    try{
-      const response=await fetch(`${ABABASE}/api/pending-approvals?userId=${encodeURIComponent(userId)}`);
-      if(response.ok){
-        const data=await response.json();
-        setItems(data.items||[]);
-        setCurrentIndex(0);
-      }
-    }catch(e){console.error("[APPROVE] Fetch failed:",e)}
-    setLoading(false);
-  };
+  // Fetch pending approvals from v2 endpoint
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const response=await fetch(`${ABABASE}/api/pending-approvals?userId=${encodeURIComponent(userId)}`);
+        if(response.ok){
+          const data=await response.json();
+          setItems(data.items||[]);
+        }
+      }catch(e){console.error("[APPROVE] Fetch failed:",e)}
+      setLoading(false);
+    })();
+  },[userId]);
   
-  useEffect(()=>{fetchItems();},[userId]);
-  
-  const categories=[...new Set(items.map(i=>i.category||'general'))];
-  const filteredItems=filter==='all'?items:items.filter(i=>(i.category||'general')===filter);
-  const currentItem=filteredItems[currentIndex];
+  const currentItem=items[currentIndex];
   
   const handleSwipe=(direction)=>{
     if(!currentItem)return;
@@ -3779,11 +3813,10 @@ function ApproveView({userId,onAction}){
     setTimeout(()=>{
       setSwipeDir(null);
       setTouchDelta(0);
-      if(currentIndex<filteredItems.length-1){
+      if(currentIndex<items.length-1){
         setCurrentIndex(currentIndex+1);
       }else{
-        setItems(prev=>prev.filter(i=>i.id!==currentItem.id));
-        setCurrentIndex(0);
+        setItems([]);
       }
     },300);
   };
@@ -3809,7 +3842,7 @@ function ApproveView({userId,onAction}){
     </div>);
   }
   
-  if(filteredItems.length===0||currentIndex>=filteredItems.length){
+  if(items.length===0||currentIndex>=items.length){
     return(<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20}}>
       <CheckCircle size={56} style={{color:"rgba(16,185,129,.6)"}}/>
       <p style={{color:"rgba(255,255,255,.7)",fontSize:16,fontWeight:600}}>All caught up!</p>
@@ -3862,27 +3895,14 @@ function ApproveView({userId,onAction}){
   };
   
   return(<div style={{flex:1,display:"flex",flexDirection:"column",padding:"8px 4px"}}>
-    {/* Progress + Refresh */}
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,padding:"0 8px"}}>
-      <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{currentIndex+1} of {filteredItems.length}</span>
+    {/* Progress */}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,padding:"0 8px"}}>
+      <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{currentIndex+1} of {items.length}</span>
       <div style={{flex:1,margin:"0 12px",height:3,background:"rgba(255,255,255,.1)",borderRadius:99}}>
-        <div style={{width:`${((currentIndex+1)/filteredItems.length)*100}%`,height:"100%",background:"rgba(139,92,246,.6)",borderRadius:99,transition:"width .3s"}}/>
+        <div style={{width:`${((currentIndex+1)/items.length)*100}%`,height:"100%",background:"rgba(139,92,246,.6)",borderRadius:99,transition:"width .3s"}}/>
       </div>
-      <span style={{color:"rgba(255,255,255,.4)",fontSize:11,marginRight:8}}>{filteredItems.length-currentIndex-1} left</span>
-      <button onClick={fetchItems} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.4)",padding:4}}>
-        <RefreshCw size={14}/>
-      </button>
+      <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{items.length-currentIndex-1} left</span>
     </div>
-    
-    {/* Category Filters */}
-    {categories.length>1&&(
-    <div style={{display:"flex",gap:4,padding:"0 8px 8px",overflowX:"auto"}}>
-      <button onClick={()=>{setFilter('all');setCurrentIndex(0)}} style={{padding:"3px 10px",borderRadius:6,border:"none",cursor:"pointer",fontSize:10,fontWeight:500,background:filter==='all'?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",color:filter==='all'?"#a78bfa":"rgba(255,255,255,.35)"}}>All</button>
-      {categories.map(cat=>(
-        <button key={cat} onClick={()=>{setFilter(cat);setCurrentIndex(0)}} style={{padding:"3px 10px",borderRadius:6,border:"none",cursor:"pointer",fontSize:10,fontWeight:500,textTransform:"capitalize",background:filter===cat?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",color:filter===cat?"#a78bfa":"rgba(255,255,255,.35)"}}>{cat}</button>
-      ))}
-    </div>
-    )}
     
     {/* Swipe hints */}
     <div style={{display:"flex",justifyContent:"space-between",padding:"0 20px",marginBottom:8}}>
@@ -4998,7 +5018,7 @@ function JobsView({userId}){
         </div>
         {prepData.roleAnalysis&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(245,158,11,.06)"}}><p style={{color:"rgba(245,158,11,.7)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>What They Want</p><p style={{color:"rgba(255,255,255,.75)",fontSize:12,margin:0,lineHeight:1.5}}>{typeof prepData.roleAnalysis==="object"?prepData.roleAnalysis.summary||JSON.stringify(prepData.roleAnalysis):prepData.roleAnalysis}</p></div>}
         {prepData.talkingPoints&&Array.isArray(prepData.talkingPoints)&&prepData.talkingPoints.length>0&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(139,92,246,.06)"}}><p style={{color:"rgba(139,92,246,.7)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Your Talking Points</p>{prepData.talkingPoints.map((tp,i)=><p key={i} style={{color:"rgba(255,255,255,.65)",fontSize:11,margin:"3px 0",lineHeight:1.4}}>• {typeof tp==="object"?(tp.point||"")+" "+(tp.detail||""):tp}</p>)}</div>}
-        {prepData.commonQuestions&&Array.isArray(prepData.commonQuestions)&&prepData.commonQuestions.length>0&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(59,130,246,.06)"}}><p style={{color:"rgba(96,165,250,.8)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Likely Questions</p>{prepData.commonQuestions.map((q,i)=><p key={i} style={{color:"rgba(255,255,255,.65)",fontSize:11,margin:"3px 0",lineHeight:1.4}}>{i+1}. {typeof q==="object"?(q.question||"")+(q.tip?` (Tip: ${q.tip})`):"":q}</p>)}</div>}
+        {prepData.commonQuestions&&Array.isArray(prepData.commonQuestions)&&prepData.commonQuestions.length>0&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(59,130,246,.06)"}}><p style={{color:"rgba(96,165,250,.8)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Likely Questions</p>{prepData.commonQuestions.map((q,i)=><p key={i} style={{color:"rgba(255,255,255,.65)",fontSize:11,margin:"3px 0",lineHeight:1.4}}>{i+1}. {typeof q==="object"?(q.question||"")+(q.tip?(" (Tip: "+q.tip+")"):""):q}</p>)}</div>}
         {prepData.questionsToAsk&&Array.isArray(prepData.questionsToAsk)&&prepData.questionsToAsk.length>0&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(6,182,212,.06)"}}><p style={{color:"rgba(34,211,238,.7)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Ask Them</p>{prepData.questionsToAsk.map((q,i)=><p key={i} style={{color:"#22D3EE",fontSize:11,margin:"3px 0",lineHeight:1.4}}>• {typeof q==="object"?(q.question||""):q}</p>)}</div>}
         {prepData.redFlags&&Array.isArray(prepData.redFlags)&&prepData.redFlags.length>0&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(239,68,68,.06)"}}><p style={{color:"rgba(239,68,68,.7)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Watch For</p>{prepData.redFlags.map((rf,i)=><p key={i} style={{color:"rgba(239,68,68,.6)",fontSize:11,margin:"3px 0",lineHeight:1.4}}>• {typeof rf==="object"?(rf.flag||"")+" "+(rf.detail||""):rf}</p>)}</div>}
         {prepData.dresscode&&<div style={{padding:10,borderRadius:8,background:"rgba(255,255,255,.03)"}}><p style={{color:"rgba(255,255,255,.4)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Dress Code</p><p style={{color:"rgba(255,255,255,.6)",fontSize:11,margin:0}}>{typeof prepData.dresscode==="object"?(prepData.dresscode.recommendation||"")+" "+(prepData.dresscode.details||""):prepData.dresscode}</p></div>}
