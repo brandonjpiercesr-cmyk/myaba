@@ -4446,7 +4446,7 @@ function JobsView({userId}){
           const DISPLAY_NAMES={"brandon":"Brandon","eric":"Eric","bj":"BJ","cj":"CJ","vante":"Vante","dwayne":"Dwayne","gmg":"GMG"};
           const assigneeDisplay=DISPLAY_NAMES[assignee]||assignee;
           return(
-          <div key={job.id} onClick={()=>{setSelectedJob(job);setApplyPreview(null);setInterviewChat(null);setOfferForm(null);setShowRefs(false);setPrepData(null);setMockMode(false);setMockQuestion(null);setMockEval(null);}} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
+          <div key={job.id} onClick={()=>{setSelectedJob(job);setApplyPreview(null);setInterviewChat(null);setOfferForm(null);setShowRefs(false);setMockMode(false);setMockQuestion(null);setMockEval(null);}} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
               <p style={{color:"rgba(255,255,255,.9)",fontSize:13,fontWeight:600,margin:0,lineHeight:1.3}}>{title}</p>
               {job.remote&&<span style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:"rgba(16,185,129,.15)",color:"#10B981",flexShrink:0}}>Remote</span>}
@@ -4809,7 +4809,7 @@ function JobsView({userId}){
               const assignee=(selectedJob.assignees||[])[0]||"unmatched";
               const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/interview-prep`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee})});
               const d=await r.json();
-              if(d.success)setPrepData(d.prep);
+              if(d.success)setPrepData({...d.prep, _jobTitle: selectedJob.job_title||selectedJob.title, _jobOrg: selectedJob.organization||selectedJob.company});
               else setOutput("Prep failed: "+(d.error||"Unknown"));
             }catch(e){setOutput("Prep error: "+e.message)}
             setPrepLoading(false);
@@ -4822,19 +4822,8 @@ function JobsView({userId}){
         </div>
         )}
         
-        {/* Interview Prep Results */}
-        {prepData&&!mockMode&&(
-        <div style={{padding:10,borderRadius:8,background:"rgba(245,158,11,.05)",border:"1px solid rgba(245,158,11,.1)",marginBottom:8,maxHeight:300,overflowY:"auto"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-            <span style={{color:"#FBBF24",fontSize:11,fontWeight:600}}>Interview Prep</span>
-            <button onClick={()=>setPrepData(null)} style={{background:"none",border:"none",color:"rgba(255,255,255,.3)",cursor:"pointer",fontSize:14}}>x</button>
-          </div>
-          {prepData.roleAnalysis&&<div style={{marginBottom:6}}><p style={{color:"rgba(255,255,255,.5)",fontSize:9,margin:"0 0 2px"}}>WHAT THEY WANT</p><p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:0}}>{prepData.roleAnalysis}</p></div>}
-          {prepData.talkingPoints&&<div style={{marginBottom:6}}><p style={{color:"rgba(255,255,255,.5)",fontSize:9,margin:"0 0 2px"}}>YOUR TALKING POINTS</p>{(Array.isArray(prepData.talkingPoints)?prepData.talkingPoints:[]).map((tp,i)=><p key={i} style={{color:"rgba(255,255,255,.6)",fontSize:10,margin:"2px 0"}}>• {tp}</p>)}</div>}
-          {prepData.commonQuestions&&<div style={{marginBottom:6}}><p style={{color:"rgba(255,255,255,.5)",fontSize:9,margin:"0 0 2px"}}>LIKELY QUESTIONS</p>{(Array.isArray(prepData.commonQuestions)?prepData.commonQuestions:[]).map((q,i)=><p key={i} style={{color:"rgba(255,255,255,.6)",fontSize:10,margin:"2px 0"}}>{i+1}. {q}</p>)}</div>}
-          {prepData.questionsToAsk&&<div><p style={{color:"rgba(255,255,255,.5)",fontSize:9,margin:"0 0 2px"}}>ASK THEM</p>{(Array.isArray(prepData.questionsToAsk)?prepData.questionsToAsk:[]).map((q,i)=><p key={i} style={{color:"#22D3EE",fontSize:10,margin:"2px 0"}}>• {q}</p>)}</div>}
-        </div>
-        )}
+        {/* Interview Prep Results — rendered as modal overlay so it persists */}
+        {/* (actual modal is rendered outside the detail panel below) */}
         
         {/* Mock Interview Mode */}
         {mockMode&&(
@@ -4976,6 +4965,28 @@ function JobsView({userId}){
     <div style={{padding:"8px 0 0",borderTop:"1px solid rgba(255,255,255,.05)",marginTop:8}}>
       <p style={{color:"rgba(255,255,255,.3)",fontSize:10,textAlign:"center",margin:0}}>{filtered.length} of {jobs.length} jobs • AWA powered by ABA</p>
     </div>
+    
+    {/* ⬡B:AUDRA:FIX6:interview_prep_modal:20260402⬡ Fixed overlay modal for interview prep — persists across job switches */}
+    {prepData&&!mockMode&&(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)return}}>
+      <div style={{width:"100%",maxWidth:440,maxHeight:"80vh",overflowY:"auto",background:"rgba(20,20,30,.98)",borderRadius:16,border:"1px solid rgba(245,158,11,.2)",padding:20,boxShadow:"0 20px 60px rgba(0,0,0,.5)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div>
+            <span style={{color:"#FBBF24",fontSize:13,fontWeight:700}}>Interview Prep</span>
+            {prepData._jobTitle&&<p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"2px 0 0"}}>{prepData._jobTitle} {prepData._jobOrg?`at ${prepData._jobOrg}`:""}</p>}
+          </div>
+          <button onClick={()=>setPrepData(null)} style={{background:"rgba(255,255,255,.05)",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:18,width:28,height:28,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+        </div>
+        {prepData.roleAnalysis&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(245,158,11,.06)"}}><p style={{color:"rgba(245,158,11,.7)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>What They Want</p><p style={{color:"rgba(255,255,255,.75)",fontSize:12,margin:0,lineHeight:1.5}}>{typeof prepData.roleAnalysis==="object"?prepData.roleAnalysis.summary||JSON.stringify(prepData.roleAnalysis):prepData.roleAnalysis}</p></div>}
+        {prepData.talkingPoints&&Array.isArray(prepData.talkingPoints)&&prepData.talkingPoints.length>0&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(139,92,246,.06)"}}><p style={{color:"rgba(139,92,246,.7)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Your Talking Points</p>{prepData.talkingPoints.map((tp,i)=><p key={i} style={{color:"rgba(255,255,255,.65)",fontSize:11,margin:"3px 0",lineHeight:1.4}}>• {typeof tp==="object"?(tp.point||"")+" "+(tp.detail||""):tp}</p>)}</div>}
+        {prepData.commonQuestions&&Array.isArray(prepData.commonQuestions)&&prepData.commonQuestions.length>0&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(59,130,246,.06)"}}><p style={{color:"rgba(96,165,250,.8)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Likely Questions</p>{prepData.commonQuestions.map((q,i)=><p key={i} style={{color:"rgba(255,255,255,.65)",fontSize:11,margin:"3px 0",lineHeight:1.4}}>{i+1}. {typeof q==="object"?(q.question||"")+(q.tip?` (Tip: ${q.tip})`):"":q}</p>)}</div>}
+        {prepData.questionsToAsk&&Array.isArray(prepData.questionsToAsk)&&prepData.questionsToAsk.length>0&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(6,182,212,.06)"}}><p style={{color:"rgba(34,211,238,.7)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Ask Them</p>{prepData.questionsToAsk.map((q,i)=><p key={i} style={{color:"#22D3EE",fontSize:11,margin:"3px 0",lineHeight:1.4}}>• {typeof q==="object"?(q.question||""):q}</p>)}</div>}
+        {prepData.redFlags&&Array.isArray(prepData.redFlags)&&prepData.redFlags.length>0&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(239,68,68,.06)"}}><p style={{color:"rgba(239,68,68,.7)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Watch For</p>{prepData.redFlags.map((rf,i)=><p key={i} style={{color:"rgba(239,68,68,.6)",fontSize:11,margin:"3px 0",lineHeight:1.4}}>• {typeof rf==="object"?(rf.flag||"")+" "+(rf.detail||""):rf}</p>)}</div>}
+        {prepData.dresscode&&<div style={{padding:10,borderRadius:8,background:"rgba(255,255,255,.03)"}}><p style={{color:"rgba(255,255,255,.4)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Dress Code</p><p style={{color:"rgba(255,255,255,.6)",fontSize:11,margin:0}}>{typeof prepData.dresscode==="object"?(prepData.dresscode.recommendation||"")+" "+(prepData.dresscode.details||""):prepData.dresscode}</p></div>}
+        <button onClick={()=>setPrepData(null)} style={{width:"100%",marginTop:12,padding:10,borderRadius:8,border:"none",background:"rgba(245,158,11,.15)",color:"#FBBF24",cursor:"pointer",fontSize:12,fontWeight:600}}>Close Prep</button>
+      </div>
+    </div>
+    )}
   </div>);
 }
 
