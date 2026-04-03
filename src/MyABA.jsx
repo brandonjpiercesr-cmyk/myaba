@@ -1524,8 +1524,8 @@ function MeetingModeView({ userId }) {
         <span style={{fontSize:16,fontWeight:900,color:"white"}}>A</span>
       </div>
       <div>
-        <div style={{fontSize:10,fontWeight:700,color:"rgba(139,92,246,.6)",marginBottom:3}}>CARA</div>
-        <p style={{fontSize:13,color:"rgba(255,255,255,.75)",margin:0,lineHeight:1.6}}>Hey! Tell me about your meeting, or hit Quick Start to jump right in.</p>
+        <div style={{fontSize:10,fontWeight:700,color:"rgba(139,92,246,.6)",marginBottom:3}}>ABA</div>
+        <p style={{fontSize:13,color:"rgba(255,255,255,.75)",margin:0,lineHeight:1.6}}>Hey! Tell me about your upcoming meeting, or hit Quick Start to go live.</p>
       </div>
     </div>
     <button onClick={()=>setShowPrep(false)} style={{width:"100%",padding:"14px 20px",borderRadius:12,marginBottom:14,background:"linear-gradient(135deg, rgba(6,182,212,.12), rgba(6,182,212,.04))",border:"1px solid rgba(6,182,212,.2)",color:"#22D3EE",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
@@ -1980,9 +1980,9 @@ function InterviewModeView({ userId }) {
           <span style={{fontSize:14,fontWeight:900,color:"white"}}>A</span>
         </div>
         <div>
-          <div style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",marginBottom:2}}>CARA</div>
+          <div style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",marginBottom:2}}>ABA</div>
           <p style={{fontSize:12,color:"rgba(255,255,255,.7)",margin:0,lineHeight:1.5}}>
-            {selectedJob ? `Prepping for ${selectedJob.title||selectedJob.job_title} at ${selectedJob.organization}. Jump to Live when ready.` : "Hey! Pick a job below, or hit Quick Start to go live now."}
+            {selectedJob ? `Prepping for ${selectedJob.title||selectedJob.job_title} at ${selectedJob.organization}. Jump to Live when ready.` : "Hey! Pick a job below, or hit Quick Start to jump into your interview."}
           </p>
         </div>
       </div>
