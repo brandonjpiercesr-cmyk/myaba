@@ -1395,7 +1395,7 @@ function MeetingModeView({ userId }) {
     try {
       const res = await fetch(`${ABABASE}/api/cook/answer`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, whose_turn: "other", transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "meeting", userId, last_said_by_ham: lastSaidByHamRef.current })
+        body: JSON.stringify({ question: 'Someone said: "' + question + '" — Give a polished 1-paragraph answer. Always answer. Never hold.', transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "meeting", userId, last_said_by_ham: lastSaidByHamRef.current })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1424,9 +1424,7 @@ function MeetingModeView({ userId }) {
     fetchTimCue(text, noDiarization ? null : speakerId);
     const interrogatives = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on', 'your take'];
     const isQuestion = text.includes('?') || interrogatives.some(w => text.toLowerCase().includes(w)) || text.length > 100;
-    if (isQuestion && (!isHam || noDiarization)) {
-      setTimeout(() => fetchCookAnswer(text), 2000);
-    }
+    if (isQuestion) setTimeout(() => fetchCookAnswer(text), 2000);
   };
 
   const startMeeting = async () => {
@@ -1750,7 +1748,7 @@ function InterviewModeView({ userId }) {
     try {
       const res = await fetch(`${ABABASE}/api/cook/answer`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, whose_turn: "other", transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId, last_said_by_ham: lastSaidByHamRef_iv.current })
+        body: JSON.stringify({ question: 'Interviewer said: "' + question + '" — Give a STAR-method answer. Always answer.', transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId, last_said_by_ham: lastSaidByHamRef_iv.current })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1779,9 +1777,7 @@ function InterviewModeView({ userId }) {
     fetchTimCue(text, noDiarization ? null : speakerId);
     const interrogatives_iv = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on', 'your take'];
     const isQuestion_iv = text.includes('?') || interrogatives_iv.some(w => text.toLowerCase().includes(w)) || text.length > 100;
-    if (isQuestion_iv && (!isHam || noDiarization)) {
-      setTimeout(() => fetchCookAnswer(text), 2000);
-    }
+    if (isQuestion_iv) setTimeout(() => fetchCookAnswer(text), 2000);
   };
 
   const loadPrep = async (job) => {
