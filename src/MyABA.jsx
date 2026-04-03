@@ -1531,9 +1531,21 @@ function MeetingModeView({ userId }) {
     <button onClick={()=>setShowPrep(false)} style={{width:"100%",padding:"14px 20px",borderRadius:12,marginBottom:14,background:"linear-gradient(135deg, rgba(6,182,212,.12), rgba(6,182,212,.04))",border:"1px solid rgba(6,182,212,.2)",color:"#22D3EE",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
       Quick Start — Jump to Live Mode
     </button>
+    <div style={{background:"rgba(255,255,255,.04)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.06)",borderRadius:16,padding:16,marginBottom:10}}>
+      <div style={{fontSize:11,fontWeight:700,color:"rgba(6,182,212,.6)",marginBottom:8,letterSpacing:"0.5px"}}>AGENDA</div>
+      <textarea placeholder="What's this meeting about?" style={{width:"100%",minHeight:50,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:8,padding:10,color:"#e2e8f0",fontSize:13,resize:"vertical",outline:"none"}} />
+    </div>
+    <div style={{background:"rgba(255,255,255,.04)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.06)",borderRadius:16,padding:16,marginBottom:10}}>
+      <div style={{fontSize:11,fontWeight:700,color:"rgba(6,182,212,.6)",marginBottom:8,letterSpacing:"0.5px"}}>ATTENDEES</div>
+      <textarea placeholder="Who's on this call? Names and roles help ABA coach better." style={{width:"100%",minHeight:40,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:8,padding:10,color:"#e2e8f0",fontSize:13,resize:"vertical",outline:"none"}} />
+    </div>
+    <div style={{background:"rgba(255,255,255,.04)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.06)",borderRadius:16,padding:16,marginBottom:10}}>
+      <div style={{fontSize:11,fontWeight:700,color:"rgba(6,182,212,.6)",marginBottom:8,letterSpacing:"0.5px"}}>CONTEXT</div>
+      <textarea placeholder="Past history, goals, topics to avoid..." style={{width:"100%",minHeight:50,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:8,padding:10,color:"#e2e8f0",fontSize:13,resize:"vertical",outline:"none"}} />
+    </div>
     <div style={{background:"rgba(255,255,255,.04)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.06)",borderRadius:16,padding:16,marginBottom:12}}>
-      <div style={{fontSize:11,fontWeight:700,color:"rgba(6,182,212,.6)",marginBottom:8,letterSpacing:"0.5px"}}>MEETING CONTEXT</div>
-      <textarea placeholder="What's this meeting about? Who's on the call? Any context ABA should know..." style={{width:"100%",minHeight:80,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:8,padding:10,color:"#e2e8f0",fontSize:13,resize:"vertical",outline:"none"}} />
+      <div style={{fontSize:11,fontWeight:700,color:"rgba(245,158,11,.6)",marginBottom:8,letterSpacing:"0.5px"}}>ATTACHMENTS</div>
+      <input type="file" multiple accept=".pdf,.docx,.doc,.md,.xlsx,.xls,.csv,.txt" onChange={async(e)=>{const files=Array.from(e.target.files);for(const f of files){const ext=f.name.split('.').pop().toLowerCase();if(['txt','md','csv','json'].includes(ext)){const t=await f.text();console.log('[MESA] Read',f.name,t.length,'chars')}}}} style={{fontSize:12,color:"rgba(255,255,255,.5)"}} />
     </div>
     <button onClick={()=>setShowPrep(false)} style={{width:"100%",padding:"12px 20px",borderRadius:12,background:"linear-gradient(135deg, rgba(16,185,129,.12), rgba(16,185,129,.04))",border:"1px solid rgba(16,185,129,.2)",color:"#34D399",fontSize:13,fontWeight:700,cursor:"pointer"}}>
       Start Meeting with Context
