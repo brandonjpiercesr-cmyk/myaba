@@ -1365,7 +1365,7 @@ function MeetingModeView({ userId }) {
   // TIM verbal filler — fires every 5 seconds, HAM says this out loud
   const fetchTimCue = async (text, speakerId) => {
     try {
-      const isHamTurn = speakerId === null || speakerId === hamSpeakerRef.current;
+      const isHamTurn = hamSpeakerRef.current !== null && (speakerId === null || speakerId === hamSpeakerRef.current);
       const res = await fetch(`${ABABASE}/api/tim/cue`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "meeting", userId, whose_turn: isHamTurn ? "ham" : "other" })
@@ -1395,7 +1395,7 @@ function MeetingModeView({ userId }) {
     try {
       const res = await fetch(`${ABABASE}/api/cook/answer`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "meeting", userId, last_said_by_ham: lastSaidByHamRef.current })
+        body: JSON.stringify({ question, whose_turn: "other", transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "meeting", userId, last_said_by_ham: lastSaidByHamRef.current })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1417,16 +1417,15 @@ function MeetingModeView({ userId }) {
   };
 
   const processSegment = async (text, speakerId) => {
-    // Track what the HAM last said (for COOK reheat prevention)
-    if (speakerId === null || speakerId === hamSpeakerRef.current) {
-      lastSaidByHamRef.current = text;
-    }
-    fetchTimCue(text, speakerId);
-    // Detect if segment contains a question (for COOK)
-    const interrogatives = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on'];
+    const hamSpeaker = hamSpeakerRef.current;
+    const isHam = hamSpeaker !== null && speakerId === hamSpeaker;
+    const noDiarization = hamSpeaker === null;
+    if (isHam || speakerId === null) lastSaidByHamRef.current = text;
+    fetchTimCue(text, noDiarization ? null : speakerId);
+    const interrogatives = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on', 'your take'];
     const isQuestion = text.includes('?') || interrogatives.some(w => text.toLowerCase().includes(w)) || text.length > 100;
-    if (isQuestion) {
-      setTimeout(() => fetchCookAnswer(text), 2000); // Delay to let TIM fire first
+    if (isQuestion && (!isHam || noDiarization)) {
+      setTimeout(() => fetchCookAnswer(text), 2000);
     }
   };
 
@@ -1722,7 +1721,7 @@ function InterviewModeView({ userId }) {
 
   const fetchTimCue = async (text, speakerId) => {
     try {
-      const isHamTurn = speakerId === null || speakerId === hamSpeakerRef_iv.current;
+      const isHamTurn = hamSpeakerRef_iv.current !== null && (speakerId === null || speakerId === hamSpeakerRef_iv.current);
       const res = await fetch(`${ABABASE}/api/tim/cue`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, userId, whose_turn: isHamTurn ? "ham" : "other" })
@@ -1751,7 +1750,7 @@ function InterviewModeView({ userId }) {
     try {
       const res = await fetch(`${ABABASE}/api/cook/answer`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId, last_said_by_ham: lastSaidByHamRef_iv.current })
+        body: JSON.stringify({ question, whose_turn: "other", transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId, last_said_by_ham: lastSaidByHamRef_iv.current })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1773,13 +1772,14 @@ function InterviewModeView({ userId }) {
   };
 
   const processSegment = async (text, speakerId) => {
-    if (speakerId === null || speakerId === hamSpeakerRef_iv.current) {
-      lastSaidByHamRef_iv.current = text;
-    }
-    fetchTimCue(text, speakerId);
-    const interrogatives_iv = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on'];
+    const hamSpeaker = hamSpeakerRef_iv.current;
+    const isHam = hamSpeaker !== null && speakerId === hamSpeaker;
+    const noDiarization = hamSpeaker === null;
+    if (isHam || speakerId === null) lastSaidByHamRef_iv.current = text;
+    fetchTimCue(text, noDiarization ? null : speakerId);
+    const interrogatives_iv = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on', 'your take'];
     const isQuestion_iv = text.includes('?') || interrogatives_iv.some(w => text.toLowerCase().includes(w)) || text.length > 100;
-    if (isQuestion_iv) {
+    if (isQuestion_iv && (!isHam || noDiarization)) {
       setTimeout(() => fetchCookAnswer(text), 2000);
     }
   };
