@@ -46,6 +46,24 @@ import { doc, getDoc, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
 import { useConversation } from "@elevenlabs/react";
 import { onAuthStateChanged } from "firebase/auth";
 
+// ⬡B:AUDRA.C4:FIX:error_boundary:20260403⬡ Crash = fallback UI, not white screen
+import React from "react";
+class ErrorBoundary extends React.Component {
+  constructor(props){super(props);this.state={hasError:false,error:null}}
+  static getDerivedStateFromError(error){return{hasError:true,error}}
+  componentDidCatch(e,info){console.error("[ABA] ErrorBoundary caught:",e,info)}
+  render(){if(this.state.hasError)return(
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#0a0a0f",color:"white",padding:24,textAlign:"center"}}>
+      <div style={{width:60,height:60,borderRadius:"50%",background:"rgba(239,68,68,.15)",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:16}}>
+        <span style={{fontSize:28}}>!</span>
+      </div>
+      <p style={{fontSize:16,fontWeight:600,marginBottom:8}}>Something went wrong</p>
+      <p style={{fontSize:12,color:"rgba(255,255,255,.4)",marginBottom:16,maxWidth:300}}>{this.state.error?.message||"ABA hit an unexpected error"}</p>
+      <button onClick={()=>{this.setState({hasError:false,error:null});window.location.reload()}} style={{padding:"10px 20px",borderRadius:10,border:"none",background:"rgba(139,92,246,.3)",color:"#a78bfa",cursor:"pointer",fontSize:13}}>Reload ABA</button>
+    </div>
+  );return this.props.children}
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SPURT 1: DEVICE DETECTION — Desktop vs Mobile
 // ═══════════════════════════════════════════════════════════════════════════
@@ -64,12 +82,6 @@ function useIsMobile() {
 // ═══════════════════════════════════════════════════════════════════════════
 // ⬡B:MYABA:ABABASE:v2.6.0:20260228⬡
 // ABABASE = Fat Prompt Architecture (87 agents, HAM identity)
-// ⬡B:CIP:UI:premium_fonts:20260403⬡
-const _fl2 = document.createElement('link');
-_fl2.href = 'https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;600;700&display=swap';
-_fl2.rel = 'stylesheet';
-if (!document.querySelector('link[href*="DM+Sans"]')) document.head.appendChild(_fl2);
-
 const ABABASE = "https://abacia-services.onrender.com";
 
 // ⬡B:ham.resolve:CACHE:backend_identity_resolution:20260327⬡
@@ -529,9 +541,9 @@ function TasksView({ userId }) {
   const [loading, setLoading] = useState(true);
   const [newTask, setNewTask] = useState("");
   const [sending, setSending] = useState(false);
-  const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw";
+  // ⬡B:AUDRA.C2:FIX:tasks_via_backend:20260403⬡ Routed through backend per 90/10 rule
   const load = async () => {
-    try { const r = await fetch("https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory?memory_type=eq.scheduled_task&order=created_at.desc&limit=30", { headers: { apikey: ANON } }); if (r.ok) setTasks(await r.json()); } catch {}
+    try { const r = await fetch(`${ABABASE}/api/tasks?userId=${encodeURIComponent(userId)}`); if (r.ok) { const d = await r.json(); setTasks(d.tasks || []); } } catch {}
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -558,9 +570,9 @@ function NotesView({ userId }) {
   const [loading, setLoading] = useState(true);
   const [newNote, setNewNote] = useState("");
   const [sending, setSending] = useState(false);
-  const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw";
+  // ⬡B:AUDRA.C2:FIX:notes_via_backend:20260403⬡ Routed through backend per 90/10 rule
   const load = async () => {
-    try { const r = await fetch("https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory?memory_type=eq.note&order=created_at.desc&limit=30", { headers: { apikey: ANON } }); if (r.ok) setNotes(await r.json()); } catch {}
+    try { const r = await fetch(`${ABABASE}/api/notes?userId=${encodeURIComponent(userId)}`); if (r.ok) { const d = await r.json(); setNotes(d.notes || []); } } catch {}
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -3993,13 +4005,9 @@ function MemosView({userId}){
   const[sending,setSending]=useState(false);
 
   const TEAM=[
-    {id:"brandon",name:"Brandon",email:"brandonjpiercesr@gmail.com"},
-    {id:"eric",name:"Eric",email:"eric@globalmajoritygroup.com"},
-    {id:"bj",name:"BJ",email:"bj@globalmajoritygroup.com"},
-    {id:"cj",name:"CJ",email:"cj@globalmajoritygroup.com"},
-    {id:"vante",name:"Vante",email:"vante@globalmajoritygroup.com"},
-    {id:"dwayne",name:"Dwayne",email:"dwayne@globalmajoritygroup.com"}
-  ].filter(t=>t.id!==userId&&t.id!==(userId||"").split("@")[0]);
+  // ⬡B:AUDRA.W1:FIX:memos_dynamic_team:20260403⬡ Dynamic team from HAM_TEAM, no hardcoded emails
+  const hamId = (userId||"").split("@")[0];
+  const TEAM = HAM_TEAM.map(t => ({id: t.ham_id||t.id, name: t.name||t.ham_id, email: t.email||""})).filter(t => t.id !== hamId && t.id !== userId);
 
   const loadMemos=async(type)=>{
     setLoading(true);
@@ -5845,7 +5853,8 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
 // ═══════════════════════════════════════════════════════════════════════════
 // MYABA — v1.1.3-P1: All Phase 1 fixes applied
 // ═══════════════════════════════════════════════════════════════════════════
-export default function MyABA(){
+// ⬡B:AUDRA.C4:FIX:wrap_errorboundary:20260403⬡ Wrapped in ErrorBoundary
+function MyABAInner(){
   const[user,setUser]=useState(null);const[authLoading,setAuthLoading]=useState(true);
   const[convos,setConvos]=useState([]);const[activeId,setActiveId]=useState(null);
   const activeConv=convos.find(c=>c.id===activeId);const messages=activeConv?.messages||[];
@@ -5897,9 +5906,10 @@ export default function MyABA(){
   // ⬡B:snap.quick_question:STATE:20260317⬡
   const[snapOpen,setSnapOpen]=useState(false);
   const[proactiveTip,setProactiveTip]=useState(null);
+  // ⬡B:AUDRA.C2:FIX:alerts_via_backend:20260403⬡ Routed through backend per 90/10 rule
   useEffect(()=>{
-    fetch("https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory?tags=cs.%7Bhunch%7D&tags=cs.%7Bunread%7D&order=created_at.desc&limit=1",{headers:{apikey:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw"}})
-      .then(r=>r.json()).then(d=>{if(d&&d[0]){try{const c=JSON.parse(d[0].content);setProactiveTip(c.hint||c.message||null)}catch{}}}).catch(()=>{});
+    fetch(`${ABABASE}/api/alerts/hunch`)
+      .then(r=>r.json()).then(d=>{const arr=d.alerts||d||[];if(arr&&arr[0]){try{const c=typeof arr[0].content==="string"?JSON.parse(arr[0].content):arr[0].content;setProactiveTip(c.hint||c.message||null)}catch{}}}).catch(()=>{});
   },[]);
   const[captionText,setCaptionText]=useState("");const[captionVisible,setCaptionVisible]=useState(false);
   const[editorDoc,setEditorDoc]=useState(null); // {content, type} for MobileDocEditor from Jobs
@@ -6888,3 +6898,6 @@ export default function MyABA(){
     {isHAM(user?.email)&&<AdminPanel open={adminPanelOpen} onClose={()=>setAdminPanelOpen(false)} lastResponse={lastABAResponse}/>}
     {toast&&<Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)}/>}
   </div>)}
+
+// ⬡B:AUDRA.C4:FIX:error_boundary_export:20260403⬡
+export default function MyABA(){ return <ErrorBoundary><MyABAInner/></ErrorBoundary> }
