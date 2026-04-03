@@ -4256,7 +4256,7 @@ function JobsView({userId}){
   const[jobRefs,setJobRefs]=useState([]);
   const[applyPreview,setApplyPreview]=useState(null);
   const[applyLoading,setApplyLoading]=useState(false);
-  const[interviewForm,setInterviewForm]=useState(null); // {jobId, date, name, notes}
+  const[interviewChat,setInterviewChat]=useState(null); // {jobId, step, date, name, notes, messages}
   const[offerForm,setOfferForm]=useState(null); // {jobId, salary, deadline, details}
   const[prepData,setPrepData]=useState(null); // interview prep package
   const[prepLoading,setPrepLoading]=useState(false);
@@ -4446,7 +4446,7 @@ function JobsView({userId}){
           const DISPLAY_NAMES={"brandon":"Brandon","eric":"Eric","bj":"BJ","cj":"CJ","vante":"Vante","dwayne":"Dwayne","gmg":"GMG"};
           const assigneeDisplay=DISPLAY_NAMES[assignee]||assignee;
           return(
-          <div key={job.id} onClick={()=>{setSelectedJob(job);setApplyPreview(null);setInterviewForm(null);setOfferForm(null);setShowRefs(false);setPrepData(null);setMockMode(false);setMockQuestion(null);setMockEval(null);}} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
+          <div key={job.id} onClick={()=>{setSelectedJob(job);setApplyPreview(null);setInterviewChat(null);setOfferForm(null);setShowRefs(false);setPrepData(null);setMockMode(false);setMockQuestion(null);setMockEval(null);}} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
               <p style={{color:"rgba(255,255,255,.9)",fontSize:13,fontWeight:600,margin:0,lineHeight:1.3}}>{title}</p>
               {job.remote&&<span style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:"rgba(16,185,129,.15)",color:"#10B981",flexShrink:0}}>Remote</span>}
@@ -4658,7 +4658,7 @@ function JobsView({userId}){
             const newStatus=e.target.value;if(!newStatus)return;
             // Show interview form instead of immediately updating
             if(newStatus==="INTERVIEW_SCHEDULED"){
-              setInterviewForm({jobId:selectedJob.id,date:"",name:"",notes:""});
+              setInterviewChat({jobId:selectedJob.id,step:"date",date:"",name:"",notes:"",messages:[{from:"aba",text:"Got it, scheduling an interview. When is it?"}]});
               return;
             }
             // Show offer form
@@ -4681,35 +4681,77 @@ function JobsView({userId}){
           </select>
         </div>
         
-        {/* Interview scheduling form - appears when user selects INTERVIEW_SCHEDULED */}
-        {interviewForm&&interviewForm.jobId===selectedJob.id&&(
-        <div style={{padding:12,borderRadius:10,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.2)",marginBottom:8}}>
-          <p style={{color:"#FBBF24",fontSize:12,fontWeight:600,margin:"0 0 8px"}}>Schedule Interview</p>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            <input type="datetime-local" value={interviewForm.date} onChange={e=>setInterviewForm(prev=>({...prev,date:e.target.value}))} style={{padding:"8px 10px",borderRadius:6,border:"1px solid rgba(245,158,11,.2)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}/>
-            <input placeholder="Interviewer name" value={interviewForm.name} onChange={e=>setInterviewForm(prev=>({...prev,name:e.target.value}))} style={{padding:"8px 10px",borderRadius:6,border:"1px solid rgba(255,255,255,.1)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}/>
-            <input placeholder="Notes (optional)" value={interviewForm.notes} onChange={e=>setInterviewForm(prev=>({...prev,notes:e.target.value}))} style={{padding:"8px 10px",borderRadius:6,border:"1px solid rgba(255,255,255,.1)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}/>
+        {/* ⬡B:AUDRA:CIP_CONVERSATIONAL_INTERVIEW:20260402⬡ Conversational Interview Tracking */}
+        {interviewChat&&interviewChat.jobId===selectedJob.id&&(
+        <div style={{padding:12,borderRadius:12,background:"rgba(0,0,0,.3)",border:"1px solid rgba(245,158,11,.15)",marginBottom:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <p style={{color:"#FBBF24",fontSize:13,fontWeight:600,margin:0}}>Interview Tracking</p>
+            <button onClick={()=>setInterviewChat(null)} style={{background:"none",border:"none",color:"rgba(255,255,255,.4)",cursor:"pointer",fontSize:16}}>×</button>
           </div>
-          <div style={{display:"flex",gap:6,marginTop:8}}>
-            <button onClick={async()=>{
-              try{
-                const assignee=(selectedJob.assignees||[])[0]||"unmatched";
-                const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:"INTERVIEW_SCHEDULED",interviewDate:interviewForm.date||null,interviewerName:interviewForm.name||null,notes:interviewForm.notes||null})});
-                const d=await r.json();
-                if(d.success){
-                  setSelectedJob(prev=>({...prev,status:"INTERVIEW_SCHEDULED",interview_date:interviewForm.date,interviewer_name:interviewForm.name,interview_notes:interviewForm.notes}));
+          <div style={{maxHeight:200,overflowY:"auto",marginBottom:8}}>
+            {(interviewChat.messages||[]).map((m,mi)=>(
+              <div key={mi} style={{display:"flex",justifyContent:m.from==="aba"?"flex-start":"flex-end",marginBottom:6}}>
+                <div style={{maxWidth:"80%",padding:"8px 12px",borderRadius:m.from==="aba"?"12px 12px 12px 4px":"12px 12px 4px 12px",
+                  background:m.from==="aba"?"rgba(245,158,11,.1)":"rgba(139,92,246,.2)",
+                  color:m.from==="aba"?"#FBBF24":"rgba(255,255,255,.9)",fontSize:12,lineHeight:1.4}}>
+                  {m.text}
+                </div>
+              </div>
+            ))}
+          </div>
+          {interviewChat.step==="date"&&(
+            <div style={{display:"flex",gap:6}}>
+              <input type="datetime-local" id="iv-date-cip" style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid rgba(245,158,11,.2)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}/>
+              <button onClick={()=>{
+                const v=document.getElementById("iv-date-cip").value;
+                if(!v) return;
+                setInterviewChat(p=>({...p,date:v,step:"who",
+                  messages:[...p.messages,{from:"you",text:new Date(v).toLocaleString()},{from:"aba",text:"Nice. Who will you be meeting with?"}]}));
+              }} style={{padding:"8px 14px",borderRadius:8,border:"none",background:"rgba(245,158,11,.2)",color:"#FBBF24",cursor:"pointer",fontSize:12,fontWeight:600}}>Set</button>
+            </div>
+          )}
+          {interviewChat.step==="who"&&(
+            <div style={{display:"flex",gap:6}}>
+              <input id="iv-who-cip" placeholder="Name(s)" style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}
+                onKeyDown={e=>{if(e.key==="Enter"){const v=e.target.value.trim();if(!v)return;
+                  setInterviewChat(p=>({...p,name:v,step:"notes",
+                    messages:[...p.messages,{from:"you",text:v},{from:"aba",text:"Got it. Any notes or things you want to remember? (or hit Skip)"}]}));}}}/>
+              <button onClick={()=>{
+                const v=document.getElementById("iv-who-cip").value.trim();
+                if(!v) return;
+                setInterviewChat(p=>({...p,name:v,step:"notes",
+                  messages:[...p.messages,{from:"you",text:v},{from:"aba",text:"Got it. Any notes or things you want to remember? (or hit Skip)"}]}));
+              }} style={{padding:"8px 14px",borderRadius:8,border:"none",background:"rgba(245,158,11,.2)",color:"#FBBF24",cursor:"pointer",fontSize:12,fontWeight:600}}>Send</button>
+            </div>
+          )}
+          {interviewChat.step==="notes"&&(
+            <div style={{display:"flex",gap:6}}>
+              <input id="iv-notes-cip" placeholder="Notes..." style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}
+                onKeyDown={async e=>{if(e.key==="Enter"){const v=e.target.value.trim();
+                  setInterviewChat(p=>({...p,notes:v,step:"done",messages:[...p.messages,{from:"you",text:v||"(none)"},{from:"aba",text:"All set. Saving..."}]}));
+                  try{
+                    const assignee=(selectedJob.assignees||[])[0]||"unmatched";
+                    await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:"INTERVIEW_SCHEDULED",interviewDate:interviewChat.date||null,interviewerName:interviewChat.name||null,notes:v||null})});
+                    setSelectedJob(prev=>({...prev,status:"INTERVIEW_SCHEDULED",interview_date:interviewChat.date,interviewer_name:interviewChat.name,interview_notes:v}));
+                    setJobs(prev=>prev.map(j=>j.id===selectedJob.id?{...j,status:"INTERVIEW_SCHEDULED"}:j));
+                  }catch(e2){console.error("[AWA] Interview save:",e2)}
+                  setTimeout(()=>{setInterviewChat(p=>({...p,step:"saved",messages:[...p.messages.filter(m=>m.text!=="All set. Saving..."),{from:"aba",text:"Interview tracked. You got this."}]}));},800);
+                }}}/>
+              <button onClick={async()=>{
+                setInterviewChat(p=>({...p,notes:"",step:"done",messages:[...p.messages,{from:"you",text:"(skipped)"},{from:"aba",text:"All set. Saving..."}]}));
+                try{
+                  const assignee=(selectedJob.assignees||[])[0]||"unmatched";
+                  await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:"INTERVIEW_SCHEDULED",interviewDate:interviewChat.date||null,interviewerName:interviewChat.name||null,notes:null})});
+                  setSelectedJob(prev=>({...prev,status:"INTERVIEW_SCHEDULED",interview_date:interviewChat.date,interviewer_name:interviewChat.name}));
                   setJobs(prev=>prev.map(j=>j.id===selectedJob.id?{...j,status:"INTERVIEW_SCHEDULED"}:j));
-                  setInterviewForm(null);
-                  setOutput(d.message);
-                }
-              }catch(e){setOutput("Interview schedule error: "+e.message)}
-            }} style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(245,158,11,.25)",color:"#FBBF24",fontSize:12,fontWeight:600}}>
-              Confirm Interview
-            </button>
-            <button onClick={()=>setInterviewForm(null)} style={{padding:"10px 16px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",cursor:"pointer",background:"transparent",color:"rgba(255,255,255,.4)",fontSize:12}}>
-              Cancel
-            </button>
-          </div>
+                }catch(e2){console.error("[AWA] Interview save:",e2)}
+                setTimeout(()=>{setInterviewChat(p=>({...p,step:"saved",messages:[...p.messages.filter(m=>m.text!=="All set. Saving..."),{from:"aba",text:"Interview tracked. You got this."}]}));},800);
+              }} style={{padding:"8px 14px",borderRadius:8,border:"none",background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.4)",cursor:"pointer",fontSize:12}}>Skip</button>
+            </div>
+          )}
+          {interviewChat.step==="saved"&&(
+            <button onClick={()=>setInterviewChat(null)} style={{width:"100%",padding:10,borderRadius:8,border:"none",background:"rgba(245,158,11,.15)",color:"#FBBF24",cursor:"pointer",fontSize:12,fontWeight:600}}>Done</button>
+          )}
         </div>
         )}
         
@@ -4746,11 +4788,11 @@ function JobsView({userId}){
         )}
         
         {/* ⬡B:AWA.v4:interview_details_display:20260319⬡ */}
-        {!interviewForm&&(selectedJob.status==="INTERVIEW_SCHEDULED"||selectedJob.interview_date)&&(
+        {!interviewChat&&(selectedJob.status==="INTERVIEW_SCHEDULED"||selectedJob.interview_date)&&(
         <div style={{padding:10,borderRadius:8,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.15)",marginBottom:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <p style={{color:"#FBBF24",fontSize:11,fontWeight:600,margin:0}}>Interview Details</p>
-            <button onClick={()=>setInterviewForm({jobId:selectedJob.id,date:selectedJob.interview_date||"",name:selectedJob.interviewer_name||"",notes:selectedJob.interview_notes||""})} style={{background:"none",border:"none",color:"rgba(245,158,11,.5)",cursor:"pointer",fontSize:10}}>Edit</button>
+            <button onClick={()=>setInterviewChat({jobId:selectedJob.id,step:"date",date:selectedJob.interview_date||"",name:selectedJob.interviewer_name||"",notes:selectedJob.interview_notes||"",messages:[{from:"aba",text:"Updating interview details. When is it now?"}]})} style={{background:"none",border:"none",color:"rgba(245,158,11,.5)",cursor:"pointer",fontSize:10}}>Edit</button>
           </div>
           {selectedJob.interview_date&&<p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"4px 0 2px"}}>Date: {new Date(selectedJob.interview_date).toLocaleString()}</p>}
           {selectedJob.interviewer_name&&<p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"2px 0"}}>With: {selectedJob.interviewer_name}</p>}
