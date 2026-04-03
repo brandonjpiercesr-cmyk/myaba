@@ -2678,7 +2678,7 @@ async function subscribeToPush(userId) {
     }
     
     // Send subscription to backend
-    await fetch('https://abacia-services.onrender.com/api/push/subscribe', {
+    await fetch(`${ABABASE}/api/push/subscribe`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, subscription: subscription.toJSON() })
@@ -2698,7 +2698,7 @@ async function unsubscribeFromPush(userId) {
     const subscription = await registration.pushManager.getSubscription();
     if (subscription) {
       await subscription.unsubscribe();
-      await fetch('https://abacia-services.onrender.com/api/push/unsubscribe', {
+      await fetch(`${ABABASE}/api/push/unsubscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId })
@@ -2860,7 +2860,7 @@ function CommandCenterView({ open, onClose, userEmail }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`https://abacia-services.onrender.com/api/admin/dashboard?email=${encodeURIComponent(userEmail)}`);
+      const res = await fetch(`${ABABASE}/api/admin/dashboard?email=${encodeURIComponent(userEmail)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const result = await res.json();
       setData(result);
@@ -3353,7 +3353,7 @@ function FirstLoginTour({user,onComplete}){
           <button onClick={()=>{
             const email=(user?.email||"").toLowerCase();
             const hamId=resolveHamId(email);
-            window.open(`https://abacia-services.onrender.com/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
+            window.open(`${ABABASE}/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
           }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#10B981,#059669)",color:"white",cursor:"pointer",fontSize:14,fontWeight:600,marginTop:16,boxShadow:"0 4px 20px rgba(16,185,129,.3)"}}>
             <Mail size={18}/>Connect Email with Google
           </button>
@@ -3811,7 +3811,7 @@ function ApproveView({userId,onAction}){
       <button disabled={velocityLoading} onClick={async()=>{
         setVelocityLoading(true);
         try{
-          const r=await fetch(`https://abacia-services.onrender.com/api/awa/decisions/analysis?userId=${encodeURIComponent(userId)}`);
+          const r=await fetch(`${ABABASE}/api/awa/decisions/analysis?userId=${encodeURIComponent(userId)}`);
           const d=await r.json();if(d.success)setVelocityData(d);
         }catch(e){console.error("[VELOCITY]",e)}
         setVelocityLoading(false);setShowVelocity(true);
@@ -4104,7 +4104,7 @@ function ReferencesView({userId}){
   
   const loadRefs=async()=>{
     try{
-      const res=await fetch(`https://abacia-services.onrender.com/api/awa/references?userId=${encodeURIComponent(userId)}`);
+      const res=await fetch(`${ABABASE}/api/awa/references?userId=${encodeURIComponent(userId)}`);
       if(res.ok){
         const data=await res.json();
         setRefs(data.references||[]);
@@ -4117,8 +4117,8 @@ function ReferencesView({userId}){
     setSaving(true);
     try{
       const method=editing?"PUT":"POST";
-      const url=editing?`https://abacia-services.onrender.com/api/awa/references/${editing}`:
-        "https://abacia-services.onrender.com/api/awa/references";
+      const url=editing?`${ABABASE}/api/awa/references/${editing}`:
+        `${ABABASE}/api/awa/references`;
       const res=await fetch(url,{
         method,
         headers:{"Content-Type":"application/json"},
@@ -4137,7 +4137,7 @@ function ReferencesView({userId}){
   const deleteRef=async(id)=>{
     if(!confirm("Delete this reference?"))return;
     try{
-      await fetch(`https://abacia-services.onrender.com/api/awa/references/${id}`,{
+      await fetch(`${ABABASE}/api/awa/references/${id}`,{
         method:"DELETE",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({userId})
@@ -4370,7 +4370,7 @@ function JobsView({userId}){
     try{
       const assignee=(selectedJob.assignees||[])[0]||selectedJob.assignee||"unmatched";
       const endpoint = type==="cover" ? "cover-letter" : type==="resume" ? "resume" : "writing-sample";
-      const res=await fetch(`https://abacia-services.onrender.com/api/awa/${endpoint}`,{
+      const res=await fetch(`${ABABASE}/api/awa/${endpoint}`,{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({job:selectedJob,userId:assignee.toLowerCase().replace(" ","_")})
       });
@@ -5639,7 +5639,7 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
         // Map email to ham_id for Nylas OAuth
         const email=(user?.email||"").toLowerCase();
         const hamId=resolveHamId(email);
-        window.open(`https://abacia-services.onrender.com/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
+        window.open(`${ABABASE}/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
       }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px 16px",borderRadius:14,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.06)",color:"rgba(16,185,129,.8)",cursor:"pointer",fontSize:14,fontWeight:600,marginBottom:8}}>
         <Mail size={18}/>Connect Email
       </button>
