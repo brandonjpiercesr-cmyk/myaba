@@ -1268,27 +1268,27 @@ function CCWAView({ userId }) {
 }
 
 function AOAView({ userId }) {
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    Promise.all([fetch(ABABASE+"/api/team").then(r=>r.json()),fetch(ABABASE+"/api/apps?userId="+encodeURIComponent(userId)).then(r=>r.json())])
-      .then(([t,a]) => setStats({members:t.members||[],apps:a.apps||[],trust:a.trust})).catch(()=>{}).finally(()=>setLoading(false));
-  }, [userId]);
-  return (<div style={{flex:1,overflowY:"auto",padding:16}}>
-    {loading?<p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading AOA...</p>
-    :!stats?<p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Could not load</p>
-    :<>
-      <p style={{fontSize:11,color:"rgba(255,255,255,.3)",marginBottom:8}}>TEAM ({stats.members.length} HAMs)</p>
-      {stats.members.map((m,i)=><div key={i} style={{padding:10,marginBottom:4,borderRadius:10,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <div><p style={{fontSize:13,color:"rgba(255,255,255,.8)"}}>{m.name}</p><p style={{fontSize:10,color:"rgba(255,255,255,.3)"}}>{m.email}</p></div>
-        <div style={{display:"flex",gap:6}}><span style={{fontSize:10,padding:"2px 8px",borderRadius:8,background:m.has_nylas?"rgba(34,197,94,.15)":"rgba(239,68,68,.15)",color:m.has_nylas?"#22c55e":"#ef4444"}}>{m.has_nylas?"Email":"No Email"}</span></div>
-      </div>)}
-      <p style={{fontSize:11,color:"rgba(255,255,255,.3)",margin:"16px 0 8px"}}>APPS ({stats.apps.length})</p>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-        {stats.apps.map((a,i)=><div key={i} style={{padding:8,borderRadius:8,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)"}}><p style={{fontSize:12,color:"rgba(255,255,255,.7)"}}>{a.name}</p><p style={{fontSize:10,color:"rgba(255,255,255,.2)"}}>{a.id}</p></div>)}
-      </div>
-    </>}
-  </div>);
+  // ⬡B:aoa.triplet:CIP:iframe_embed:20260403⬡
+  // Loads the real AOA Portal in an iframe. T10 auth handled by the portal itself.
+  return (
+    <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+      <iframe
+        src="https://aba-portal.onrender.com"
+        style={{
+          width: "100%",
+          height: "100%",
+          border: "none",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+        }}
+        title="AOA Portal"
+        allow="clipboard-write"
+      />
+    </div>
+  );
 }
 
 function ProactiveTip({ tip, onDismiss }) {
