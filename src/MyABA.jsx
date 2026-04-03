@@ -1338,6 +1338,10 @@ function MeetingModeView({ userId }) {
   const [activeCue, setActiveCue] = useState(null);
   const [cookStreaming, setCookStreaming] = useState(false);
   const [showPrep, setShowPrep] = useState(true);
+  const [prepMsgs, setPrepMsgs] = useState([{from:'aba',text:"Hey! Tell me about your meeting, or hit Quick Start to go live."}]);
+  const [prepInput, setPrepInput] = useState('');
+  const [prepLoading, setPrepLoading] = useState(false);
+  const prepCtxRef = useRef('');
   const recRef = useRef(null);
   const streamRef = useRef(null);
   const wsRef = useRef(null);
@@ -1518,53 +1522,42 @@ function MeetingModeView({ userId }) {
   });
 
   // ⬡B:CIP.MESA:UI:cara_prep_gate:20260402⬡
-  if (showPrep) return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"auto",padding:16}}>
-    <div style={{background:"rgba(255,255,255,.04)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.06)",borderRadius:16,padding:"16px 20px",marginBottom:12,display:"flex",gap:12,alignItems:"flex-start"}}>
-      <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg, #6366F1, #8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-        <span style={{fontSize:16,fontWeight:900,color:"white"}}>A</span>
-      </div>
-      <div>
-        <div style={{fontSize:10,fontWeight:700,color:"rgba(139,92,246,.6)",marginBottom:3}}>ABA</div>
-        <p style={{fontSize:13,color:"rgba(255,255,255,.75)",margin:0,lineHeight:1.6}}>Hey! Tell me about your upcoming meeting, or hit Quick Start to go live.</p>
-      </div>
+  // ⬡B:CIP.MESA:UI:chat_first_prep:20260402⬡
+  const sendPrep = async()=>{
+    if(!prepInput.trim()||prepLoading)return;
+    const msg=prepInput.trim();setPrepInput('');
+    setPrepMsgs(p=>[...p,{from:'user',text:msg}]);
+    prepCtxRef.current+='\n'+msg;
+    setPrepLoading(true);
+    try{const r=await fetch(ABABASE+'/api/air/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Meeting prep: '+msg+'. Respond in 1-2 sentences.',user_id:userId,channel:'myaba',appScope:'meeting'})});const d=await r.json();setPrepMsgs(p=>[...p,{from:'aba',text:d.response||'Got it.'}]);}catch{setPrepMsgs(p=>[...p,{from:'aba',text:'Got it. What else?'}]);}
+    setPrepLoading(false);
+  };
+  if (showPrep) return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    <div style={{padding:"10px 16px",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
+      <button onClick={()=>setShowPrep(false)} style={{width:"100%",padding:"12px",borderRadius:12,background:"linear-gradient(135deg, rgba(6,182,212,.12), rgba(6,182,212,.04))",border:"1px solid rgba(6,182,212,.2)",color:"#22D3EE",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+        Quick Start — Jump to Live
+      </button>
     </div>
-    <button onClick={()=>setShowPrep(false)} style={{width:"100%",padding:"14px 20px",borderRadius:12,marginBottom:14,background:"linear-gradient(135deg, rgba(6,182,212,.12), rgba(6,182,212,.04))",border:"1px solid rgba(6,182,212,.2)",color:"#22D3EE",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-      Quick Start — Jump to Live Mode
-    </button>
-    <button onClick={()=>{
-      const talkBtn=document.querySelector('[data-talk-to-aba]');
-      if(talkBtn)talkBtn.click();
-      else alert('Use the Talk to ABA orb in the bottom corner to prep by voice.');
-    }} style={{width:"100%",padding:"10px 16px",borderRadius:10,marginBottom:12,background:"rgba(139,92,246,.08)",border:"1px solid rgba(139,92,246,.12)",color:"rgba(139,92,246,.6)",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-      Talk to ABA — Voice Prep
-    </button>
-    <div style={{background:"rgba(255,255,255,.04)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.06)",borderRadius:16,padding:16,marginBottom:10}}>
-      <div style={{fontSize:11,fontWeight:700,color:"rgba(6,182,212,.6)",marginBottom:8,letterSpacing:"0.5px"}}>AGENDA</div>
-      <textarea id="mesa-agenda" placeholder="What's this meeting about?" style={{width:"100%",minHeight:50,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:8,padding:10,color:"#e2e8f0",fontSize:13,resize:"vertical",outline:"none"}} />
+    <div style={{flex:1,overflowY:"auto",padding:"12px 16px",display:"flex",flexDirection:"column",gap:10}}>
+      {prepMsgs.map((m,i)=><div key={i} style={{alignSelf:m.from==='user'?'flex-end':'flex-start',maxWidth:'85%',padding:'10px 14px',borderRadius:m.from==='user'?'14px 14px 4px 14px':'14px 14px 14px 4px',background:m.from==='user'?'rgba(139,92,246,.12)':'rgba(255,255,255,.04)',border:'1px solid '+(m.from==='user'?'rgba(139,92,246,.15)':'rgba(255,255,255,.06)')}}>
+        {m.from==='aba'&&<div style={{fontSize:9,fontWeight:700,color:'rgba(34,211,238,.6)',marginBottom:3}}>ABA</div>}
+        <p style={{fontSize:13,color:'rgba(255,255,255,.8)',margin:0,lineHeight:1.6}}>{m.text}</p>
+      </div>)}
+      {prepLoading&&<div style={{padding:'8px 14px',borderRadius:14,background:'rgba(255,255,255,.02)',border:'1px solid rgba(255,255,255,.04)',alignSelf:'flex-start'}}><div style={{fontSize:9,fontWeight:700,color:'rgba(34,211,238,.4)',marginBottom:2}}>ABA</div><p style={{fontSize:13,color:'rgba(255,255,255,.3)',margin:0}}>Thinking...</p></div>}
     </div>
-    <div style={{background:"rgba(255,255,255,.04)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.06)",borderRadius:16,padding:16,marginBottom:10}}>
-      <div style={{fontSize:11,fontWeight:700,color:"rgba(6,182,212,.6)",marginBottom:8,letterSpacing:"0.5px"}}>ATTENDEES</div>
-      <textarea id="mesa-attendees" placeholder="Who's on this call?" style={{width:"100%",minHeight:40,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:8,padding:10,color:"#e2e8f0",fontSize:13,resize:"vertical",outline:"none"}} />
+    <div style={{padding:"10px 16px",borderTop:"1px solid rgba(255,255,255,.04)",display:"flex",gap:8,alignItems:"center"}}>
+      <input value={prepInput} onChange={e=>setPrepInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendPrep()} placeholder="Tell ABA about this meeting..." style={{flex:1,padding:"10px 14px",borderRadius:10,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)",color:"#e2e8f0",fontSize:13,outline:"none"}} />
+      <button onClick={sendPrep} disabled={prepLoading||!prepInput.trim()} style={{padding:8,borderRadius:8,background:"rgba(139,92,246,.12)",border:"1px solid rgba(139,92,246,.15)",color:"rgba(139,92,246,.7)",cursor:"pointer"}}><Send size={16}/></button>
+      <button onClick={()=>{const t=document.querySelector('[data-talk-to-aba]');if(t)t.click();}} style={{padding:"8px 14px",borderRadius:8,background:"linear-gradient(135deg, rgba(139,92,246,.15), rgba(139,92,246,.08))",border:"1px solid rgba(139,92,246,.15)",color:"rgba(139,92,246,.8)",cursor:"pointer",display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:600}}><Mic size={14}/> Talk</button>
     </div>
-    <div style={{background:"rgba(255,255,255,.04)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.06)",borderRadius:16,padding:16,marginBottom:10}}>
-      <div style={{fontSize:11,fontWeight:700,color:"rgba(6,182,212,.6)",marginBottom:8,letterSpacing:"0.5px"}}>CONTEXT</div>
-      <textarea id="mesa-context" placeholder="Past history, goals, topics to avoid..." style={{width:"100%",minHeight:50,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:8,padding:10,color:"#e2e8f0",fontSize:13,resize:"vertical",outline:"none"}} />
+    <div style={{padding:"10px 16px",borderTop:"1px solid rgba(255,255,255,.04)"}}>
+      <button onClick={async()=>{
+        if(prepCtxRef.current){try{await fetch(ABABASE+'/api/air/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Save meeting context: '+prepCtxRef.current,user_id:userId,channel:'myaba',appScope:'meeting'})})}catch{}}
+        setShowPrep(false);
+      }} style={{width:"100%",padding:"12px",borderRadius:12,background:"linear-gradient(135deg, rgba(16,185,129,.15), rgba(16,185,129,.05))",border:"1px solid rgba(16,185,129,.2)",color:"#34D399",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+        Start Meeting
+      </button>
     </div>
-    <div style={{background:"rgba(255,255,255,.04)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.06)",borderRadius:16,padding:16,marginBottom:12}}>
-      <div style={{fontSize:11,fontWeight:700,color:"rgba(245,158,11,.6)",marginBottom:8,letterSpacing:"0.5px"}}>ATTACHMENTS</div>
-      <input type="file" multiple accept=".pdf,.docx,.doc,.md,.xlsx,.xls,.csv,.txt" onChange={async(e)=>{const files=Array.from(e.target.files);for(const f of files){const ext=f.name.split('.').pop().toLowerCase();if(['txt','md','csv','json'].includes(ext)){const t=await f.text();const ctx=document.getElementById('mesa-context');if(ctx)ctx.value+=(ctx.value?'\n\n':'')+`--- ${f.name} ---\n`+t.substring(0,5000)}}}} style={{fontSize:12,color:"rgba(255,255,255,.5)"}} />
-    </div>
-    <button onClick={async()=>{
-      const agenda=document.getElementById('mesa-agenda')?.value||'';
-      const attendees=document.getElementById('mesa-attendees')?.value||'';
-      const context=document.getElementById('mesa-context')?.value||'';
-      if(agenda||attendees||context){
-        try{await fetch(ABABASE+'/api/air/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Save meeting context for coaching: Agenda: '+agenda+'. Attendees: '+attendees+'. Context: '+context,user_id:userId,channel:'myaba',appScope:'meeting'})})}catch(e){}
-      }
-      setShowPrep(false);
-    }} style={{width:"100%",padding:"12px 20px",borderRadius:12,background:"linear-gradient(135deg, rgba(16,185,129,.12), rgba(16,185,129,.04))",border:"1px solid rgba(16,185,129,.2)",color:"#34D399",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-      Start Meeting with Context
-    </button>
   </div>);
 
   return (<div style={{flex:1,display:"flex",flexDirection:"column",backdropFilter:"blur(12px)",overflow:"hidden",background:"linear-gradient(180deg, rgba(6,182,212,.03) 0%, transparent 40%)"}}>
