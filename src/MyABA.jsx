@@ -64,6 +64,12 @@ function useIsMobile() {
 // ═══════════════════════════════════════════════════════════════════════════
 // ⬡B:MYABA:ABABASE:v2.6.0:20260228⬡
 // ABABASE = Fat Prompt Architecture (87 agents, HAM identity)
+// ⬡B:CIP:UI:premium_fonts:20260403⬡
+const _fl2 = document.createElement('link');
+_fl2.href = 'https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;600;700&display=swap';
+_fl2.rel = 'stylesheet';
+if (!document.querySelector('link[href*="DM+Sans"]')) document.head.appendChild(_fl2);
+
 const ABABASE = "https://abacia-services.onrender.com";
 
 // ⬡B:ham.resolve:CACHE:backend_identity_resolution:20260327⬡
