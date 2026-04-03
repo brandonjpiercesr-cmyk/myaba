@@ -1531,6 +1531,13 @@ function MeetingModeView({ userId }) {
     <button onClick={()=>setShowPrep(false)} style={{width:"100%",padding:"14px 20px",borderRadius:12,marginBottom:14,background:"linear-gradient(135deg, rgba(6,182,212,.12), rgba(6,182,212,.04))",border:"1px solid rgba(6,182,212,.2)",color:"#22D3EE",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
       Quick Start — Jump to Live Mode
     </button>
+    <button onClick={()=>{
+      const talkBtn=document.querySelector('[data-talk-to-aba]');
+      if(talkBtn)talkBtn.click();
+      else alert('Use the Talk to ABA orb in the bottom corner to prep by voice.');
+    }} style={{width:"100%",padding:"10px 16px",borderRadius:10,marginBottom:12,background:"rgba(139,92,246,.08)",border:"1px solid rgba(139,92,246,.12)",color:"rgba(139,92,246,.6)",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+      Talk to ABA — Voice Prep
+    </button>
     <div style={{background:"rgba(255,255,255,.04)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.06)",borderRadius:16,padding:16,marginBottom:10}}>
       <div style={{fontSize:11,fontWeight:700,color:"rgba(6,182,212,.6)",marginBottom:8,letterSpacing:"0.5px"}}>AGENDA</div>
       <textarea id="mesa-agenda" placeholder="What's this meeting about?" style={{width:"100%",minHeight:50,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:8,padding:10,color:"#e2e8f0",fontSize:13,resize:"vertical",outline:"none"}} />
