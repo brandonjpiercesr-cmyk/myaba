@@ -368,7 +368,7 @@ function GMGUniversityView() {
       const hr = new Date().getHours();
       const g = hr<12?"morning":hr<17?"afternoon":"evening";
       let m = "Good "+g+", this is "+firstName+". I just opened GMG University.";
-      if (nx) { m+=" My next lesson is Day "+nx.day+" of "+VOL_META[nx.vol].name+": \""+nx.title+"\". I have completed "+cd.length+" of 75 lessons. Start teaching me."; setCL(nx); }
+      if (nx) { m+=" My next lesson is Day "+nx.day+" of "+VOL_META[nx.vol].name+": \""+nx.title+"\". I have completed "+cd.length+" of 75 lessons. Check my cohort_type and proceed accordingly. If INTERVIEW_MODE, interview me. Otherwise teach me."; setCL(nx); }
       else m+=" I have completed all 75 lessons!";
       doStream(m, true);
     }
