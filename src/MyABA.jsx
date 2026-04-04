@@ -4483,7 +4483,7 @@ function MockInterviewVARA({job, userId, onClose}){
 // ═══════════════════════════════════════════════════════════════════════════
 // AWA JOBS VIEW - Apply With ABA job listings
 // ═══════════════════════════════════════════════════════════════════════════
-function JobsView({userId}){
+function JobsView({userId, setEditorDoc}){
   // Map email to ham_id for default filter
   const defaultHam=resolveHamId(userId);
   const[sortBy,setSortBy]=useState('newest');
@@ -5222,7 +5222,7 @@ function JobsView({userId}){
     
     {/* ⬡B:AUDRA:FIX6:interview_prep_modal:20260402⬡ Fixed overlay modal for interview prep — persists across job switches */}
     {prepData&&!mockMode&&(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)return}}>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)setPrepData(null)}}>
       <div style={{width:"100%",maxWidth:440,maxHeight:"80vh",overflowY:"auto",background:"rgba(20,20,30,.98)",borderRadius:16,border:"1px solid rgba(245,158,11,.2)",padding:20,boxShadow:"0 20px 60px rgba(0,0,0,.5)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
           <div>
@@ -6776,7 +6776,7 @@ function MyABAInner(){
       {/* ⬡B:CIP:APP_CARD:fullscreen_glass:20260324⬡ Apps render fullscreen in glass over wallpaper */}
       {mainTab!=="home"&&mainTab!=="apps"&&mainTab!=="chat"&&(
         <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"rgba(8,8,13,.82)",backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"20px 20px 0 0",marginTop:2,paddingBottom:"calc(52px + env(safe-area-inset-bottom, 0px))",animation:"slideUp .25s ease-out"}}>
-      {mainTab==="jobs"&&<JobsView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="jobs"&&<JobsView userId={user?.email||user?.uid||"unknown"} setEditorDoc={setEditorDoc}/>}
       
       {/* Pipeline Mode - Kanban ⬡B:AWA.v3:Phase6:pipeline_tab:20260315⬡ */}
       {mainTab==="pipeline"&&<PipelineView userId={user?.email||user?.uid||"unknown"}/>}
