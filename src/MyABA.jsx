@@ -331,209 +331,194 @@ function MobileDocEditor({ content: initialContent, docId, docType, onClose, onS
 }
 
 function GMGUniversityView() {
-  // ⬡B:gmg_u:CIP:standalone_replica:20260329⬡
-  // Replica of standalone GMG University for mobile
+  // ⬡B:audra.gmg_university:FIX:H2_v9_chat_only_cip:20260404⬡
   const userEmail = window.__ABA_USER_EMAIL || "";
   const userName = window.__ABA_USER_NAME || "there";
   const gmgUid = window.__ABA_USER_UID || "";
   const firstName = (userName || "there").split(" ")[0];
 
   const [profile, setProfile] = useState(null);
-  const [view, setView] = useState("home");
-  const [vol, setVol] = useState("v1");
-  const [day, setDay] = useState(null);
-  const [voice, setVoice] = useState(true);
   const [msgs, setMsgs] = useState([]);
   const [input, setInput] = useState("");
-  const [typing, setTyping] = useState(false);
+  const [streaming, setStreaming] = useState(false);
+  const [voice, setVoice] = useState(true);
+  const [currentLesson, setCurrentLesson] = useState(null);
+  const [initDone, setInitDone] = useState(false);
+  const [deckContent, setDeckContent] = useState(null);
+  const [listening, setListening] = useState(false);
   const sentBufRef = useRef("");
-  const [isTyping, setIsTyping] = useState(false);
   const audioRef = useRef();
   const endRef = useRef();
+  const recognitionRef = useRef(null);
+  const audioQueue = useRef([]);
+  const isPlaying = useRef(false);
 
   const VOL = { v1:{t:"Foundations",f:"Fundraising Foundations",d:30}, v2:{t:"GMG Way",f:"The GMG Way",d:30}, v3:{t:"CPP",f:"Consultant Pipeline Program",d:15} };
   const TITLES = { v1:["The Four Sources of Money","Why People Actually Give","The Donor Lifecycle","The Donor Pyramid","Quiz 1-4","Annual Giving Programs","Foundation Grants Reality","Corporate Partnerships","Earned Revenue Strategies","Quiz 6-9","Board Fundraising Responsibility","Grant Research Methods","Donor Retention Fundamentals","Fundraising Systems and Tools","Quiz 11-14","Grant Writing Basics","Major Donor Identification","Planned Giving Basics","Corporate Sponsorship Strategy","Quiz 16-19","Digital Fundraising","Storytelling for Fundraising","Capital Campaigns","Monthly Giving Programs","Quiz 21-24","Board Development","Prospect Research Deep Dive","Fundraising Metrics","Strategic Fundraising Planning","Volume 1 Capstone"], v2:["What Makes GMG Different","Both Sides of the Table","Brandon's Writing Standards","The 360 Assessment","Quiz 1-4","Data Science Development Planning","Prospect Precision System","Grant Catalyst Method","Implementation Engine","Quiz 6-9","Tic-Tac-Toe Framework Intro","Tic-Tac-Toe Implementation","Recipe Pitch Framework","Board Training GMG Style","Quiz 11-14","Foundation Pipeline Management","Major Donor Strategy","Corporate Small-Dollar Approach","Merchandise Programs","Quiz 16-19","Monthly Giving as Default","Membership Programs","Tax-Advantaged Giving","Event Strategy GMG Way","Quiz 21-24","CRM Optimization","AI in Fundraising","Building Your Tech Stack","Final Assessment Prep","Volume 2 Certification"], v3:["What Is CPP","Legal Structure","Money Flow","Capacity Planning","Quiz 1-4","Building Your Resume","Certifications","Online Presence","Crafting Your Pitch","Quiz 6-9","Client Interviews","Documentation Mastery","Folder Structure","Client Communication","CPP Final Assessment"] };
-  const BG = { pink:"https://i.imgur.com/3RkebB2.jpeg", embers:"https://i.imgur.com/9HZYnlX.png", nebula:"https://i.imgur.com/nLBRQ82.jpeg", city:"https://i.imgur.com/h8zNCw1.jpeg" };
-  const INTERACTIVES = {"v1-d1":{"type":"matching","title":"Match Source to Percentage","pairs":[{"l":"Individual Donors","r":"70%"},{"l":"Foundations","r":"18%"},{"l":"Corporations","r":"5%"},{"l":"Bequests","r":"7%"}]},"v1-d2":{"type":"sorting","title":"Rank Giving Motivations","items":["Personal Connection","Relationship with Asker","Belief in Impact","Tax Benefits"]},"v1-d3":{"type":"sorting","title":"Put Lifecycle Stages in Order","items":["Identification","Cultivation","Solicitation","Stewardship"]},"v1-d4":{"type":"slider","title":"Top donors provide what %?","answer":80,"tolerance":10},"v1-d6":{"type":"matching","title":"Match Channel to Best Use","pairs":[{"l":"Direct Mail","r":"Older donors"},{"l":"Email","r":"Quick updates"},{"l":"Phone","r":"Personal touch"},{"l":"Social Media","r":"Awareness"}]},"v1-d7":{"type":"slider","title":"Foundation grant success rate?","answer":20,"tolerance":10},"v1-d9":{"type":"sorting","title":"Rank Revenue Types by Restriction","items":["Government Grant","Foundation Grant","Corporate Sponsorship","Earned Revenue"]},"v1-d13":{"type":"slider","title":"Industry avg donor retention?","answer":45,"tolerance":10},"v1-d16":{"type":"sorting","title":"Put Grant Sections in Order","items":["Organizational Overview","Statement of Need","Project Description","Evaluation Plan","Budget"]},"v1-d23":{"type":"slider","title":"Quiet phase percentage?","answer":60,"tolerance":15},"v1-d24":{"type":"slider","title":"$25/month per year?","answer":300,"tolerance":0},"v1-d29":{"type":"sorting","title":"Put Planning Steps in Order","items":["Assess Current State","Set Goals","Develop Strategies","Create Calendar","Allocate Resources"]}};
-  const quizData = INTERACTIVES[vol+"-d"+day];
-  // ABA_LOGO replaced with energy blob CSS — see below
-  const GMG_LOGO = "https://i.imgur.com/qslzgTU.png";
-  const glass = { background:"rgba(255,255,255,0.08)", backdropFilter:"blur(12px)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:16, padding:16 };
+  const totalLessons = Object.values(VOL).reduce((s,v)=>s+v.d,0);
 
   useEffect(() => { if (gmgUid) loadProfile(); }, [gmgUid]);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior:"smooth" }); }, [msgs]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior:"smooth" }); }, [msgs, streaming]);
+
+  // Audio unlock for autoplay
+  useEffect(() => {
+    const unlock = () => { if (audioRef.current) { audioRef.current.play().then(()=>{audioRef.current.pause();audioRef.current.currentTime=0;}).catch(()=>{}); } };
+    document.addEventListener('click', unlock, { once: true });
+    document.addEventListener('touchstart', unlock, { once: true });
+    return () => { document.removeEventListener('click', unlock); document.removeEventListener('touchstart', unlock); };
+  }, []);
+
+  // Speech recognition
+  useEffect(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SR) {
+      const rec = new SR(); rec.continuous = false; rec.interimResults = true; rec.lang = 'en-US';
+      rec.onresult = e => { const t = Array.from(e.results).map(r=>r[0].transcript).join(''); setInput(t); if (e.results[0].isFinal) setListening(false); };
+      rec.onend = () => setListening(false); rec.onerror = () => setListening(false);
+      recognitionRef.current = rec;
+    }
+  }, []);
+
+  // Auto-init
+  useEffect(() => {
+    if (profile && !initDone && !streaming) {
+      setInitDone(true);
+      const next = getNext();
+      const hour = new Date().getHours();
+      const greeting = hour<12?'morning':hour<17?'afternoon':'evening';
+      let msg = "Good "+greeting+", this is "+firstName+". I just opened GMG University.";
+      if (next) {
+        msg += " My next lesson is Day "+next.day+" of "+VOL[next.vol].f+': "'+next.title+'". I have completed '+(profile.completedDays||[]).length+' of '+totalLessons+' lessons. Check my cohort_type and proceed accordingly.';
+        setCurrentLesson(next);
+      } else { msg += " I have completed all "+totalLessons+" lessons!"; }
+      streamFromAIR(msg, true);
+    }
+  }, [profile, initDone]);
 
   const loadProfile = async () => {
     try {
       const snap = await getDoc(doc(db, "gmg_university", gmgUid));
       if (snap.exists()) setProfile(snap.data());
-      else { const np = { email:userEmail, name:userName, completedDays:[], xp:0, streak:0 }; await setDoc(doc(db, "gmg_university", gmgUid), np); setProfile(np); }
-    } catch { setProfile({ completedDays:[], xp:0, streak:0 }); }
+      else { const np = { email:userEmail, name:userName, completedDays:[], xp:0 }; await setDoc(doc(db, "gmg_university", gmgUid), np); setProfile(np); }
+    } catch { setProfile({ completedDays:[], xp:0 }); }
   };
 
   const getNext = () => {
     const done = profile?.completedDays || [];
     for (const [v, info] of Object.entries(VOL)) {
-      for (let d = 1; d <= info.d; d++) { if (!done.includes(v+"-d"+d)) return { vol:v, day:d, title:(TITLES[v]||[])[d-1]||"Day "+d }; }
+      for (let d=1; d<=info.d; d++) { if (!done.includes(v+"-d"+d)) return { vol:v, day:d, title:(TITLES[v]||[])[d-1]||"Day "+d }; }
     }
     return null;
   };
 
-  // ⬡B:fix:cip_tts_sentence:20260401⬡ Sentence-level TTS like CIB
   const speak = async (text) => {
     if (!voice || !text.trim()) return;
     try {
-      const r = await fetch(ABABASE+"/api/tts/speak", { method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({text:text.substring(0,500), voice_id:"AIFDUhRnM6s61433WMNu"}) });
-      if (r.ok && audioRef.current) { audioRef.current.src = URL.createObjectURL(await r.blob()); audioRef.current.play().catch(()=>{}); }
+      const r = await fetch(ABABASE+"/api/tts/speak", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text:text.substring(0,500)}) });
+      if (r.ok) { const url = URL.createObjectURL(await r.blob()); audioQueue.current.push(url); playNext(); }
     } catch {}
   };
 
-    const startLesson = async (v, d) => {
-    setVol(v); setDay(d); setView("lesson"); setMsgs([]);
-    const title = (TITLES[v]||[])[d-1]||"Day "+d;
-    // ⬡B:fix:cip_gmgu_auto_teach:20260401⬡ Stream from GURU instead of static welcome
-    setMsgs([{ aba:true, text:"", streaming:true }]);
+  function playNext() {
+    if (isPlaying.current || audioQueue.current.length===0) return;
+    isPlaying.current = true;
+    const url = audioQueue.current.shift();
+    if (audioRef.current) {
+      audioRef.current.src = url;
+      audioRef.current.onended = () => { isPlaying.current=false; URL.revokeObjectURL(url); playNext(); };
+      audioRef.current.onerror = () => { isPlaying.current=false; URL.revokeObjectURL(url); playNext(); };
+      audioRef.current.play().catch(()=>{ isPlaying.current=false; playNext(); });
+    }
+  }
+
+  const streamFromAIR = async (userMsg, isAutoInit=false) => {
+    if (streaming) return;
+    setStreaming(true);
+    if (!isAutoInit) setMsgs(prev=>[...prev, {role:"user",text:userMsg}]);
+    setMsgs(prev=>[...prev, {role:"aba",text:"",streaming:true}]);
+    let acc=""; sentBufRef.current="";
     try {
+      const history = msgs.slice(-20).map(m=>({role:m.role==="aba"?"assistant":"user",content:m.text||""})).filter(m=>m.content);
       const r = await fetch(ABABASE+"/api/air/stream", { method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ message:"Start teaching "+VOL[v].f+" Day "+d+": "+title+". Welcome "+firstName+" and teach the full lesson.", user_id:userEmail, userId:userEmail, channel:"gmg-university", conversationHistory:[] })
+        body:JSON.stringify({ message:userMsg, user_id:userEmail, userId:userEmail, channel:"gmg-university", conversationHistory:history })
       });
-      const reader = r.body.getReader(); const decoder = new TextDecoder(); let acc = "";
+      const reader = r.body.getReader(); const decoder = new TextDecoder();
       while (true) {
         const {done,value} = await reader.read(); if (done) break;
         for (const line of decoder.decode(value,{stream:true}).split("\n").filter(l=>l.startsWith("data: "))) {
           try { const d=JSON.parse(line.slice(6));
-            if (d.type==="chunk") { acc+=d.text; setMsgs([{aba:true,text:acc,streaming:true}]); }
-            else if (d.type==="done") { 
-                const finalText = d.fullResponse||acc;
-                setMsgs([{aba:true,text:finalText,streaming:false}]);
-                // Remaining sentence buffer spoken via sentence-level TTS above
-              }
+            if (d.type==="chunk") { acc+=d.text; sentBufRef.current+=d.text; setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:acc};return c;});
+              if (sentBufRef.current.match(/[.!?]\s*$/)) { speak(sentBufRef.current.trim()); sentBufRef.current=""; }
+            } else if (d.type==="done") {
+              const final=d.fullResponse||acc;
+              let displayText=final;
+              const deckMatch=final.match(/\[DECK\](.*?)\[\/DECK\]/s);
+              if (deckMatch) { try{setDeckContent(JSON.parse(deckMatch[1].trim()));}catch{} displayText=final.replace(/\[DECK\].*?\[\/DECK\]/s,'').trim(); }
+              setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:displayText,streaming:false};return c;});
+              if (sentBufRef.current.trim()) speak(sentBufRef.current.trim());
+              if (final.includes('LESSON_COMPLETE')||final.toLowerCase().includes('lesson is complete')) markComplete();
+            }
           } catch {}
         }
       }
-    } catch { setMsgs([{aba:true,text:firstName+", welcome to "+VOL[v].f+", Day "+d+": "+title+". Ask me anything to get started!"}]); }
+    } catch { setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:"Connection issue. Try again.",streaming:false};return c;}); }
+    finally { setStreaming(false); }
   };
 
-  const send = async () => {
-    if (!input.trim()||typing) return;
-    const msg = input.trim(); setInput(""); setTyping(true);
-    setMsgs(p => [...p, {aba:false,text:msg}, {aba:true,text:"",streaming:true}]);
-    try {
-      const r = await fetch(ABABASE+"/api/air/stream", { method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ message:msg, user_id:userEmail, userId:userEmail, channel:"gmg-university",
-          conversationHistory:msgs.slice(-20).map(m=>({role:m.aba?"assistant":"user",content:m.text||""})).filter(m=>m.content) }) });
-      const reader = r.body.getReader(); const decoder = new TextDecoder(); let acc = "";
-      while (true) {
-        const {done,value} = await reader.read(); if (done) break;
-        for (const line of decoder.decode(value,{stream:true}).split("\n").filter(l=>l.startsWith("data: "))) {
-          try { const d=JSON.parse(line.slice(6));
-            if (d.type==="chunk") { 
-                acc+=d.text; sentBuf+=d.text;
-                setMsgs(p=>{const c=[...p];const l=c[c.length-1];if(l?.aba)c[c.length-1]={...l,text:acc};return c;});
-                if (voice && sentBuf.match(/[.!?]\s*$/)) { speak(sentBufRef.current.trim()); sentBuf=""; }
-              }
-            else if (d.type==="done") { setMsgs(p=>{const c=[...p];const l=c[c.length-1];if(l?.aba)c[c.length-1]={...l,text:d.fullResponse||acc,streaming:false};return c;}); }
-          } catch {}
-        }
-      }
-    } catch { setMsgs(p=>[...p.slice(0,-1),{aba:true,text:"Connection issue. Try again?"}]); }
-    finally { setTyping(false); setIsTyping(false); }
-  };
+  const handleSend = () => { const msg=input.trim(); if(!msg||streaming)return; setInput(""); streamFromAIR(msg); };
+  const toggleMic = () => { if(!recognitionRef.current)return; if(listening){recognitionRef.current.stop();setListening(false);if(input.trim())setTimeout(()=>handleSend(),200);}else{setInput("");setListening(true);recognitionRef.current.start();} };
 
   const markComplete = async () => {
-    const k = vol+"-d"+day;
-    if (profile?.completedDays?.includes(k)) { setView("home"); return; }
+    if (!currentLesson||!gmgUid) return;
+    const k=currentLesson.vol+"-d"+currentLesson.day;
+    if (profile?.completedDays?.includes(k)) return;
     try { await updateDoc(doc(db,"gmg_university",gmgUid), { completedDays:arrayUnion(k), xp:(profile.xp||0)+100 }); } catch {}
-    setProfile(p => ({...p, completedDays:[...(p.completedDays||[]),k], xp:(p.xp||0)+100}));
-    setView("home");
+    const newDone=[...(profile.completedDays||[]),k];
+    setProfile(p=>({...p,completedDays:newDone,xp:(p.xp||0)+100}));
+    setCurrentLesson(getNext());
   };
 
-  if (!profile) return <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}><img src={ABA_LOGO} alt="ABA" style={{width:60,height:60,opacity:.5}}/></div>;
+  if (!profile) return (<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:40,height:40,position:"relative"}}><div style={{position:"absolute",inset:0,borderRadius:"42% 58% 55% 45%/48% 42% 58% 52%",background:"linear-gradient(135deg,rgba(139,92,246,.85),rgba(236,72,153,.6),rgba(99,102,241,.7))",animation:"morph 4s ease-in-out infinite"}}/></div></div>);
 
-  // LESSON VIEW
-  if (view==="lesson" && day) {
-    const dn = profile?.completedDays?.includes(vol+"-d"+day);
-    const title = (TITLES[vol]||[])[day-1]||"Day "+day;
-    return (<div style={{flex:1,display:"flex",flexDirection:"column",position:"relative",background:`url(${BG.embers}) center/cover`,overflow:"hidden"}}>
-      <img src={BG.embers} alt="" style={{position:"absolute",width:"120%",height:"120%",top:"-10%",left:"-10%",objectFit:"cover",animation:"slowZoom 30s ease-in-out infinite",opacity:0.7}}/>
-      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)"}}/>
-      <div style={{position:"relative",zIndex:1,display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderBottom:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",backdropFilter:"blur(12px)"}}>
-        <button onClick={()=>setView("home")} style={{color:"rgba(255,255,255,.5)",background:"none",border:"none",cursor:"pointer",fontSize:16}}>←</button>
-        <button onClick={()=>setVoice(!voice)} style={{color:voice?"#a78bfa":"rgba(255,255,255,.3)",background:"none",border:"none",cursor:"pointer",fontSize:14}}>{voice?"🔊":"🔇"}</button>
-        <div style={{width:28,height:28,position:"relative",flexShrink:0}}><div style={{position:"absolute",inset:0,borderRadius:"42% 58% 55% 45%/48% 42% 58% 52%",background:"linear-gradient(135deg,rgba(139,92,246,.85),rgba(236,72,153,.6),rgba(99,102,241,.7))",filter:"blur(0.5px)",boxShadow:"0 0 9px rgba(139,92,246,.35)",animation:"morph 4s ease-in-out infinite"}}/><div style={{position:"absolute",inset:0,borderRadius:"55% 45% 40% 60%/60% 35% 65% 40%",background:"linear-gradient(225deg,rgba(167,139,250,.5),rgba(45,212,191,.3),rgba(132,204,22,.2))",filter:"blur(1px)",animation:"morph 4s ease-in-out -2s infinite",mixBlendMode:"screen"}}/></div>
-        <div style={{flex:1}}><p style={{color:"#a78bfa",fontSize:9,letterSpacing:2,margin:0}}>DAY {day} OF {VOL[vol].d}</p><p style={{color:"white",fontSize:13,margin:0}}>{title}</p></div>
+  const totalDone = (profile.completedDays||[]).length;
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",position:"relative",background:"rgba(10,10,15,.95)"}}>
+    <style>{"@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}} @keyframes morph{0%,100%{border-radius:42% 58% 55% 45%/48% 42% 58% 52%}25%{border-radius:55% 45% 40% 60%/60% 35% 65% 40%}50%{border-radius:38% 62% 58% 42%/45% 55% 45% 55%}75%{border-radius:60% 40% 45% 55%/38% 62% 42% 58%}} @keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}} @keyframes micPulse{0%,100%{box-shadow:0 0 0 0 rgba(124,58,237,.4)}50%{box-shadow:0 0 0 10px rgba(124,58,237,0)}} @keyframes dotBounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}"}</style>
+    <audio ref={audioRef}/>
+    {/* HEADER */}
+    <div style={{padding:"8px 12px",display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid rgba(255,255,255,.06)",background:"rgba(10,10,15,.8)",flexShrink:0}}>
+      <div style={{width:28,height:28,position:"relative",flexShrink:0}}><div style={{position:"absolute",inset:0,borderRadius:"42% 58% 55% 45%/48% 42% 58% 52%",background:"linear-gradient(135deg,rgba(139,92,246,.85),rgba(236,72,153,.6),rgba(99,102,241,.7))",animation:"morph 4s ease-in-out infinite"}}/></div>
+      <div style={{flex:1,minWidth:0}}>
+        <p style={{color:"white",fontSize:14,fontWeight:600,margin:0}}>ABA</p>
+        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentLesson?"Day "+currentLesson.day+" · "+currentLesson.title:totalDone+"/"+totalLessons+" lessons"}</p>
       </div>
-      <div style={{flex:1,overflowY:"auto",padding:12,paddingBottom:140,position:"relative",zIndex:1}}>
-        {msgs.map((m,i) => <div key={i} style={{marginBottom:16,display:"flex",justifyContent:m.aba?"flex-start":"flex-end",gap:8}}>
-          {m.aba && <div style={{width:28,height:28,marginTop:4,flexShrink:0,position:"relative"}}><div style={{position:"absolute",inset:0,borderRadius:"42% 58% 55% 45%/48% 42% 58% 52%",background:"linear-gradient(135deg,rgba(139,92,246,.85),rgba(236,72,153,.6),rgba(99,102,241,.7))",filter:"blur(0.5px)",animation:"morph 4s ease-in-out infinite"}}/></div>}
-          <div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:14,background:m.aba?"rgba(255,255,255,0.1)":"rgba(139,92,246,0.3)",border:"1px solid "+(m.aba?"rgba(255,255,255,0.15)":"rgba(139,92,246,0.4)"),backdropFilter:"blur(8px)"}}>
-            <p style={{color:"rgba(255,255,255,0.9)",fontSize:14,lineHeight:1.6,whiteSpace:"pre-wrap",margin:0}}>{(m.text||"").split(/(\*\*.*?\*\*)/g).map((part,pi)=>part.startsWith("**")&&part.endsWith("**")?<strong key={pi} style={{color:"#a78bfa",fontWeight:600}}>{part.slice(2,-2)}</strong>:part)}{m.streaming&&<span style={{display:"inline-block",width:6,height:14,background:"#a78bfa",marginLeft:3,animation:"pulse 1s infinite"}}/>}</p>
-          </div>
-        </div>)}
-        <div ref={endRef}/>
-      </div>
-      <div style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(16px)",borderTop:"1px solid rgba(255,255,255,0.1)",padding:12,zIndex:20}}>
-        <div style={{display:"flex",gap:8}}>
-          <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Ask GURU..." style={{flex:1,background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:12,padding:"12px 14px",color:"white",fontSize:13,outline:"none"}}/>
-          <button onClick={send} disabled={!input.trim()||typing} style={{width:44,background:"#7c3aed",border:"none",borderRadius:12,color:"white",cursor:"pointer",fontSize:14}}>→</button>
-        </div>
-        {!isTyping && quizData && <div style={{padding:12,borderRadius:12,background:"rgba(139,92,246,0.1)",border:"1px solid rgba(139,92,246,0.2)",marginBottom:8}}>
-          <p style={{color:"#a78bfa",fontSize:11,fontWeight:600,marginBottom:8}}>{quizData.title}</p>
-          {quizData.type==="slider" && <><input type="range" min={0} max={(quizData.answer||100)*3} style={{width:"100%",accentColor:"#7c3aed"}}/><p style={{color:"rgba(255,255,255,.6)",fontSize:10,textAlign:"center"}}>Slide to answer</p></>}
-          {quizData.type==="sorting" && quizData.items?.map((item,i)=><p key={i} style={{color:"rgba(255,255,255,.7)",fontSize:12,padding:"4px 8px",marginBottom:3,borderRadius:6,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)"}}>{i+1}. {item}</p>)}
-          {quizData.type==="matching" && quizData.pairs?.map((p,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{color:"rgba(255,255,255,.7)",fontSize:11}}>{p.l}</span><span style={{color:"#a78bfa",fontSize:11}}>{p.r}</span></div>)}
-        </div>}
-    {!isTyping && <button onClick={markComplete} style={{width:"100%",marginTop:10,padding:14,borderRadius:12,border:"none",background:dn?"rgba(255,255,255,0.1)":"linear-gradient(to right,#10b981,#14b8a6)",color:dn?"rgba(255,255,255,0.4)":"white",fontSize:14,fontWeight:500,cursor:"pointer"}}>{dn?"Completed":"Mark Complete +100 XP"}</button>}
-      </div>
-      <audio ref={audioRef}/>
-      <style>{"@keyframes pulse{0%,100%{opacity:1}50%{opacity:0}} @keyframes morph{0%,100%{border-radius:42% 58% 55% 45%/48% 42% 58% 52%}25%{border-radius:55% 45% 40% 60%/60% 35% 65% 40%}50%{border-radius:38% 62% 58% 42%/45% 55% 45% 55%}75%{border-radius:60% 40% 45% 55%/38% 62% 42% 58%}} @keyframes slowZoom{0%{transform:scale(1) translate(0,0)}50%{transform:scale(1.1) translate(-2%,-1%)}100%{transform:scale(1) translate(0,0)}}"}</style>
-    </div>);
-  }
-
-  // ALL LESSONS
-  if (view==="learn") {
-    const lessons = [...Array(VOL[vol].d)].map((_,i)=>({d:i+1,q:(i+1)%5===0}));
-    const done = profile?.completedDays||[];
-    return (<div style={{flex:1,overflowY:"auto",padding:12,position:"relative",background:`url(${BG.city}) center/cover`}}>
-      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.7)"}}/>
-      <div style={{position:"relative",zIndex:1}}>
-        <button onClick={()=>setView("home")} style={{color:"rgba(255,255,255,.5)",background:"none",border:"none",cursor:"pointer",marginBottom:12,fontSize:16}}>←</button>
-        <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>{Object.entries(VOL).map(([k,v])=><button key={k} onClick={()=>setVol(k)} style={{padding:"8px 12px",borderRadius:10,border:vol===k?"none":"1px solid rgba(255,255,255,.15)",background:vol===k?"#7c3aed":"rgba(255,255,255,.08)",color:vol===k?"white":"rgba(255,255,255,.5)",fontSize:11,cursor:"pointer"}}>{v.t}</button>)}</div>
-        <p style={{color:"rgba(255,255,255,.4)",fontSize:11,marginBottom:10}}>{VOL[vol].f} — {done.filter(d=>d.startsWith(vol)).length}/{VOL[vol].d}</p>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8}}>
-          {lessons.map(l=>{const k=vol+"-d"+l.d,d=done.includes(k);return <button key={l.d} onClick={()=>startLesson(vol,l.d)} style={{aspectRatio:"1",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:500,border:"1px solid "+(d?"rgba(16,185,129,.4)":l.q?"rgba(139,92,246,.4)":"rgba(255,255,255,.15)"),background:d?"rgba(16,185,129,.2)":l.q?"rgba(139,92,246,.2)":"rgba(255,255,255,.08)",color:d?"#10b981":l.q?"#a78bfa":"rgba(255,255,255,.5)",cursor:"pointer"}}>{d?"✓":l.d}</button>;})}
-        </div>
-      </div>
-    </div>);
-  }
-
-  // HOME
-  const cnt = profile?.completedDays?.length||0, tot=Object.values(VOL).reduce((s,v)=>s+v.d,0), pct=Math.round((cnt/tot)*100);
-  const next = getNext();
-  return (<div style={{flex:1,overflowY:"auto",padding:12,paddingBottom:24,position:"relative",background:`url(${BG.pink}) center/cover`}}>
-    <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)"}}/>
-    <div style={{position:"relative",zIndex:1}}>
-      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
-        <img src={GMG_LOGO} alt="GMG" style={{width:36,height:36,opacity:0.7}}/>
-        <div style={{width:48,height:48,position:"relative"}}><div style={{position:"absolute",inset:0,borderRadius:"42% 58% 55% 45%/48% 42% 58% 52%",background:"linear-gradient(135deg,rgba(139,92,246,.85),rgba(236,72,153,.6),rgba(99,102,241,.7))",filter:"blur(0.5px)",boxShadow:"0 0 16px rgba(139,92,246,.35)",animation:"morph 4s ease-in-out infinite"}}/><div style={{position:"absolute",inset:0,borderRadius:"55% 45% 40% 60%/60% 35% 65% 40%",background:"linear-gradient(225deg,rgba(167,139,250,.5),rgba(45,212,191,.3),rgba(132,204,22,.2))",filter:"blur(1px)",animation:"morph 4s ease-in-out -2s infinite",mixBlendMode:"screen"}}/></div>
-        <div><h1 style={{fontSize:18,color:"white",margin:0}}>Hey, <span style={{color:"#a78bfa"}}>{firstName}</span></h1><p style={{color:"rgba(255,255,255,.4)",fontSize:13,margin:0}}>{cnt===0?"Ready to start?":pct+"% complete"}</p></div>
-      </div>
-      <div style={{display:"flex",gap:10,marginBottom:20}}>
-        <div style={{...glass,flex:1,textAlign:"center"}}><p style={{fontSize:22,fontWeight:300,color:"white",margin:0}}>{profile?.xp||0}</p><p style={{color:"#a78bfa",fontSize:11,marginTop:4,marginBottom:0}}>XP</p></div>
-        <div style={{...glass,flex:1,textAlign:"center"}}><p style={{fontSize:22,fontWeight:300,color:"white",margin:0}}>{profile?.streak||0}</p><p style={{color:"#fbbf24",fontSize:11,marginTop:4,marginBottom:0}}>Streak</p></div>
-      </div>
-      <div style={{...glass,marginBottom:20}}>
-        <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:6}}><span style={{color:"rgba(255,255,255,.5)"}}>Progress</span><span style={{color:"#a78bfa"}}>{cnt}/{tot}</span></div>
-        <div style={{height:6,background:"rgba(255,255,255,.1)",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",background:"linear-gradient(to right,#7c3aed,#c026d3)",borderRadius:3,width:pct+"%",transition:"width .5s"}}/></div>
-      </div>
-      {next && <button onClick={()=>startLesson(next.vol,next.day)} style={{width:"100%",background:"linear-gradient(to right,#7c3aed,#c026d3)",borderRadius:14,padding:18,marginBottom:14,textAlign:"left",border:"none",cursor:"pointer",boxShadow:"0 8px 30px rgba(124,58,237,.3)"}}>
-        <p style={{color:"rgba(255,255,255,.6)",fontSize:10,letterSpacing:1,margin:0}}>UP NEXT</p>
-        <p style={{color:"white",fontSize:16,fontWeight:500,margin:"4px 0 0"}}>Day {next.day}: {next.title}</p>
-        <p style={{color:"rgba(255,255,255,.8)",fontSize:13,marginTop:10,marginBottom:0}}>▶ Start Lesson</p>
-      </button>}
-      <button onClick={()=>setView("learn")} style={{...glass,width:"100%",textAlign:"left",cursor:"pointer",marginBottom:10,border:"1px solid rgba(255,255,255,.15)"}}><p style={{color:"white",fontSize:14,margin:0}}>📚 All Lessons</p></button>
+      <button onClick={()=>setVoice(!voice)} style={{background:voice?"rgba(124,58,237,.12)":"transparent",border:"1px solid "+(voice?"rgba(124,58,237,.25)":"rgba(255,255,255,.06)"),borderRadius:6,padding:"4px 8px",cursor:"pointer",color:voice?"#a78bfa":"rgba(255,255,255,.2)",fontSize:11}}>{voice?"🔊":"🔇"}</button>
     </div>
+    {/* MESSAGES */}
+    <div style={{flex:1,overflowY:"auto",padding:"8px 0",paddingBottom:80}}>
+      {msgs.length===0&&!streaming&&<div style={{textAlign:"center",padding:"40px 24px",color:"rgba(255,255,255,.1)"}}><p style={{fontSize:12}}>Starting session...</p></div>}
+      {msgs.map((m,i)=>{const isAba=m.role==="aba";return(<div key={i} style={{display:"flex",alignItems:"flex-end",gap:6,justifyContent:isAba?"flex-start":"flex-end",padding:"2px 12px",animation:i===msgs.length-1?"msgIn .2s ease-out":"none"}}>
+        {isAba&&<div style={{width:24,height:24,position:"relative",flexShrink:0}}><div style={{position:"absolute",inset:0,borderRadius:"42% 58% 55% 45%/48% 42% 58% 52%",background:"linear-gradient(135deg,rgba(139,92,246,.85),rgba(236,72,153,.6),rgba(99,102,241,.7))",animation:"morph 4s ease-in-out infinite"}}/></div>}
+        <div style={{maxWidth:"80%",padding:"9px 13px",borderRadius:isAba?"16px 16px 16px 4px":"16px 16px 4px 16px",background:isAba?"rgba(255,255,255,.06)":"rgba(124,58,237,.22)",border:"1px solid "+(isAba?"rgba(255,255,255,.05)":"rgba(124,58,237,.25)")}}>
+          <p style={{color:"rgba(255,255,255,.88)",fontSize:13.5,lineHeight:1.6,whiteSpace:"pre-wrap",margin:0}}>
+            {(m.text||"").split(/(\*\*.*?\*\*)/g).map((part,pi)=>part.startsWith("**")&&part.endsWith("**")?<strong key={pi} style={{color:"#a78bfa",fontWeight:600}}>{part.slice(2,-2)}</strong>:part)}
+            {m.streaming&&<span style={{display:"inline-block",width:2,height:14,background:"#a78bfa",marginLeft:2,animation:"pulse .8s infinite",verticalAlign:"text-bottom"}}/>}
+          </p>
+        </div>
+      </div>);})}
+      {streaming&&msgs[msgs.length-1]?.text===""&&<div style={{display:"flex",alignItems:"flex-end",gap:6,padding:"2px 12px",animation:"msgIn .2s ease-out"}}><div style={{width:24,height:24,position:"relative"}}><div style={{position:"absolute",inset:0,borderRadius:"42% 58% 55% 45%/48% 42% 58% 52%",background:"linear-gradient(135deg,rgba(139,92,246,.85),rgba(236,72,153,.6),rgba(99,102,241,.7))",animation:"morph 4s ease-in-out infinite"}}/></div><div style={{background:"rgba(255,255,255,.06)",borderRadius:"16px 16px 16px 4px",padding:"10px 14px",display:"flex",gap:4}}>{[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#a78bfa",animation:"dotBounce 1.2s ease-in-out "+i*.15+"s infinite"}}/>)}</div></div>}
+      <div ref={endRef}/>
+    </div>
+    {/* INPUT */}
+    <div style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(10,10,15,.85)",backdropFilter:"blur(16px)",borderTop:"1px solid rgba(255,255,255,.06)",padding:10,zIndex:20}}>
+      <div style={{display:"flex",gap:6,alignItems:"flex-end"}}>
+        <div style={{flex:1,display:"flex",alignItems:"flex-end",background:"rgba(255,255,255,.05)",borderRadius:18,border:"1px solid "+(listening?"rgba(124,58,237,.35)":"rgba(255,255,255,.06)"),padding:"2px 4px 2px 12px",minHeight:36}}>
+          <textarea value={input} onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,90)+"px";}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleSend();}}} placeholder={listening?"Listening...":"Message ABA..."} rows={1} disabled={streaming} style={{flex:1,background:"none",border:"none",outline:"none",color:listening?"#a78bfa":"rgba(255,255,255,.85)",fontSize:14,padding:"7px 0",resize:"none",lineHeight:1.35,maxHeight:90}}/>
+          {input.trim()&&<button onClick={handleSend} disabled={streaming} style={{width:26,height:26,borderRadius:"50%",border:"none",background:"#7c3aed",color:"white",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,margin:3}}><svg viewBox="0 0 24 24" fill="currentColor" width={12} height={12}><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>}
+        </div>
+        {!input.trim()&&<button onClick={toggleMic} disabled={streaming} style={{width:36,height:36,borderRadius:"50%",border:"1px solid "+(listening?"transparent":"rgba(124,58,237,.2)"),background:listening?"#7c3aed":"rgba(124,58,237,.1)",color:listening?"white":"#a78bfa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,animation:listening?"micPulse 1.5s infinite":"none"}}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={16} height={16}><rect x={9} y={2} width={6} height={11} rx={3}/><path d="M5 11a7 7 0 0014 0"/><line x1={12} y1={18} x2={12} y2={22}/></svg></button>}
+      </div>
+    </div>
+    <audio ref={audioRef}/>
   </div>);
 }
 
@@ -4483,7 +4468,7 @@ function MockInterviewVARA({job, userId, onClose}){
 // ═══════════════════════════════════════════════════════════════════════════
 // AWA JOBS VIEW - Apply With ABA job listings
 // ═══════════════════════════════════════════════════════════════════════════
-function JobsView({userId}){
+function JobsView({userId, setEditorDoc}){
   // Map email to ham_id for default filter
   const defaultHam=resolveHamId(userId);
   const[sortBy,setSortBy]=useState('newest');
@@ -5222,7 +5207,7 @@ function JobsView({userId}){
     
     {/* ⬡B:AUDRA:FIX6:interview_prep_modal:20260402⬡ Fixed overlay modal for interview prep — persists across job switches */}
     {prepData&&!mockMode&&(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)return}}>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)setPrepData(null)}}>
       <div style={{width:"100%",maxWidth:440,maxHeight:"80vh",overflowY:"auto",background:"rgba(20,20,30,.98)",borderRadius:16,border:"1px solid rgba(245,158,11,.2)",padding:20,boxShadow:"0 20px 60px rgba(0,0,0,.5)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
           <div>
@@ -6776,7 +6761,7 @@ function MyABAInner(){
       {/* ⬡B:CIP:APP_CARD:fullscreen_glass:20260324⬡ Apps render fullscreen in glass over wallpaper */}
       {mainTab!=="home"&&mainTab!=="apps"&&mainTab!=="chat"&&(
         <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"rgba(8,8,13,.82)",backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",borderRadius:"20px 20px 0 0",marginTop:2,paddingBottom:"calc(52px + env(safe-area-inset-bottom, 0px))",animation:"slideUp .25s ease-out"}}>
-      {mainTab==="jobs"&&<JobsView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="jobs"&&<JobsView userId={user?.email||user?.uid||"unknown"} setEditorDoc={setEditorDoc}/>}
       
       {/* Pipeline Mode - Kanban ⬡B:AWA.v3:Phase6:pipeline_tab:20260315⬡ */}
       {mainTab==="pipeline"&&<PipelineView userId={user?.email||user?.uid||"unknown"}/>}
