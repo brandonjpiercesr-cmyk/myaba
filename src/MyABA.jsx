@@ -46,6 +46,24 @@ import { doc, getDoc, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
 import { useConversation } from "@elevenlabs/react";
 import { onAuthStateChanged } from "firebase/auth";
 
+// ⬡B:AUDRA.C4:FIX:error_boundary:20260403⬡ Crash = fallback UI, not white screen
+import React from "react";
+class ErrorBoundary extends React.Component {
+  constructor(props){super(props);this.state={hasError:false,error:null}}
+  static getDerivedStateFromError(error){return{hasError:true,error}}
+  componentDidCatch(e,info){console.error("[ABA] ErrorBoundary caught:",e,info)}
+  render(){if(this.state.hasError)return(
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#0a0a0f",color:"white",padding:24,textAlign:"center"}}>
+      <div style={{width:60,height:60,borderRadius:"50%",background:"rgba(239,68,68,.15)",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:16}}>
+        <span style={{fontSize:28}}>!</span>
+      </div>
+      <p style={{fontSize:16,fontWeight:600,marginBottom:8}}>Something went wrong</p>
+      <p style={{fontSize:12,color:"rgba(255,255,255,.4)",marginBottom:16,maxWidth:300}}>{this.state.error?.message||"ABA hit an unexpected error"}</p>
+      <button onClick={()=>{this.setState({hasError:false,error:null});window.location.reload()}} style={{padding:"10px 20px",borderRadius:10,border:"none",background:"rgba(139,92,246,.3)",color:"#a78bfa",cursor:"pointer",fontSize:13}}>Reload ABA</button>
+    </div>
+  );return this.props.children}
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SPURT 1: DEVICE DETECTION — Desktop vs Mobile
 // ═══════════════════════════════════════════════════════════════════════════
@@ -523,9 +541,9 @@ function TasksView({ userId }) {
   const [loading, setLoading] = useState(true);
   const [newTask, setNewTask] = useState("");
   const [sending, setSending] = useState(false);
-  const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw";
+  // ⬡B:AUDRA.C2:FIX:tasks_via_backend:20260403⬡ Routed through backend per 90/10 rule
   const load = async () => {
-    try { const r = await fetch("https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory?memory_type=eq.scheduled_task&order=created_at.desc&limit=30", { headers: { apikey: ANON } }); if (r.ok) setTasks(await r.json()); } catch {}
+    try { const r = await fetch(`${ABABASE}/api/tasks?userId=${encodeURIComponent(userId)}`); if (r.ok) { const d = await r.json(); setTasks(d.tasks || []); } } catch {}
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -552,9 +570,9 @@ function NotesView({ userId }) {
   const [loading, setLoading] = useState(true);
   const [newNote, setNewNote] = useState("");
   const [sending, setSending] = useState(false);
-  const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw";
+  // ⬡B:AUDRA.C2:FIX:notes_via_backend:20260403⬡ Routed through backend per 90/10 rule
   const load = async () => {
-    try { const r = await fetch("https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory?memory_type=eq.note&order=created_at.desc&limit=30", { headers: { apikey: ANON } }); if (r.ok) setNotes(await r.json()); } catch {}
+    try { const r = await fetch(`${ABABASE}/api/notes?userId=${encodeURIComponent(userId)}`); if (r.ok) { const d = await r.json(); setNotes(d.notes || []); } } catch {}
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -576,20 +594,64 @@ function NotesView({ userId }) {
   </div>);
 }
 
+// ⬡B:AUDRA.W13:FIX:calendar_view_v2:20260403⬡ Full calendar with create, refresh, time groups
 function CalendarView({ userId }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    (async () => { try { const r = await fetch(ABABASE + "/api/calendar/upcoming?userId=" + encodeURIComponent(userId)); if (r.ok) { const d = await r.json(); setEvents(d.events||d||[]); } } catch {} setLoading(false); })();
-  }, [userId]);
-  return (<div style={{flex:1,overflowY:"auto",padding:16}}>
-    {loading ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading calendar...</p>
-    : events.length === 0 ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>No upcoming events</p>
-    : (Array.isArray(events)?events:[]).map((e,i) => <div key={e.id||i} style={{padding:12,marginBottom:8,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)"}}>
-        <p style={{fontSize:14,fontWeight:600,color:"rgba(255,255,255,.85)"}}>{e.title||e.subject||"Untitled"}</p>
-        {(e.start||e.when)&&<p style={{fontSize:11,color:"rgba(139,92,246,.6)",marginTop:4}}>{new Date(e.start||e.when?.start_time||"").toLocaleString()}</p>}
-        {e.location&&<p style={{fontSize:11,color:"rgba(255,255,255,.3)",marginTop:2}}>{e.location}</p>}
+  const [newEvent, setNewEvent] = useState("");
+  const [creating, setCreating] = useState(false);
+  const load = async () => {
+    setLoading(true);
+    try { const r = await fetch(ABABASE + "/api/calendar/upcoming?userId=" + encodeURIComponent(userId)); if (r.ok) { const d = await r.json(); setEvents(d.events||d||[]); } } catch {}
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, [userId]);
+  const createEvent = async () => {
+    if (!newEvent.trim()) return; setCreating(true);
+    await fetch(ABABASE + "/api/air/process", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Schedule: " + newEvent, user_id: userId, channel: "cip", appScope: "calendar" }) });
+    setNewEvent(""); setCreating(false); setTimeout(load, 2000);
+  };
+  const today = new Date(); today.setHours(0,0,0,0);
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
+  const nextWeek = new Date(today); nextWeek.setDate(nextWeek.getDate()+7);
+  const grouped = { today: [], tomorrow: [], week: [], later: [] };
+  (Array.isArray(events)?events:[]).forEach(e => {
+    const d = new Date(e.start||e.when?.start_time||"");
+    if (d < tomorrow) grouped.today.push(e);
+    else if (d < new Date(tomorrow.getTime()+86400000)) grouped.tomorrow.push(e);
+    else if (d < nextWeek) grouped.week.push(e);
+    else grouped.later.push(e);
+  });
+  const renderGroup = (label, items) => items.length === 0 ? null : (
+    <div style={{marginBottom:14}}>
+      <p style={{fontSize:10,fontWeight:700,color:"rgba(139,92,246,.5)",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>{label}</p>
+      {items.map((e,i) => <div key={e.id||i} style={{padding:"10px 12px",marginBottom:4,borderRadius:10,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",display:"flex",gap:10,alignItems:"flex-start"}}>
+        <div style={{width:36,textAlign:"center",flexShrink:0}}>
+          <p style={{fontSize:18,fontWeight:700,color:"rgba(139,92,246,.8)",margin:0}}>{new Date(e.start||e.when?.start_time||"").getDate()}</p>
+          <p style={{fontSize:9,color:"rgba(255,255,255,.3)",margin:0}}>{new Date(e.start||e.when?.start_time||"").toLocaleDateString("en",{weekday:"short"})}</p>
+        </div>
+        <div style={{flex:1}}>
+          <p style={{fontSize:13,fontWeight:600,color:"rgba(255,255,255,.85)",margin:0}}>{e.title||e.subject||"Untitled"}</p>
+          {(e.start||e.when)&&<p style={{fontSize:11,color:"rgba(139,92,246,.5)",margin:"3px 0 0"}}>{new Date(e.start||e.when?.start_time||"").toLocaleTimeString("en",{hour:"numeric",minute:"2-digit"})}</p>}
+          {e.location&&<p style={{fontSize:10,color:"rgba(255,255,255,.25)",margin:"2px 0 0"}}>{e.location}</p>}
+        </div>
       </div>)}
+    </div>
+  );
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+      <span style={{fontSize:13,fontWeight:600,color:"rgba(255,255,255,.7)"}}>Calendar ({events.length})</span>
+      <button onClick={load} style={{padding:"6px 10px",borderRadius:8,border:"none",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.4)",cursor:"pointer",fontSize:11}}><RefreshCw size={12}/></button>
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
+      {loading ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading...</p>
+      : events.length === 0 ? <div style={{textAlign:"center",padding:40}}><Calendar size={32} style={{color:"rgba(139,92,246,.2)",margin:"0 auto 8px"}}/><p style={{color:"rgba(255,255,255,.3)",fontSize:13}}>No upcoming events</p></div>
+      : <>{renderGroup("Today",grouped.today)}{renderGroup("Tomorrow",grouped.tomorrow)}{renderGroup("This Week",grouped.week)}{renderGroup("Later",grouped.later)}</>}
+    </div>
+    <div style={{padding:"8px 12px",borderTop:"1px solid rgba(255,255,255,.06)",display:"flex",gap:8}}>
+      <input value={newEvent} onChange={e=>setNewEvent(e.target.value)} onKeyDown={e=>e.key==="Enter"&&createEvent()} placeholder="Meeting with Eric tomorrow 3pm..." style={{flex:1,padding:"9px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:12,outline:"none"}} />
+      <button onClick={createEvent} disabled={creating||!newEvent.trim()} style={{padding:"9px 14px",borderRadius:10,border:"none",background:"rgba(139,92,246,.2)",color:"#a78bfa",cursor:"pointer",fontSize:12}}>{creating?"...":"Add"}</button>
+    </div>
   </div>);
 }
 
@@ -1268,27 +1330,27 @@ function CCWAView({ userId }) {
 }
 
 function AOAView({ userId }) {
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    Promise.all([fetch(ABABASE+"/api/team").then(r=>r.json()),fetch(ABABASE+"/api/apps?userId="+encodeURIComponent(userId)).then(r=>r.json())])
-      .then(([t,a]) => setStats({members:t.members||[],apps:a.apps||[],trust:a.trust})).catch(()=>{}).finally(()=>setLoading(false));
-  }, [userId]);
-  return (<div style={{flex:1,overflowY:"auto",padding:16}}>
-    {loading?<p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading AOA...</p>
-    :!stats?<p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Could not load</p>
-    :<>
-      <p style={{fontSize:11,color:"rgba(255,255,255,.3)",marginBottom:8}}>TEAM ({stats.members.length} HAMs)</p>
-      {stats.members.map((m,i)=><div key={i} style={{padding:10,marginBottom:4,borderRadius:10,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <div><p style={{fontSize:13,color:"rgba(255,255,255,.8)"}}>{m.name}</p><p style={{fontSize:10,color:"rgba(255,255,255,.3)"}}>{m.email}</p></div>
-        <div style={{display:"flex",gap:6}}><span style={{fontSize:10,padding:"2px 8px",borderRadius:8,background:m.has_nylas?"rgba(34,197,94,.15)":"rgba(239,68,68,.15)",color:m.has_nylas?"#22c55e":"#ef4444"}}>{m.has_nylas?"Email":"No Email"}</span></div>
-      </div>)}
-      <p style={{fontSize:11,color:"rgba(255,255,255,.3)",margin:"16px 0 8px"}}>APPS ({stats.apps.length})</p>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-        {stats.apps.map((a,i)=><div key={i} style={{padding:8,borderRadius:8,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)"}}><p style={{fontSize:12,color:"rgba(255,255,255,.7)"}}>{a.name}</p><p style={{fontSize:10,color:"rgba(255,255,255,.2)"}}>{a.id}</p></div>)}
-      </div>
-    </>}
-  </div>);
+  // ⬡B:aoa.triplet:CIP:iframe_embed:20260403⬡
+  // Loads the real AOA Portal in an iframe. T10 auth handled by the portal itself.
+  return (
+    <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+      <iframe
+        src="https://aba-portal.onrender.com"
+        style={{
+          width: "100%",
+          height: "100%",
+          border: "none",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+        }}
+        title="AOA Portal"
+        allow="clipboard-write"
+      />
+    </div>
+  );
 }
 
 function ProactiveTip({ tip, onDismiss }) {
@@ -1337,8 +1399,14 @@ function MeetingModeView({ userId }) {
   const [summary, setSummary] = useState(null);
   const [activeCue, setActiveCue] = useState(null);
   const [cookStreaming, setCookStreaming] = useState(false);
+  const [showPrep, setShowPrep] = useState(true);
+  const [prepMsgs, setPrepMsgs] = useState([{from:'aba',text:"Hey! Tell me about your meeting, or hit Quick Start to go live."}]);
+  const [prepInput, setPrepInput] = useState('');
+  const [prepLoading, setPrepLoading] = useState(false);
+  const prepCtxRef = useRef('');
   const recRef = useRef(null);
   const streamRef = useRef(null);
+  const wsRef = useRef(null);
   const intervalRef = useRef(null);
   const secondsRef = useRef(0);
   const cueTimeoutRef = useRef(null);
@@ -1359,7 +1427,7 @@ function MeetingModeView({ userId }) {
   // TIM verbal filler — fires every 5 seconds, HAM says this out loud
   const fetchTimCue = async (text, speakerId) => {
     try {
-      const isHamTurn = speakerId === null || speakerId === hamSpeakerRef.current;
+      const isHamTurn = hamSpeakerRef.current !== null && (speakerId === null || speakerId === hamSpeakerRef.current);
       const res = await fetch(`${ABABASE}/api/tim/cue`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "meeting", userId, whose_turn: isHamTurn ? "ham" : "other" })
@@ -1368,7 +1436,12 @@ function MeetingModeView({ userId }) {
         const d = await res.json();
         if (d.cue) {
           const cue = { text: d.cue, type: d.type, time: fmt(secondsRef.current), latency: d.latency_ms };
-          setTimCues(prev => [...prev, cue]);
+          setTimCues(prev => {
+            const now = Date.now();
+            // Queue management: max 5 cues, drop stale (older than 30s), ALERT priority
+            const fresh = [...prev, { ...cue, ts: now }].filter(c => now - (c.ts || 0) < 30000).slice(-5);
+            return fresh;
+          });
           setActiveCue(cue);
           clearTimeout(cueTimeoutRef.current);
           cueTimeoutRef.current = setTimeout(() => setActiveCue(null), 8000);
@@ -1384,7 +1457,7 @@ function MeetingModeView({ userId }) {
     try {
       const res = await fetch(`${ABABASE}/api/cook/answer`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "meeting", userId, last_said_by_ham: lastSaidByHamRef.current })
+        body: JSON.stringify({ question: 'Someone said: "' + question + '" — Give a polished 1-paragraph answer. Always answer. Never hold.', transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "meeting", userId, last_said_by_ham: lastSaidByHamRef.current })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1406,77 +1479,61 @@ function MeetingModeView({ userId }) {
   };
 
   const processSegment = async (text, speakerId) => {
-    // Track what the HAM last said (for COOK reheat prevention)
-    if (speakerId === null || speakerId === hamSpeakerRef.current) {
-      lastSaidByHamRef.current = text;
-    }
-    fetchTimCue(text, speakerId);
-    // Detect if segment contains a question (for COOK)
-    if (text.includes("?") || text.length > 80) {
-      setTimeout(() => fetchCookAnswer(text), 2000); // Delay to let TIM fire first
-    }
+    const hamSpeaker = hamSpeakerRef.current;
+    const isHam = hamSpeaker !== null && speakerId === hamSpeaker;
+    const noDiarization = hamSpeaker === null;
+    if (isHam || speakerId === null) lastSaidByHamRef.current = text;
+    fetchTimCue(text, noDiarization ? null : speakerId);
+    const interrogatives = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on', 'your take'];
+    const isQuestion = text.includes('?') || interrogatives.some(w => text.toLowerCase().includes(w)) || text.length > 100;
+    if (isQuestion) setTimeout(() => fetchCookAnswer(text), 2000);
   };
 
   const startMeeting = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      // ⬡B:FIX:meeting_vad:silence_detection:20260330⬡
-      // Set up AudioContext + AnalyserNode for voice activity detection
-      // Polls every 200ms — if no voice detected in a 5s chunk, skip Deepgram call
-      try {
-        const actx = new (window.AudioContext || window.webkitAudioContext)();
-        const source = actx.createMediaStreamSource(stream);
-        const analyser = actx.createAnalyser();
-        analyser.fftSize = 512;
-        source.connect(analyser);
-        audioCtxRef.current = actx;
-        analyserRef.current = { node: analyser, hadVoice: false, buf: new Uint8Array(analyser.fftSize) };
-        // Poll audio level every 200ms
-        analyserRef.current.interval = setInterval(() => {
-          if (!analyserRef.current) return;
-          const a = analyserRef.current;
-          a.node.getByteTimeDomainData(a.buf);
-          let maxDev = 0;
-          for (let i = 0; i < a.buf.length; i++) maxDev = Math.max(maxDev, Math.abs(a.buf[i] - 128));
-          if (maxDev > 8) a.hadVoice = true;
-        }, 200);
-      } catch (vadErr) { console.log("[MEETING] VAD setup skipped:", vadErr.message); }
+      // ⬡B:CIP.MESA:WEBSOCKET:deepgram_proxy:20260402⬡ WebSocket streaming
+      const wsProto = ABABASE.startsWith('https') ? 'wss' : 'ws';
+      const wsHost = ABABASE.replace('https://', '').replace('http://', '');
+      const ws = new WebSocket(`${wsProto}://${wsHost}/api/voice/stream`);
+      wsRef.current = ws;
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'Results' && msg.is_final) {
+            const alt = msg.channel?.alternatives?.[0];
+            const text = alt?.transcript || '';
+            if (text && text.trim()) {
+              const words = alt?.words || [];
+              const speakerId = words.length > 0 ? words[0].speaker : null;
+              const entry = { text: text.trim(), time: fmt(secondsRef.current), speaker: speakerId };
+              setTranscript(prev => [...prev, entry]);
+              transcriptRef.current = [...transcriptRef.current, entry];
+              processSegment(text.trim(), speakerId);
+            }
+          }
+        } catch (err) { /* ignore status messages */ }
+      };
+      ws.onerror = (err) => console.error('[MESA] WebSocket error:', err);
+      ws.onclose = () => console.log('[MESA] WebSocket closed');
+
+      await new Promise((resolve, reject) => {
+        ws.onopen = () => { console.log('[MESA] WebSocket connected'); resolve(); };
+        setTimeout(() => reject(new Error('WebSocket timeout')), 5000);
+      });
+
       const mimes = ["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus",""];
       let mime = "";
       for (const m of mimes) { if (!m || MediaRecorder.isTypeSupported(m)) { mime = m; break; } }
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-      let emptyChunks = 0;
-      rec.ondataavailable = async (e) => {
-        // Check VAD — skip Deepgram if no voice detected in this chunk
-        const vad = analyserRef.current;
-        const hadVoice = vad ? vad.hadVoice : true; // default to true if VAD not available
-        if (vad) vad.hadVoice = false; // reset for next chunk
-        if (e.data.size > 500 && hadVoice) {
-          const audioBlob_meeting = new Blob([e.data], { type: mime || "audio/webm" });
-          console.log("[MESA] Audio chunk:", audioBlob_meeting.size, "bytes, type:", audioBlob_meeting.type);
-          const result = await reachTranscribe(audioBlob_meeting);
-          const text = result?.text || (typeof result === 'string' ? result : null);
-          const speakerId = result?.speaker !== undefined ? result.speaker : null;
-          if (text && text.trim()) {
-            emptyChunks = 0;
-            const entry = { text, time: fmt(secondsRef.current), speaker: speakerId };
-            setTranscript(prev => [...prev, entry]);
-            transcriptRef.current = [...transcriptRef.current, entry];
-            processSegment(text, speakerId);
-          } else {
-            emptyChunks++;
-            if (emptyChunks === 3) {
-              setTranscript(prev => [...prev, { text: "ABA is having trouble hearing. Try moving closer to the microphone.", time: fmt(secondsRef.current), isSystem: true }]);
-            }
-          }
-        } else if (!hadVoice) {
-          console.log("[MEETING] Silent chunk — skipping Deepgram call");
-        } else {
-          console.log("[MEETING] Audio chunk too small:", e.data.size, "bytes — skipping");
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(e.data);
         }
       };
-      rec.start(5000);
+      rec.start(250);
       recRef.current = rec;
       setRecording(true);
       setRunning(true);
@@ -1486,10 +1543,8 @@ function MeetingModeView({ userId }) {
   const endMeeting = async () => {
     recRef.current?.stop();
     streamRef.current?.getTracks().forEach(t => t.stop());
-    // Clean up VAD
-    if (analyserRef.current?.interval) clearInterval(analyserRef.current.interval);
-    if (audioCtxRef.current) { try { audioCtxRef.current.close(); } catch {} }
-    analyserRef.current = null; audioCtxRef.current = null;
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) wsRef.current.close();
+    wsRef.current = null;
     setRunning(false);
     setRecording(false);
     if (transcriptRef.current.length > 0) {
@@ -1525,6 +1580,45 @@ function MeetingModeView({ userId }) {
     transition: "all 0.3s ease", display: "flex", alignItems: "center", justifyContent: "center", gap: 5
   });
 
+  // ⬡B:CIP.MESA:UI:cara_prep_gate:20260402⬡
+  // ⬡B:CIP.MESA:UI:chat_first_prep:20260402⬡
+  const sendPrep = async()=>{
+    if(!prepInput.trim()||prepLoading)return;
+    const msg=prepInput.trim();setPrepInput('');
+    setPrepMsgs(p=>[...p,{from:'user',text:msg}]);
+    prepCtxRef.current+='\n'+msg;
+    setPrepLoading(true);
+    try{const r=await fetch(ABABASE+'/api/air/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Meeting prep: '+msg+'. Respond in 1-2 sentences.',user_id:userId,channel:'myaba',appScope:'meeting'})});const d=await r.json();setPrepMsgs(p=>[...p,{from:'aba',text:d.response||'Got it.'}]);}catch{setPrepMsgs(p=>[...p,{from:'aba',text:'Got it. What else?'}]);}
+    setPrepLoading(false);
+  };
+  if (showPrep) return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    <div style={{padding:"10px 16px",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
+      <button onClick={()=>setShowPrep(false)} style={{width:"100%",padding:"12px",borderRadius:12,background:"linear-gradient(135deg, rgba(6,182,212,.12), rgba(6,182,212,.04))",border:"1px solid rgba(6,182,212,.2)",color:"#22D3EE",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+        Quick Start — Jump to Live
+      </button>
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:"12px 16px",display:"flex",flexDirection:"column",gap:10}}>
+      {prepMsgs.map((m,i)=><div key={i} style={{alignSelf:m.from==='user'?'flex-end':'flex-start',maxWidth:'85%',padding:'10px 14px',borderRadius:m.from==='user'?'14px 14px 4px 14px':'14px 14px 14px 4px',background:m.from==='user'?'rgba(139,92,246,.12)':'rgba(255,255,255,.04)',border:'1px solid '+(m.from==='user'?'rgba(139,92,246,.15)':'rgba(255,255,255,.06)')}}>
+        {m.from==='aba'&&<div style={{fontSize:9,fontWeight:700,color:'rgba(34,211,238,.6)',marginBottom:3}}>ABA</div>}
+        <p style={{fontSize:13,color:'rgba(255,255,255,.8)',margin:0,lineHeight:1.6}}>{m.text}</p>
+      </div>)}
+      {prepLoading&&<div style={{padding:'8px 14px',borderRadius:14,background:'rgba(255,255,255,.02)',border:'1px solid rgba(255,255,255,.04)',alignSelf:'flex-start'}}><div style={{fontSize:9,fontWeight:700,color:'rgba(34,211,238,.4)',marginBottom:2}}>ABA</div><p style={{fontSize:13,color:'rgba(255,255,255,.3)',margin:0}}>Thinking...</p></div>}
+    </div>
+    <div style={{padding:"10px 16px",borderTop:"1px solid rgba(255,255,255,.04)",display:"flex",gap:8,alignItems:"center"}}>
+      <input value={prepInput} onChange={e=>setPrepInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendPrep()} placeholder="Tell ABA about this meeting..." style={{flex:1,padding:"10px 14px",borderRadius:10,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.06)",color:"#e2e8f0",fontSize:13,outline:"none"}} />
+      <button onClick={sendPrep} disabled={prepLoading||!prepInput.trim()} style={{padding:8,borderRadius:8,background:"rgba(139,92,246,.12)",border:"1px solid rgba(139,92,246,.15)",color:"rgba(139,92,246,.7)",cursor:"pointer"}}><Send size={16}/></button>
+      <button onClick={()=>{const t=document.querySelector('[data-talk-to-aba]');if(t)t.click();}} style={{padding:"8px 14px",borderRadius:8,background:"linear-gradient(135deg, rgba(139,92,246,.15), rgba(139,92,246,.08))",border:"1px solid rgba(139,92,246,.15)",color:"rgba(139,92,246,.8)",cursor:"pointer",display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:600}}><Mic size={14}/> Talk</button>
+    </div>
+    <div style={{padding:"10px 16px",borderTop:"1px solid rgba(255,255,255,.04)"}}>
+      <button onClick={async()=>{
+        if(prepCtxRef.current){try{await fetch(ABABASE+'/api/air/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Save meeting context: '+prepCtxRef.current,user_id:userId,channel:'myaba',appScope:'meeting'})})}catch{}}
+        setShowPrep(false);
+      }} style={{width:"100%",padding:"12px",borderRadius:12,background:"linear-gradient(135deg, rgba(16,185,129,.15), rgba(16,185,129,.05))",border:"1px solid rgba(16,185,129,.2)",color:"#34D399",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+        Start Meeting
+      </button>
+    </div>
+  </div>);
+
   return (<div style={{flex:1,display:"flex",flexDirection:"column",backdropFilter:"blur(12px)",overflow:"hidden",background:"linear-gradient(180deg, rgba(6,182,212,.03) 0%, transparent 40%)"}}>
     {/* TIM Cue Banner */}
     {activeCue && <div style={{
@@ -1554,39 +1648,51 @@ function MeetingModeView({ userId }) {
       </div>
     </div>
 
-    {/* Panel Tabs */}
-    <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
-      {panels.map(p => <button key={p.id} onClick={()=>setPanel(p.id)} style={panelStyle(p.id)}>
-        {p.Icon&&<p.Icon size={12}/>}{p.label}{p.count>0&&<span style={{fontSize:9,background:panel===p.id?"rgba(6,182,212,.3)":"rgba(255,255,255,.06)",padding:"2px 6px",borderRadius:8,fontWeight:600}}>{p.count}</span>}
-      </button>)}
-    </div>
-
-    {/* Panel Content */}
+    {/* Single scroll — everything visible */}
     <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
-      {panel==="transcript" && (transcript.length===0
-        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><Mic size={36} style={{margin:"0 auto 12px",display:"block",opacity:.2}}/><p style={{fontSize:13,margin:0,fontWeight:300}}>{running?"Listening for speech...":"Tap Start Meeting to begin"}</p></div>
-        : transcript.map((t,i) => <div key={i} style={{padding:"10px 12px",marginBottom:5,borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)",animation:"mf .3s ease",transition:"all 0.2s ease"}}><span style={{color:"rgba(6,182,212,.35)",fontSize:9,fontWeight:600,marginRight:8,fontFamily:"monospace"}}>{t.time}</span><span style={{color:"rgba(255,255,255,.8)",fontSize:12.5,lineHeight:1.6}}>{t.text}</span></div>)
-      )}
-      {panel==="coaching" && (cookAnswers.length===0
-        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><Sparkles size={36} style={{margin:"0 auto 12px",display:"block",opacity:.2}}/><p style={{fontSize:13,margin:0,fontWeight:300}}>COOK's polished answers appear here as the meeting progresses</p><p style={{fontSize:10,color:"rgba(255,255,255,.08)",marginTop:4}}>TIM fires quick cues at the top, COOK delivers substance here</p></div>
-        : cookAnswers.map((a,i) => <div key={i} style={{padding:14,marginBottom:8,borderRadius:14,background:"linear-gradient(135deg, rgba(139,92,246,.06), rgba(139,92,246,.02))",border:"1px solid rgba(139,92,246,.1)",boxShadow:a.streaming?"0 0 15px rgba(139,92,246,.08)":"none",transition:"all 0.3s ease"}}>
-          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+      {/* TRANSCRIPT */}
+      <div style={{marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"0 4px"}}><Mic size={11} style={{color:"rgba(6,182,212,.4)"}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(6,182,212,.4)",letterSpacing:"0.1em"}}>TRANSCRIPT</span>{transcript.length>0&&<span style={{fontSize:9,background:"rgba(6,182,212,.1)",padding:"2px 6px",borderRadius:8,color:"rgba(6,182,212,.5)",fontWeight:600}}>{transcript.length}</span>}</div>
+        {transcript.length===0
+          ? <div style={{textAlign:"center",padding:"30px 16px",color:"rgba(255,255,255,.1)"}}><p style={{fontSize:12,margin:0}}>{running?"Listening...":"Tap Start Meeting"}</p></div>
+          : transcript.slice(-8).map((t,i) => <div key={i} style={{padding:"8px 10px",marginBottom:4,borderRadius:10,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}><span style={{color:"rgba(6,182,212,.3)",fontSize:9,fontWeight:600,marginRight:6,fontFamily:"monospace"}}>{t.time}</span><span style={{color:"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.5}}>{t.text}</span></div>)
+        }
+      </div>
+
+      {/* COOK ANSWERS */}
+      {cookAnswers.length > 0 && <div style={{marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"0 4px"}}><Sparkles size={11} style={{color:"rgba(139,92,246,.4)"}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(139,92,246,.4)",letterSpacing:"0.1em"}}>COACHING</span><span style={{fontSize:9,background:"rgba(139,92,246,.1)",padding:"2px 6px",borderRadius:8,color:"rgba(139,92,246,.5)",fontWeight:600}}>{cookAnswers.length}</span></div>
+        {cookAnswers.map((a,i) => <div key={i} style={{padding:12,marginBottom:6,borderRadius:12,background:"linear-gradient(135deg, rgba(139,92,246,.08), rgba(139,92,246,.02))",border:"1px solid rgba(139,92,246,.12)",boxShadow:a.streaming?"0 0 12px rgba(139,92,246,.08)":"none"}}>
+          <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}>
             <div style={{width:5,height:5,borderRadius:"50%",background:a.streaming?"#a78bfa":"rgba(139,92,246,.3)",...(a.streaming?{animation:"mb 1s infinite"}:{})}}/>
-            <span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",letterSpacing:"1px",textTransform:"uppercase"}}>{a.streaming?"COOK is thinking...":"COOK"}</span>
-            <span style={{fontSize:8,color:"rgba(255,255,255,.15)",marginLeft:"auto"}}>{a.time}</span>
+            <span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.5)",letterSpacing:"0.5px"}}>{a.streaming?"THINKING...":"COOK"}</span>
+            <span style={{fontSize:8,color:"rgba(255,255,255,.12)",marginLeft:"auto"}}>{a.time}</span>
+            {!a.streaming&&<button onClick={()=>navigator.clipboard.writeText(a.text||"")} style={{padding:"2px 6px",borderRadius:4,fontSize:8,background:"rgba(139,92,246,.08)",border:"1px solid rgba(139,92,246,.1)",color:"rgba(139,92,246,.4)",cursor:"pointer"}}>Copy</button>}
           </div>
-          {a.q && <p style={{color:"rgba(139,92,246,.5)",fontSize:10,margin:"0 0 6px",fontStyle:"italic"}}>Re: {a.q}</p>}
-          <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{a.text}</p>
-        </div>)
-      )}
-      {panel==="glossary" && (glossary.length===0
-        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><p style={{fontSize:13,margin:0,fontWeight:300}}>Key terms will appear here as they are mentioned</p></div>
-        : glossary.map((g,i) => <div key={i} style={{padding:10,marginBottom:5,borderRadius:10,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}><span style={{color:"#22d3ee",fontSize:12,fontWeight:600}}>{g.term}</span><p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"3px 0 0",lineHeight:1.5}}>{g.definition}</p></div>)
-      )}
-      {summary && <div style={{padding:16,borderRadius:14,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.12)",marginTop:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><CheckCircle size={14} color="#34d399"/><span style={{fontSize:11,fontWeight:700,color:"#34d399",letterSpacing:"0.5px"}}>Meeting Summary</span></div>
-        <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{summary}</p>
-        <button onClick={()=>navigator.clipboard.writeText(summary||"").catch(()=>{})} style={{marginTop:8,padding:"6px 12px",borderRadius:8,border:"1px solid rgba(52,211,153,.2)",background:"rgba(52,211,153,.06)",color:"rgba(52,211,153,.6)",fontSize:11,cursor:"pointer"}}>Copy</button>
+          {a.q && <p style={{color:"rgba(139,92,246,.4)",fontSize:10,margin:"0 0 4px",fontStyle:"italic"}}>Re: {a.q}</p>}
+          <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:0,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{a.text}</p>
+        </div>)}
+      </div>}
+
+      {/* AUTO-CONTEXT */}
+      {autoContext && <div style={{padding:10,borderRadius:10,background:"linear-gradient(135deg, rgba(34,211,238,.05), rgba(34,211,238,.02))",border:"1px solid rgba(34,211,238,.08)",marginBottom:8}}>
+        <div style={{fontSize:9,fontWeight:700,color:"rgba(34,211,238,.5)",marginBottom:4,letterSpacing:"0.1em"}}>AUTO-DETECTED</div>
+        {autoContext.topic&&<p style={{fontSize:12,color:"rgba(255,255,255,.7)",margin:"0 0 2px",fontWeight:600}}>{autoContext.topic}</p>}
+        {autoContext.participants&&<p style={{fontSize:10,color:"rgba(255,255,255,.4)",margin:0}}>{autoContext.participants}</p>}
+        {autoContext.suggested_approach&&<p style={{fontSize:10,color:"rgba(16,185,129,.6)",margin:"4px 0 0",fontStyle:"italic"}}>{autoContext.suggested_approach}</p>}
+      </div>}
+
+      {/* GLOSSARY */}
+      {glossary.length > 0 && <div style={{marginBottom:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,padding:"0 4px"}}><BookOpen size={11} style={{color:"rgba(34,211,238,.4)"}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(34,211,238,.4)",letterSpacing:"0.1em"}}>GLOSSARY</span></div>
+        {glossary.map((g,i) => <div key={i} style={{padding:8,marginBottom:4,borderRadius:8,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}><span style={{color:"#22d3ee",fontSize:11,fontWeight:600}}>{g.term}</span><p style={{color:"rgba(255,255,255,.4)",fontSize:10,margin:"2px 0 0"}}>{g.definition}</p></div>)}
+      </div>}
+
+      {/* SUMMARY */}
+      {summary && <div style={{padding:14,borderRadius:12,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.12)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}><CheckCircle size={12} color="#34d399"/><span style={{fontSize:10,fontWeight:700,color:"#34d399",letterSpacing:"0.5px"}}>SUMMARY</span></div>
+        <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:0,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{summary}</p>
+        <button onClick={()=>navigator.clipboard.writeText(summary||"")} style={{marginTop:6,padding:"5px 10px",borderRadius:6,border:"1px solid rgba(52,211,153,.2)",background:"rgba(52,211,153,.06)",color:"rgba(52,211,153,.6)",fontSize:10,cursor:"pointer"}}>Copy</button>
       </div>}
     </div>
 
@@ -1631,6 +1737,7 @@ function InterviewModeView({ userId }) {
   const [summary, setSummary] = useState(null);
   const recRef = useRef(null);
   const streamRef = useRef(null);
+  const wsRef = useRef(null);
   const intervalRef = useRef(null);
   const secondsRef = useRef(0);
   const cueTimeoutRef = useRef(null);
@@ -1685,7 +1792,7 @@ function InterviewModeView({ userId }) {
 
   const fetchTimCue = async (text, speakerId) => {
     try {
-      const isHamTurn = speakerId === null || speakerId === hamSpeakerRef_iv.current;
+      const isHamTurn = hamSpeakerRef_iv.current !== null && (speakerId === null || speakerId === hamSpeakerRef_iv.current);
       const res = await fetch(`${ABABASE}/api/tim/cue`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, userId, whose_turn: isHamTurn ? "ham" : "other" })
@@ -1694,7 +1801,12 @@ function InterviewModeView({ userId }) {
         const d = await res.json();
         if (d.cue) {
           const cue = { text: d.cue, type: d.type, time: fmt(secondsRef.current), latency: d.latency_ms };
-          setTimCues(prev => [...prev, cue]);
+          setTimCues(prev => {
+            const now = Date.now();
+            // Queue management: max 5 cues, drop stale (older than 30s), ALERT priority
+            const fresh = [...prev, { ...cue, ts: now }].filter(c => now - (c.ts || 0) < 30000).slice(-5);
+            return fresh;
+          });
           setActiveCue(cue);
           clearTimeout(cueTimeoutRef.current);
           cueTimeoutRef.current = setTimeout(() => setActiveCue(null), 8000);
@@ -1709,7 +1821,7 @@ function InterviewModeView({ userId }) {
     try {
       const res = await fetch(`${ABABASE}/api/cook/answer`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId, last_said_by_ham: lastSaidByHamRef_iv.current })
+        body: JSON.stringify({ question: 'Interviewer said: "' + question + '" — Give a STAR-method answer. Always answer.', transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId, last_said_by_ham: lastSaidByHamRef_iv.current })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1731,13 +1843,14 @@ function InterviewModeView({ userId }) {
   };
 
   const processSegment = async (text, speakerId) => {
-    if (speakerId === null || speakerId === hamSpeakerRef_iv.current) {
-      lastSaidByHamRef_iv.current = text;
-    }
-    fetchTimCue(text, speakerId);
-    if (text.includes("?") || text.length > 60) {
-      setTimeout(() => fetchCookAnswer(text), 2000);
-    }
+    const hamSpeaker = hamSpeakerRef_iv.current;
+    const isHam = hamSpeaker !== null && speakerId === hamSpeaker;
+    const noDiarization = hamSpeaker === null;
+    if (isHam || speakerId === null) lastSaidByHamRef_iv.current = text;
+    fetchTimCue(text, noDiarization ? null : speakerId);
+    const interrogatives_iv = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on', 'your take'];
+    const isQuestion_iv = text.includes('?') || interrogatives_iv.some(w => text.toLowerCase().includes(w)) || text.length > 100;
+    if (isQuestion_iv) setTimeout(() => fetchCookAnswer(text), 2000);
   };
 
   const loadPrep = async (job) => {
@@ -1784,7 +1897,7 @@ function InterviewModeView({ userId }) {
     try {
       const res = await fetch(`${ABABASE}/api/air/stream`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: `Mock interview for "${selectedJob?.title || "a role"}" at ${selectedJob?.organization || "org"}.\nQuestion: "${mockQ}"\nAnswer: "${answer}"\n\nScore 1-10 with feedback. Use STAR method. Then next question.\n\nFormat:\nSCORE: X/10\nSTRENGTHS: ...\nIMPROVE: ...\nBETTER ANSWER: ...\nNEXT QUESTION: ...`, user_id: userId, channel: "myaba", appScope: "interview" })
+        body: JSON.stringify({ message: `Mock interview for "${selectedJob?.title || "a role"}" at ${selectedJob?.organization || "org"}.\nQuestion: "${mockQ}"\nAnswer: "${answer}"\n\nScore the answer using STAR components:\nSITUATION (20%): Did they set the scene with specific context?\nTASK (20%): Did they clarify their role and responsibility?\nACTION (35%): Did they describe specific actions THEY took?\nRESULT (25%): Did they quantify outcomes and impact?\n\nFormat:\nSCORE: X/10\nS: X/10 - [feedback]\nT: X/10 - [feedback]\nA: X/10 - [feedback]\nR: X/10 - [feedback]\nSTRENGTHS: ...\nIMPROVE: ...\nBETTER ANSWER: ...\nNEXT QUESTION: ...`, user_id: userId, channel: "myaba", appScope: "interview" })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1799,64 +1912,67 @@ function InterviewModeView({ userId }) {
         }
       }
       const scoreM = fullText.match(/SCORE:\s*(\d+)/i);
+      const sM = fullText.match(/\bS:\s*(\d+)\/10\s*-?\s*(.+?)(?=\bT:|STRENGTHS|$)/is);
+      const tM = fullText.match(/\bT:\s*(\d+)\/10\s*-?\s*(.+?)(?=\bA:|STRENGTHS|$)/is);
+      const aM = fullText.match(/\bA:\s*(\d+)\/10\s*-?\s*(.+?)(?=\bR:|STRENGTHS|$)/is);
+      const rM = fullText.match(/\bR:\s*(\d+)\/10\s*-?\s*(.+?)(?=STRENGTHS|IMPROVE|$)/is);
       const strM = fullText.match(/STRENGTHS?:\s*(.+?)(?=IMPROVE|BETTER|NEXT|$)/is);
       const impM = fullText.match(/IMPROVE:\s*(.+?)(?=BETTER|NEXT|$)/is);
       const betM = fullText.match(/BETTER ANSWER:\s*(.+?)(?=NEXT|$)/is);
       const nqM = fullText.match(/NEXT QUESTION:\s*(.+)/is);
-      setMockHistory(prev => { const u = [...prev]; const last = u[u.length-1]; if(last) { last.score = scoreM?scoreM[1]:"?"; last.strengths = strM?strM[1].trim():""; last.improve = impM?impM[1].trim():""; last.better = betM?betM[1].trim():""; last.scoring = false; } return [...u]; });
+      setMockHistory(prev => { const u = [...prev]; const last = u[u.length-1]; if(last) { last.score = scoreM?scoreM[1]:"?"; last.star = { s: sM?{score:sM[1],note:sM[2].trim()}:null, t: tM?{score:tM[1],note:tM[2].trim()}:null, a: aM?{score:aM[1],note:aM[2].trim()}:null, r: rM?{score:rM[1],note:rM[2].trim()}:null }; last.strengths = strM?strM[1].trim():""; last.improve = impM?impM[1].trim():""; last.better = betM?betM[1].trim():""; last.scoring = false; } return [...u]; });
       setMockQ(nqM ? nqM[1].trim() : "Tell me more about your experience.");
     } catch {}
     setMockLoading(false);
   };
 
   const toggleRecord = async () => {
-    if (recording) { recRef.current?.stop(); streamRef.current?.getTracks().forEach(t=>t.stop()); setRecording(false); if(analyserRef_iv.current?.interval)clearInterval(analyserRef_iv.current.interval); if(audioCtxRef_iv.current){try{audioCtxRef_iv.current.close()}catch{}} analyserRef_iv.current=null; audioCtxRef_iv.current=null; return; }
+    if (recording) { recRef.current?.stop(); streamRef.current?.getTracks().forEach(t=>t.stop()); if(wsRef.current&&wsRef.current.readyState===WebSocket.OPEN)wsRef.current.close(); wsRef.current=null; setRecording(false); return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      // ⬡B:FIX:interview_vad:silence_detection:20260330⬡
-      try {
-        const actx = new (window.AudioContext || window.webkitAudioContext)();
-        const source = actx.createMediaStreamSource(stream);
-        const analyser = actx.createAnalyser();
-        analyser.fftSize = 512;
-        source.connect(analyser);
-        audioCtxRef_iv.current = actx;
-        analyserRef_iv.current = { node: analyser, hadVoice: false, buf: new Uint8Array(analyser.fftSize) };
-        analyserRef_iv.current.interval = setInterval(() => {
-          if (!analyserRef_iv.current) return;
-          const a = analyserRef_iv.current;
-          a.node.getByteTimeDomainData(a.buf);
-          let maxDev = 0;
-          for (let i = 0; i < a.buf.length; i++) maxDev = Math.max(maxDev, Math.abs(a.buf[i] - 128));
-          if (maxDev > 8) a.hadVoice = true;
-        }, 200);
-      } catch (vadErr) { console.log("[INTERVIEW] VAD setup skipped:", vadErr.message); }
+      // ⬡B:CIP.IRIS:WEBSOCKET:deepgram_proxy:20260402⬡ WebSocket streaming
+      const wsProto = ABABASE.startsWith('https') ? 'wss' : 'ws';
+      const wsHost = ABABASE.replace('https://', '').replace('http://', '');
+      const ws = new WebSocket(`${wsProto}://${wsHost}/api/voice/stream`);
+      wsRef.current = ws;
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'Results' && msg.is_final) {
+            const alt = msg.channel?.alternatives?.[0];
+            const text = alt?.transcript || '';
+            if (text && text.trim()) {
+              const words = alt?.words || [];
+              const speakerId_iv = words.length > 0 ? words[0].speaker : null;
+              const entry = { text: text.trim(), time: fmt(secondsRef.current), speaker: speakerId_iv };
+              setTranscript(prev => [...prev, entry]);
+              transcriptRef.current = [...transcriptRef.current, entry];
+              if (mode === "mock") setMockAnswer(prev => prev ? prev + " " + text.trim() : text.trim());
+              else processSegment(text.trim(), speakerId_iv);
+            }
+          }
+        } catch (err) { /* ignore status messages */ }
+      };
+      ws.onerror = (err) => console.error('[IRIS] WebSocket error:', err);
+      ws.onclose = () => console.log('[IRIS] WebSocket closed');
+
+      await new Promise((resolve, reject) => {
+        ws.onopen = () => { console.log('[IRIS] WebSocket connected'); resolve(); };
+        setTimeout(() => reject(new Error('WebSocket timeout')), 5000);
+      });
+
       const mimes = ["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus",""];
       let mime = "";
       for (const m of mimes) { if (!m || MediaRecorder.isTypeSupported(m)) { mime = m; break; } }
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-      rec.ondataavailable = async (e) => {
-        const vad = analyserRef_iv.current;
-        const hadVoice = vad ? vad.hadVoice : true;
-        if (vad) vad.hadVoice = false;
-        if (e.data.size > 500 && hadVoice) {
-          const audioBlob_interview = new Blob([e.data], { type: mime || "audio/webm" });
-          const result_iv = await reachTranscribe(audioBlob_interview);
-          const text = result_iv?.text || (typeof result_iv === "string" ? result_iv : null);
-          const speakerId_iv = result_iv?.speaker !== undefined ? result_iv.speaker : null;
-          if (text && text.trim()) {
-            const entry = { text, time: fmt(secondsRef.current), speaker: speakerId_iv };
-            setTranscript(prev => [...prev, entry]);
-            transcriptRef.current = [...transcriptRef.current, entry];
-            if (mode === "mock") setMockAnswer(prev => prev ? prev + " " + text : text);
-            else processSegment(text, speakerId_iv);
-          }
-        } else if (!hadVoice) {
-          console.log("[INTERVIEW] Silent chunk — skipping Deepgram call");
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(e.data);
         }
       };
-      rec.start(5000); recRef.current = rec; setRecording(true);
+      rec.start(250); recRef.current = rec; setRecording(true);
       if (!running) setRunning(true);
     } catch { alert("Microphone access denied"); }
   };
@@ -1927,6 +2043,21 @@ function InterviewModeView({ userId }) {
       {modeTab("prep","Prep",FileText)}{modeTab("research","Research",Search)}{modeTab("practice","Practice",Award)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
     </div>
     <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+      {/* ⬡B:CIP.IRIS:UI:cara_greeting:20260402⬡ */}
+      <div style={{background:"rgba(255,255,255,.04)",backdropFilter:"blur(20px)",border:"1px solid rgba(255,255,255,.06)",borderRadius:14,padding:"14px 18px",marginBottom:10,display:"flex",gap:10,alignItems:"flex-start"}}>
+        <div style={{width:32,height:32,borderRadius:8,background:"linear-gradient(135deg, #6366F1, #8B5CF6)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <span style={{fontSize:14,fontWeight:900,color:"white"}}>A</span>
+        </div>
+        <div>
+          <div style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",marginBottom:2}}>ABA</div>
+          <p style={{fontSize:12,color:"rgba(255,255,255,.7)",margin:0,lineHeight:1.5}}>
+            {selectedJob ? `Prepping for ${selectedJob.title||selectedJob.job_title} at ${selectedJob.organization}. Jump to Live when ready.` : "Hey! Pick a job below, or hit Quick Start to jump into your interview."}
+          </p>
+        </div>
+      </div>
+      <button onClick={()=>setMode("live")} style={{width:"100%",padding:"10px 16px",borderRadius:10,marginBottom:12,background:`linear-gradient(135deg, ${amber(.12)}, ${amber(.04)})`,border:`1px solid ${amber(.2)}`,color:"#FBBF24",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+        Quick Start — Live Mode
+      </button>
       {!selectedJob ? (<>
         <p style={{fontSize:13,fontWeight:600,color:"rgba(255,255,255,.7)",margin:"0 0 10px"}}>Select a job to prepare for</p>
         {jobs.length===0 ? <p style={{textAlign:"center",padding:30,color:"rgba(255,255,255,.15)",fontSize:12}}>No jobs in pipeline yet.</p>
@@ -1967,6 +2098,15 @@ function InterviewModeView({ userId }) {
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
             <span style={{fontSize:22,fontWeight:800,color:parseInt(h.score)>=7?"#34d399":parseInt(h.score)>=5?"#fbbf24":"#f87171"}}>{h.score}<span style={{fontSize:12,fontWeight:400,color:"rgba(255,255,255,.3)"}}>/10</span></span>
           </div>
+          {h.star && <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+            {[{k:"S",label:"Situation",w:"20%",data:h.star.s},{k:"T",label:"Task",w:"20%",data:h.star.t},{k:"A",label:"Action",w:"35%",data:h.star.a},{k:"R",label:"Result",w:"25%",data:h.star.r}].map(c => c.data && <div key={c.k} style={{flex:"1 1 45%",padding:"6px 8px",borderRadius:8,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
+                <span style={{fontSize:9,fontWeight:700,color:amber(.5)}}>{c.k} ({c.w})</span>
+                <span style={{fontSize:11,fontWeight:700,color:parseInt(c.data.score)>=7?"#34d399":parseInt(c.data.score)>=5?"#fbbf24":"#f87171"}}>{c.data.score}/10</span>
+              </div>
+              <p style={{fontSize:10,color:"rgba(255,255,255,.4)",margin:0,lineHeight:1.4}}>{c.data.note}</p>
+            </div>)}
+          </div>}
           {h.strengths && <div style={{marginBottom:6}}><span style={{fontSize:9,fontWeight:700,color:"rgba(16,185,129,.6)",letterSpacing:"0.5px"}}>STRENGTHS</span><p style={{fontSize:11.5,color:"rgba(255,255,255,.6)",margin:"2px 0 0",lineHeight:1.5}}>{h.strengths}</p></div>}
           {h.improve && <div style={{marginBottom:6}}><span style={{fontSize:9,fontWeight:700,color:amber(.6),letterSpacing:"0.5px"}}>IMPROVE</span><p style={{fontSize:11.5,color:"rgba(255,255,255,.6)",margin:"2px 0 0",lineHeight:1.5}}>{h.improve}</p></div>}
           {h.better && <div><span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",letterSpacing:"0.5px"}}>POLISHED VERSION</span><p style={{fontSize:11.5,color:"rgba(255,255,255,.7)",margin:"2px 0 0",lineHeight:1.5,fontStyle:"italic"}}>{h.better}</p></div>}
@@ -2014,27 +2154,45 @@ function InterviewModeView({ userId }) {
       </div>
     </div>
     <div style={{display:"flex",gap:3,padding:"6px 10px",borderBottom:"1px solid rgba(255,255,255,.03)"}}>
-      {livePanels.map(p => <button key={p.id} onClick={()=>setPanel(p.id)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:panel===p.id?700:400,background:panel===p.id?`linear-gradient(135deg, ${amber(.15)}, ${amber(.05)})`:"transparent",color:panel===p.id?"#fbbf24":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>{p.Icon&&<p.Icon size={12}/>}{p.label}{p.count>0&&<span style={{fontSize:9,background:amber(.2),padding:"2px 6px",borderRadius:8,fontWeight:600}}>{p.count}</span>}</button>)}
     </div>
     <div style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
-      {panel==="transcript" && (transcript.length===0
-        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><Mic size={36} style={{margin:"0 auto 12px",display:"block",opacity:.2}}/><p style={{fontSize:13,margin:0,fontWeight:300}}>{running?"Listening...":"Tap Record to start"}</p></div>
-        : transcript.map((t,i) => <div key={i} style={{padding:"10px 12px",marginBottom:5,borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)",animation:"mf .3s ease"}}><span style={{color:amber(.35),fontSize:9,fontWeight:600,marginRight:8,fontFamily:"monospace"}}>{t.time}</span><span style={{color:"rgba(255,255,255,.8)",fontSize:12.5,lineHeight:1.6}}>{t.text}</span></div>)
-      )}
-      {panel==="coaching" && (cookAnswers.length===0
-        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><Sparkles size={36} style={{margin:"0 auto 12px",display:"block",opacity:.2}}/><p style={{fontSize:13,margin:0,fontWeight:300}}>COOK's STAR-method answers appear here</p></div>
-        : cookAnswers.map((a,i) => <div key={i} style={{padding:14,marginBottom:8,borderRadius:14,background:"linear-gradient(135deg, rgba(139,92,246,.06), rgba(139,92,246,.02))",border:"1px solid rgba(139,92,246,.1)",boxShadow:a.streaming?"0 0 15px rgba(139,92,246,.08)":"none"}}>
-          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+      {/* TRANSCRIPT */}
+      <div style={{marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"0 4px"}}><Mic size={11} style={{color:amber(.4)}}/><span style={{fontSize:10,fontWeight:700,color:amber(.4),letterSpacing:"0.1em"}}>TRANSCRIPT</span>{transcript.length>0&&<span style={{fontSize:9,background:amber(.1),padding:"2px 6px",borderRadius:8,color:amber(.5),fontWeight:600}}>{transcript.length}</span>}</div>
+        {transcript.length===0
+          ? <div style={{textAlign:"center",padding:"30px 16px",color:"rgba(255,255,255,.1)"}}><p style={{fontSize:12,margin:0}}>{running?"Listening...":"Tap Record to start"}</p></div>
+          : transcript.slice(-8).map((t,i) => <div key={i} style={{padding:"8px 10px",marginBottom:4,borderRadius:10,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}><span style={{color:amber(.3),fontSize:9,fontWeight:600,marginRight:6,fontFamily:"monospace"}}>{t.time}</span><span style={{color:"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.5}}>{t.text}</span></div>)
+        }
+      </div>
+
+      {/* COOK ANSWERS */}
+      {cookAnswers.length > 0 && <div style={{marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"0 4px"}}><Sparkles size={11} style={{color:"rgba(139,92,246,.4)"}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(139,92,246,.4)",letterSpacing:"0.1em"}}>COACHING</span><span style={{fontSize:9,background:"rgba(139,92,246,.1)",padding:"2px 6px",borderRadius:8,color:"rgba(139,92,246,.5)",fontWeight:600}}>{cookAnswers.length}</span></div>
+        {cookAnswers.map((a,i) => <div key={i} style={{padding:12,marginBottom:6,borderRadius:12,background:"linear-gradient(135deg, rgba(139,92,246,.08), rgba(139,92,246,.02))",border:"1px solid rgba(139,92,246,.12)",boxShadow:a.streaming?"0 0 12px rgba(139,92,246,.08)":"none"}}>
+          <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}>
             <div style={{width:5,height:5,borderRadius:"50%",background:a.streaming?"#a78bfa":"rgba(139,92,246,.3)",...(a.streaming?{animation:"mb 1s infinite"}:{})}}/>
-            <span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",letterSpacing:"1px",textTransform:"uppercase"}}>{a.streaming?"COOK is preparing...":"COOK"}</span>
+            <span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.5)",letterSpacing:"0.5px"}}>{a.streaming?"THINKING...":"COOK"}</span>
+            <span style={{fontSize:8,color:"rgba(255,255,255,.12)",marginLeft:"auto"}}>{a.time}</span>
+            {!a.streaming&&<button onClick={()=>navigator.clipboard.writeText(a.text||"")} style={{padding:"2px 6px",borderRadius:4,fontSize:8,background:"rgba(139,92,246,.08)",border:"1px solid rgba(139,92,246,.1)",color:"rgba(139,92,246,.4)",cursor:"pointer"}}>Copy</button>}
           </div>
-          {a.q && <p style={{color:"rgba(139,92,246,.5)",fontSize:10,margin:"0 0 6px",fontStyle:"italic"}}>Re: {a.q}</p>}
-          <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{a.text}</p>
-        </div>)
-      )}
-      {summary && <div style={{padding:16,borderRadius:14,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.12)",marginTop:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><CheckCircle size={14} color="#34d399"/><span style={{fontSize:11,fontWeight:700,color:"#34d399"}}>Interview Performance Summary</span></div>
-        <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{summary}</p>
+          {a.q && <p style={{color:"rgba(139,92,246,.4)",fontSize:10,margin:"0 0 4px",fontStyle:"italic"}}>Re: {a.q}</p>}
+          <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:0,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{a.text}</p>
+        </div>)}
+      </div>}
+
+      {/* AUTO-CONTEXT */}
+      {autoContext_iv && <div style={{padding:10,borderRadius:10,background:`linear-gradient(135deg, ${amber(.05)}, ${amber(.02)})`,border:`1px solid ${amber(.08)}`,marginBottom:8}}>
+        <div style={{fontSize:9,fontWeight:700,color:amber(.5),marginBottom:4,letterSpacing:"0.1em"}}>AUTO-DETECTED</div>
+        {autoContext_iv.role&&<p style={{fontSize:12,color:"rgba(255,255,255,.7)",margin:"0 0 2px",fontWeight:600}}>{autoContext_iv.role}</p>}
+        {autoContext_iv.company&&<p style={{fontSize:10,color:"rgba(255,255,255,.4)",margin:0}}>{autoContext_iv.company}</p>}
+        {autoContext_iv.coaching_tip&&<p style={{fontSize:10,color:"rgba(16,185,129,.6)",margin:"4px 0 0",fontStyle:"italic"}}>{autoContext_iv.coaching_tip}</p>}
+      </div>}
+
+      {/* SUMMARY */}
+      {summary && <div style={{padding:14,borderRadius:12,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.12)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}><CheckCircle size={12} color="#34d399"/><span style={{fontSize:10,fontWeight:700,color:"#34d399"}}>SUMMARY</span></div>
+        <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:0,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{summary}</p>
+        <button onClick={()=>navigator.clipboard.writeText(summary||"")} style={{marginTop:6,padding:"5px 10px",borderRadius:6,border:"1px solid rgba(52,211,153,.2)",background:"rgba(52,211,153,.06)",color:"rgba(52,211,153,.6)",fontSize:10,cursor:"pointer"}}>Copy</button>
       </div>}
     </div>
   </div>);
@@ -2662,7 +2820,7 @@ async function subscribeToPush(userId) {
     }
     
     // Send subscription to backend
-    await fetch('https://abacia-services.onrender.com/api/push/subscribe', {
+    await fetch(`${ABABASE}/api/push/subscribe`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, subscription: subscription.toJSON() })
@@ -2682,7 +2840,7 @@ async function unsubscribeFromPush(userId) {
     const subscription = await registration.pushManager.getSubscription();
     if (subscription) {
       await subscription.unsubscribe();
-      await fetch('https://abacia-services.onrender.com/api/push/unsubscribe', {
+      await fetch(`${ABABASE}/api/push/unsubscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId })
@@ -2844,7 +3002,7 @@ function CommandCenterView({ open, onClose, userEmail }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`https://abacia-services.onrender.com/api/admin/dashboard?email=${encodeURIComponent(userEmail)}`);
+      const res = await fetch(`${ABABASE}/api/admin/dashboard?email=${encodeURIComponent(userEmail)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const result = await res.json();
       setData(result);
@@ -3337,7 +3495,7 @@ function FirstLoginTour({user,onComplete}){
           <button onClick={()=>{
             const email=(user?.email||"").toLowerCase();
             const hamId=resolveHamId(email);
-            window.open(`https://abacia-services.onrender.com/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
+            window.open(`${ABABASE}/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
           }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#10B981,#059669)",color:"white",cursor:"pointer",fontSize:14,fontWeight:600,marginTop:16,boxShadow:"0 4px 20px rgba(16,185,129,.3)"}}>
             <Mail size={18}/>Connect Email with Google
           </button>
@@ -3725,6 +3883,7 @@ function ApproveView({userId,onAction}){
   const[velocityData,setVelocityData]=useState(null);
   const[velocityLoading,setVelocityLoading]=useState(false);
   const[showVelocity,setShowVelocity]=useState(false);
+  const[categoryFilter,setCategoryFilter]=useState(null); // ⬡B:AUDRA.W12:FIX:category_filter_state:20260403⬡
   
   // Fetch pending approvals from v2 endpoint
   useEffect(()=>{
@@ -3740,7 +3899,9 @@ function ApproveView({userId,onAction}){
     })();
   },[userId]);
   
-  const currentItem=items[currentIndex];
+  // ⬡B:AUDRA.W12:FIX:filtered_items:20260403⬡
+  const filteredItems = categoryFilter ? items.filter(it=>(it.type||"other")===categoryFilter) : items;
+  const currentItem=filteredItems[currentIndex];
   
   const handleSwipe=(direction)=>{
     if(!currentItem)return;
@@ -3758,7 +3919,7 @@ function ApproveView({userId,onAction}){
     setTimeout(()=>{
       setSwipeDir(null);
       setTouchDelta(0);
-      if(currentIndex<items.length-1){
+      if(currentIndex<filteredItems.length-1){
         setCurrentIndex(currentIndex+1);
       }else{
         setItems([]);
@@ -3787,7 +3948,7 @@ function ApproveView({userId,onAction}){
     </div>);
   }
   
-  if(items.length===0||currentIndex>=items.length){
+  if(filteredItems.length===0||currentIndex>=filteredItems.length){
     return(<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20}}>
       <CheckCircle size={56} style={{color:"rgba(16,185,129,.6)"}}/>
       <p style={{color:"rgba(255,255,255,.7)",fontSize:16,fontWeight:600}}>All caught up!</p>
@@ -3795,7 +3956,7 @@ function ApproveView({userId,onAction}){
       <button disabled={velocityLoading} onClick={async()=>{
         setVelocityLoading(true);
         try{
-          const r=await fetch(`https://abacia-services.onrender.com/api/awa/decisions/analysis?userId=${encodeURIComponent(userId)}`);
+          const r=await fetch(`${ABABASE}/api/awa/decisions/analysis?userId=${encodeURIComponent(userId)}`);
           const d=await r.json();if(d.success)setVelocityData(d);
         }catch(e){console.error("[VELOCITY]",e)}
         setVelocityLoading(false);setShowVelocity(true);
@@ -3840,13 +4001,21 @@ function ApproveView({userId,onAction}){
   };
   
   return(<div style={{flex:1,display:"flex",flexDirection:"column",padding:"8px 4px"}}>
+    {/* ⬡B:AUDRA.W12:FIX:category_filters:20260403⬡ Category filter buttons */}
+    {items.length>1&&<div style={{display:"flex",gap:4,padding:"0 8px",marginBottom:8,flexWrap:"wrap"}}>
+      {["all",...[...new Set(items.map(it=>it.type||"other"))]].map(cat=>{
+        const count=cat==="all"?items.length:items.filter(it=>(it.type||"other")===cat).length;
+        const active=!categoryFilter&&cat==="all"||categoryFilter===cat;
+        return <button key={cat} onClick={()=>setCategoryFilter(cat==="all"?null:cat)} style={{padding:"5px 10px",borderRadius:8,border:"none",cursor:"pointer",fontSize:10,fontWeight:active?600:400,background:active?"rgba(139,92,246,.2)":"rgba(255,255,255,.04)",color:active?"#a78bfa":"rgba(255,255,255,.4)",textTransform:"capitalize"}}>{cat} ({count})</button>;
+      })}
+    </div>}
     {/* Progress */}
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,padding:"0 8px"}}>
-      <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{currentIndex+1} of {items.length}</span>
+      <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{currentIndex+1} of {filteredItems.length}</span>
       <div style={{flex:1,margin:"0 12px",height:3,background:"rgba(255,255,255,.1)",borderRadius:99}}>
-        <div style={{width:`${((currentIndex+1)/items.length)*100}%`,height:"100%",background:"rgba(139,92,246,.6)",borderRadius:99,transition:"width .3s"}}/>
+        <div style={{width:`${((currentIndex+1)/filteredItems.length)*100}%`,height:"100%",background:"rgba(139,92,246,.6)",borderRadius:99,transition:"width .3s"}}/>
       </div>
-      <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{items.length-currentIndex-1} left</span>
+      <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{filteredItems.length-currentIndex-1} left</span>
     </div>
     
     {/* Swipe hints */}
@@ -3915,14 +4084,9 @@ function MemosView({userId}){
   const[composeForm,setComposeForm]=useState({to:"",subject:"",body:"",priority:"normal"});
   const[sending,setSending]=useState(false);
 
-  const TEAM=[
-    {id:"brandon",name:"Brandon",email:"brandonjpiercesr@gmail.com"},
-    {id:"eric",name:"Eric",email:"eric@globalmajoritygroup.com"},
-    {id:"bj",name:"BJ",email:"bj@globalmajoritygroup.com"},
-    {id:"cj",name:"CJ",email:"cj@globalmajoritygroup.com"},
-    {id:"vante",name:"Vante",email:"vante@globalmajoritygroup.com"},
-    {id:"dwayne",name:"Dwayne",email:"dwayne@globalmajoritygroup.com"}
-  ].filter(t=>t.id!==userId&&t.id!==(userId||"").split("@")[0]);
+  // ⬡B:AUDRA.W1:FIX:memos_dynamic_team:20260403⬡ Dynamic team from HAM_TEAM, no hardcoded emails
+  const hamId = (userId||"").split("@")[0];
+  const TEAM = HAM_TEAM.map(t => ({id: t.ham_id||t.id, name: t.name||t.ham_id, email: t.email||""})).filter(t => t.id !== hamId && t.id !== userId);
 
   const loadMemos=async(type)=>{
     setLoading(true);
@@ -4088,7 +4252,7 @@ function ReferencesView({userId}){
   
   const loadRefs=async()=>{
     try{
-      const res=await fetch(`https://abacia-services.onrender.com/api/awa/references?userId=${encodeURIComponent(userId)}`);
+      const res=await fetch(`${ABABASE}/api/awa/references?userId=${encodeURIComponent(userId)}`);
       if(res.ok){
         const data=await res.json();
         setRefs(data.references||[]);
@@ -4101,8 +4265,8 @@ function ReferencesView({userId}){
     setSaving(true);
     try{
       const method=editing?"PUT":"POST";
-      const url=editing?`https://abacia-services.onrender.com/api/awa/references/${editing}`:
-        "https://abacia-services.onrender.com/api/awa/references";
+      const url=editing?`${ABABASE}/api/awa/references/${editing}`:
+        `${ABABASE}/api/awa/references`;
       const res=await fetch(url,{
         method,
         headers:{"Content-Type":"application/json"},
@@ -4121,7 +4285,7 @@ function ReferencesView({userId}){
   const deleteRef=async(id)=>{
     if(!confirm("Delete this reference?"))return;
     try{
-      await fetch(`https://abacia-services.onrender.com/api/awa/references/${id}`,{
+      await fetch(`${ABABASE}/api/awa/references/${id}`,{
         method:"DELETE",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({userId})
@@ -4215,6 +4379,106 @@ function ReferencesView({userId}){
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ⬡B:AUDRA:FIX7:MOCK_INTERVIEW_VARA:20260402⬡
+// MOCK INTERVIEW VARA — Voice-based mock interview using ElevenLabs
+// Uses same VARA agent as TalkToABA but preloads with job-specific context
+// ═══════════════════════════════════════════════════════════════════════════
+function MockInterviewVARA({job, userId, onClose}){
+  const[orbState,setOrbState]=useState("idle");
+  const[statusText,setStatusText]=useState("Tap to start voice interview");
+  const[transcript,setTranscript]=useState([]);
+  const[errorMsg,setErrorMsg]=useState("");
+  const thinkTimerRef=useRef(null);
+  const currentMsgRef=useRef("");
+
+  const conversation=useConversation({
+    onConnect:()=>{setOrbState("listening");setStatusText("Listening... answer the question")},
+    onDisconnect:()=>{setOrbState("idle");setStatusText("Interview ended")},
+    onError:(msg)=>{setOrbState("error");setErrorMsg(String(msg));setStatusText("Error. Tap to retry.")},
+    onMessage:({message,source})=>{
+      if(source==="user"){
+        if(currentMsgRef.current){setTranscript(p=>[...p,{from:"vara",text:currentMsgRef.current}]);currentMsgRef.current=""}
+        setOrbState("thinking");setStatusText("VARA is thinking...")
+      }
+      if(source==="ai"){currentMsgRef.current+=message}
+    },
+    onModeChange:({mode})=>{
+      clearTimeout(thinkTimerRef.current);
+      if(mode==="speaking"){setOrbState("speaking");setStatusText("VARA is asking a question...")}
+      else{
+        if(currentMsgRef.current){setTranscript(p=>[...p,{from:"vara",text:currentMsgRef.current}]);currentMsgRef.current=""}
+        thinkTimerRef.current=setTimeout(()=>{setOrbState("listening");setStatusText("Your turn — answer the question")},200)
+      }
+    }
+  });
+
+  const handleTap=useCallback(async()=>{
+    if(orbState==="error"){setOrbState("idle");setStatusText("Tap to start voice interview");setErrorMsg("");return}
+    if(conversation.status==="connected"){await conversation.endSession();return}
+    try{
+      setOrbState("connecting");setStatusText("Requesting microphone...");
+      await navigator.mediaDevices.getUserMedia({audio:true});
+      setStatusText("Connecting to VARA...");
+      // Preload VARA with mock interview context
+      try{
+        await fetch(ABABASE+"/vara/preload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+          userId,conversation_id:"mock_interview_"+Date.now(),
+          mode:"mock_interview",
+          jobTitle:job?.job_title||job?.title||"",
+          jobOrg:job?.organization||job?.company||"",
+          jobDescription:job?.description||"",
+          instructions:"You are conducting a mock interview. Ask one question at a time. After the candidate answers, give brief feedback and a score out of 10, then ask the next question. Start with a warm greeting and your first question."
+        })})
+      }catch(pe){console.log("[MOCK] Preload failed (non-fatal):",pe.message)}
+      await conversation.startSession({agentId:"agent_0601khe2q0gben08ws34bzf7a0sa",connectionType:"webrtc"});
+    }catch(err){
+      setOrbState("error");setErrorMsg(err.message||"Failed to connect");
+      setStatusText(err.name==="NotAllowedError"?"Microphone access denied.":"Connection failed. Tap to retry.");
+    }
+  },[conversation,orbState,job,userId]);
+
+  const colors={idle:"6,182,212",connecting:"245,158,11",listening:"139,92,246",thinking:"245,158,11",speaking:"16,185,129",error:"239,68,68"};
+  const c=colors[orbState]||colors.idle;
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:1000,display:"flex",flexDirection:"column",alignItems:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget&&conversation.status!=="connected")onClose()}}>
+      <div style={{width:"100%",maxWidth:400,display:"flex",flexDirection:"column",alignItems:"center",gap:16}}>
+        {/* Header */}
+        <div style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <p style={{color:"#22D3EE",fontSize:14,fontWeight:700,margin:0}}>Mock Interview</p>
+            <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"2px 0 0"}}>{job?.job_title||job?.title} at {job?.organization||job?.company}</p>
+          </div>
+          <button onClick={async()=>{if(conversation.status==="connected")await conversation.endSession();onClose()}} style={{background:"rgba(255,255,255,.05)",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:18,width:32,height:32,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+        </div>
+
+        {/* Orb */}
+        <div onClick={handleTap} style={{width:140,height:140,borderRadius:"50%",background:`radial-gradient(circle at 40% 40%, rgba(${c},.4), rgba(${c},.1))`,border:`2px solid rgba(${c},.4)`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all .3s",boxShadow:`0 0 ${orbState==="speaking"?40:orbState==="listening"?20:10}px rgba(${c},.3)`}}>
+          <span style={{fontSize:11,color:`rgba(${c},1)`,fontWeight:600,textAlign:"center",padding:10}}>{orbState==="idle"?"TAP TO\nSTART":orbState==="connecting"?"...":orbState==="listening"?"LISTENING":orbState==="thinking"?"THINKING":orbState==="speaking"?"SPEAKING":"ERROR"}</span>
+        </div>
+        <p style={{color:"rgba(255,255,255,.5)",fontSize:11,textAlign:"center"}}>{statusText}</p>
+        {errorMsg&&<p style={{color:"rgba(239,68,68,.7)",fontSize:10,textAlign:"center"}}>{errorMsg}</p>}
+
+        {/* Transcript */}
+        <div style={{width:"100%",maxHeight:300,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
+          {transcript.map((t,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:t.from==="vara"?"flex-start":"flex-end"}}>
+              <div style={{maxWidth:"85%",padding:"8px 12px",borderRadius:t.from==="vara"?"12px 12px 12px 4px":"12px 12px 4px 12px",
+                background:t.from==="vara"?"rgba(6,182,212,.15)":"rgba(139,92,246,.2)",
+                color:t.from==="vara"?"rgba(6,182,212,.9)":"rgba(255,255,255,.85)",fontSize:12,lineHeight:1.4}}>
+                {t.text}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {conversation.status==="connected"&&<button onClick={async()=>{await conversation.endSession()}} style={{padding:"10px 20px",borderRadius:8,border:"none",background:"rgba(239,68,68,.2)",color:"rgba(239,68,68,.8)",cursor:"pointer",fontSize:12,fontWeight:600}}>End Interview</button>}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // AWA JOBS VIEW - Apply With ABA job listings
 // ═══════════════════════════════════════════════════════════════════════════
 function JobsView({userId}){
@@ -4240,7 +4504,7 @@ function JobsView({userId}){
   const[jobRefs,setJobRefs]=useState([]);
   const[applyPreview,setApplyPreview]=useState(null);
   const[applyLoading,setApplyLoading]=useState(false);
-  const[interviewForm,setInterviewForm]=useState(null); // {jobId, date, name, notes}
+  const[interviewChat,setInterviewChat]=useState(null); // {jobId, step, date, name, notes, messages}
   const[offerForm,setOfferForm]=useState(null); // {jobId, salary, deadline, details}
   const[prepData,setPrepData]=useState(null); // interview prep package
   const[prepLoading,setPrepLoading]=useState(false);
@@ -4250,6 +4514,7 @@ function JobsView({userId}){
   const[mockEval,setMockEval]=useState(null); // evaluation result
   const[mockHistory,setMockHistory]=useState([]); // past questions
   const[mockLoading,setMockLoading]=useState(false);
+  const[varaInterview,setVaraInterview]=useState(null); // job object when VARA mock interview is active
   const[unmatchedJobs,setUnmatchedJobs]=useState([]);
   const[assigningJob,setAssigningJob]=useState(null); // job being assigned
   
@@ -4354,7 +4619,7 @@ function JobsView({userId}){
     try{
       const assignee=(selectedJob.assignees||[])[0]||selectedJob.assignee||"unmatched";
       const endpoint = type==="cover" ? "cover-letter" : type==="resume" ? "resume" : "writing-sample";
-      const res=await fetch(`https://abacia-services.onrender.com/api/awa/${endpoint}`,{
+      const res=await fetch(`${ABABASE}/api/awa/${endpoint}`,{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({job:selectedJob,userId:assignee.toLowerCase().replace(" ","_")})
       });
@@ -4430,7 +4695,7 @@ function JobsView({userId}){
           const DISPLAY_NAMES={"brandon":"Brandon","eric":"Eric","bj":"BJ","cj":"CJ","vante":"Vante","dwayne":"Dwayne","gmg":"GMG"};
           const assigneeDisplay=DISPLAY_NAMES[assignee]||assignee;
           return(
-          <div key={job.id} onClick={()=>{setSelectedJob(job);setApplyPreview(null);setInterviewForm(null);setOfferForm(null);setShowRefs(false);setPrepData(null);setMockMode(false);setMockQuestion(null);setMockEval(null);}} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
+          <div key={job.id} onClick={()=>{setSelectedJob(job);setApplyPreview(null);setInterviewChat(null);setOfferForm(null);setShowRefs(false);setMockMode(false);setMockQuestion(null);setMockEval(null);}} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
               <p style={{color:"rgba(255,255,255,.9)",fontSize:13,fontWeight:600,margin:0,lineHeight:1.3}}>{title}</p>
               {job.remote&&<span style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:"rgba(16,185,129,.15)",color:"#10B981",flexShrink:0}}>Remote</span>}
@@ -4642,7 +4907,7 @@ function JobsView({userId}){
             const newStatus=e.target.value;if(!newStatus)return;
             // Show interview form instead of immediately updating
             if(newStatus==="INTERVIEW_SCHEDULED"){
-              setInterviewForm({jobId:selectedJob.id,date:"",name:"",notes:""});
+              setInterviewChat({jobId:selectedJob.id,step:"date",date:"",name:"",notes:"",messages:[{from:"aba",text:"Got it, scheduling an interview. When is it?"}]});
               return;
             }
             // Show offer form
@@ -4665,35 +4930,77 @@ function JobsView({userId}){
           </select>
         </div>
         
-        {/* Interview scheduling form - appears when user selects INTERVIEW_SCHEDULED */}
-        {interviewForm&&interviewForm.jobId===selectedJob.id&&(
-        <div style={{padding:12,borderRadius:10,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.2)",marginBottom:8}}>
-          <p style={{color:"#FBBF24",fontSize:12,fontWeight:600,margin:"0 0 8px"}}>Schedule Interview</p>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            <input type="datetime-local" value={interviewForm.date} onChange={e=>setInterviewForm(prev=>({...prev,date:e.target.value}))} style={{padding:"8px 10px",borderRadius:6,border:"1px solid rgba(245,158,11,.2)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}/>
-            <input placeholder="Interviewer name" value={interviewForm.name} onChange={e=>setInterviewForm(prev=>({...prev,name:e.target.value}))} style={{padding:"8px 10px",borderRadius:6,border:"1px solid rgba(255,255,255,.1)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}/>
-            <input placeholder="Notes (optional)" value={interviewForm.notes} onChange={e=>setInterviewForm(prev=>({...prev,notes:e.target.value}))} style={{padding:"8px 10px",borderRadius:6,border:"1px solid rgba(255,255,255,.1)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}/>
+        {/* ⬡B:AUDRA:CIP_CONVERSATIONAL_INTERVIEW:20260402⬡ Conversational Interview Tracking */}
+        {interviewChat&&interviewChat.jobId===selectedJob.id&&(
+        <div style={{padding:12,borderRadius:12,background:"rgba(0,0,0,.3)",border:"1px solid rgba(245,158,11,.15)",marginBottom:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <p style={{color:"#FBBF24",fontSize:13,fontWeight:600,margin:0}}>Interview Tracking</p>
+            <button onClick={()=>setInterviewChat(null)} style={{background:"none",border:"none",color:"rgba(255,255,255,.4)",cursor:"pointer",fontSize:16}}>×</button>
           </div>
-          <div style={{display:"flex",gap:6,marginTop:8}}>
-            <button onClick={async()=>{
-              try{
-                const assignee=(selectedJob.assignees||[])[0]||"unmatched";
-                const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:"INTERVIEW_SCHEDULED",interviewDate:interviewForm.date||null,interviewerName:interviewForm.name||null,notes:interviewForm.notes||null})});
-                const d=await r.json();
-                if(d.success){
-                  setSelectedJob(prev=>({...prev,status:"INTERVIEW_SCHEDULED",interview_date:interviewForm.date,interviewer_name:interviewForm.name,interview_notes:interviewForm.notes}));
+          <div style={{maxHeight:200,overflowY:"auto",marginBottom:8}}>
+            {(interviewChat.messages||[]).map((m,mi)=>(
+              <div key={mi} style={{display:"flex",justifyContent:m.from==="aba"?"flex-start":"flex-end",marginBottom:6}}>
+                <div style={{maxWidth:"80%",padding:"8px 12px",borderRadius:m.from==="aba"?"12px 12px 12px 4px":"12px 12px 4px 12px",
+                  background:m.from==="aba"?"rgba(245,158,11,.1)":"rgba(139,92,246,.2)",
+                  color:m.from==="aba"?"#FBBF24":"rgba(255,255,255,.9)",fontSize:12,lineHeight:1.4}}>
+                  {m.text}
+                </div>
+              </div>
+            ))}
+          </div>
+          {interviewChat.step==="date"&&(
+            <div style={{display:"flex",gap:6}}>
+              <input type="datetime-local" id="iv-date-cip" style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid rgba(245,158,11,.2)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}/>
+              <button onClick={()=>{
+                const v=document.getElementById("iv-date-cip").value;
+                if(!v) return;
+                setInterviewChat(p=>({...p,date:v,step:"who",
+                  messages:[...p.messages,{from:"you",text:new Date(v).toLocaleString()},{from:"aba",text:"Nice. Who will you be meeting with?"}]}));
+              }} style={{padding:"8px 14px",borderRadius:8,border:"none",background:"rgba(245,158,11,.2)",color:"#FBBF24",cursor:"pointer",fontSize:12,fontWeight:600}}>Set</button>
+            </div>
+          )}
+          {interviewChat.step==="who"&&(
+            <div style={{display:"flex",gap:6}}>
+              <input id="iv-who-cip" placeholder="Name(s)" style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}
+                onKeyDown={e=>{if(e.key==="Enter"){const v=e.target.value.trim();if(!v)return;
+                  setInterviewChat(p=>({...p,name:v,step:"notes",
+                    messages:[...p.messages,{from:"you",text:v},{from:"aba",text:"Got it. Any notes or things you want to remember? (or hit Skip)"}]}));}}}/>
+              <button onClick={()=>{
+                const v=document.getElementById("iv-who-cip").value.trim();
+                if(!v) return;
+                setInterviewChat(p=>({...p,name:v,step:"notes",
+                  messages:[...p.messages,{from:"you",text:v},{from:"aba",text:"Got it. Any notes or things you want to remember? (or hit Skip)"}]}));
+              }} style={{padding:"8px 14px",borderRadius:8,border:"none",background:"rgba(245,158,11,.2)",color:"#FBBF24",cursor:"pointer",fontSize:12,fontWeight:600}}>Send</button>
+            </div>
+          )}
+          {interviewChat.step==="notes"&&(
+            <div style={{display:"flex",gap:6}}>
+              <input id="iv-notes-cip" placeholder="Notes..." style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"rgba(0,0,0,.3)",color:"rgba(255,255,255,.8)",fontSize:12}}
+                onKeyDown={async e=>{if(e.key==="Enter"){const v=e.target.value.trim();
+                  setInterviewChat(p=>({...p,notes:v,step:"done",messages:[...p.messages,{from:"you",text:v||"(none)"},{from:"aba",text:"All set. Saving..."}]}));
+                  try{
+                    const assignee=(selectedJob.assignees||[])[0]||"unmatched";
+                    await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:"INTERVIEW_SCHEDULED",interviewDate:interviewChat.date||null,interviewerName:interviewChat.name||null,notes:v||null})});
+                    setSelectedJob(prev=>({...prev,status:"INTERVIEW_SCHEDULED",interview_date:interviewChat.date,interviewer_name:interviewChat.name,interview_notes:v}));
+                    setJobs(prev=>prev.map(j=>j.id===selectedJob.id?{...j,status:"INTERVIEW_SCHEDULED"}:j));
+                  }catch(e2){console.error("[AWA] Interview save:",e2)}
+                  setTimeout(()=>{setInterviewChat(p=>({...p,step:"saved",messages:[...p.messages.filter(m=>m.text!=="All set. Saving..."),{from:"aba",text:"Interview tracked. You got this."}]}));},800);
+                }}}/>
+              <button onClick={async()=>{
+                setInterviewChat(p=>({...p,notes:"",step:"done",messages:[...p.messages,{from:"you",text:"(skipped)"},{from:"aba",text:"All set. Saving..."}]}));
+                try{
+                  const assignee=(selectedJob.assignees||[])[0]||"unmatched";
+                  await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:"INTERVIEW_SCHEDULED",interviewDate:interviewChat.date||null,interviewerName:interviewChat.name||null,notes:null})});
+                  setSelectedJob(prev=>({...prev,status:"INTERVIEW_SCHEDULED",interview_date:interviewChat.date,interviewer_name:interviewChat.name}));
                   setJobs(prev=>prev.map(j=>j.id===selectedJob.id?{...j,status:"INTERVIEW_SCHEDULED"}:j));
-                  setInterviewForm(null);
-                  setOutput(d.message);
-                }
-              }catch(e){setOutput("Interview schedule error: "+e.message)}
-            }} style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(245,158,11,.25)",color:"#FBBF24",fontSize:12,fontWeight:600}}>
-              Confirm Interview
-            </button>
-            <button onClick={()=>setInterviewForm(null)} style={{padding:"10px 16px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",cursor:"pointer",background:"transparent",color:"rgba(255,255,255,.4)",fontSize:12}}>
-              Cancel
-            </button>
-          </div>
+                }catch(e2){console.error("[AWA] Interview save:",e2)}
+                setTimeout(()=>{setInterviewChat(p=>({...p,step:"saved",messages:[...p.messages.filter(m=>m.text!=="All set. Saving..."),{from:"aba",text:"Interview tracked. You got this."}]}));},800);
+              }} style={{padding:"8px 14px",borderRadius:8,border:"none",background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.4)",cursor:"pointer",fontSize:12}}>Skip</button>
+            </div>
+          )}
+          {interviewChat.step==="saved"&&(
+            <button onClick={()=>setInterviewChat(null)} style={{width:"100%",padding:10,borderRadius:8,border:"none",background:"rgba(245,158,11,.15)",color:"#FBBF24",cursor:"pointer",fontSize:12,fontWeight:600}}>Done</button>
+          )}
         </div>
         )}
         
@@ -4730,11 +5037,11 @@ function JobsView({userId}){
         )}
         
         {/* ⬡B:AWA.v4:interview_details_display:20260319⬡ */}
-        {!interviewForm&&(selectedJob.status==="INTERVIEW_SCHEDULED"||selectedJob.interview_date)&&(
+        {!interviewChat&&(selectedJob.status==="INTERVIEW_SCHEDULED"||selectedJob.interview_date)&&(
         <div style={{padding:10,borderRadius:8,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.15)",marginBottom:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <p style={{color:"#FBBF24",fontSize:11,fontWeight:600,margin:0}}>Interview Details</p>
-            <button onClick={()=>setInterviewForm({jobId:selectedJob.id,date:selectedJob.interview_date||"",name:selectedJob.interviewer_name||"",notes:selectedJob.interview_notes||""})} style={{background:"none",border:"none",color:"rgba(245,158,11,.5)",cursor:"pointer",fontSize:10}}>Edit</button>
+            <button onClick={()=>setInterviewChat({jobId:selectedJob.id,step:"date",date:selectedJob.interview_date||"",name:selectedJob.interviewer_name||"",notes:selectedJob.interview_notes||"",messages:[{from:"aba",text:"Updating interview details. When is it now?"}]})} style={{background:"none",border:"none",color:"rgba(245,158,11,.5)",cursor:"pointer",fontSize:10}}>Edit</button>
           </div>
           {selectedJob.interview_date&&<p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"4px 0 2px"}}>Date: {new Date(selectedJob.interview_date).toLocaleString()}</p>}
           {selectedJob.interviewer_name&&<p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:"2px 0"}}>With: {selectedJob.interviewer_name}</p>}
@@ -4751,7 +5058,7 @@ function JobsView({userId}){
               const assignee=(selectedJob.assignees||[])[0]||"unmatched";
               const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/interview-prep`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee})});
               const d=await r.json();
-              if(d.success)setPrepData(d.prep);
+              if(d.success)setPrepData({...d.prep, _jobTitle: selectedJob.job_title||selectedJob.title, _jobOrg: selectedJob.organization||selectedJob.company});
               else setOutput("Prep failed: "+(d.error||"Unknown"));
             }catch(e){setOutput("Prep error: "+e.message)}
             setPrepLoading(false);
@@ -4759,24 +5066,16 @@ function JobsView({userId}){
             {prepLoading?"Generating...":"Interview Prep"}
           </button>
           <button onClick={()=>{setMockMode(true);setMockQuestion(null);setMockAnswer("");setMockEval(null);setMockHistory([])}} style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(6,182,212,.2)",color:"#22D3EE",fontSize:11,fontWeight:600}}>
-            Practice Interview
+            Practice (Text)
+          </button>
+          <button onClick={()=>setVaraInterview(selectedJob)} style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(236,72,153,.2)",color:"#F472B6",fontSize:11,fontWeight:600}}>
+            Voice Interview
           </button>
         </div>
         )}
         
-        {/* Interview Prep Results */}
-        {prepData&&!mockMode&&(
-        <div style={{padding:10,borderRadius:8,background:"rgba(245,158,11,.05)",border:"1px solid rgba(245,158,11,.1)",marginBottom:8,maxHeight:300,overflowY:"auto"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-            <span style={{color:"#FBBF24",fontSize:11,fontWeight:600}}>Interview Prep</span>
-            <button onClick={()=>setPrepData(null)} style={{background:"none",border:"none",color:"rgba(255,255,255,.3)",cursor:"pointer",fontSize:14}}>x</button>
-          </div>
-          {prepData.roleAnalysis&&<div style={{marginBottom:6}}><p style={{color:"rgba(255,255,255,.5)",fontSize:9,margin:"0 0 2px"}}>WHAT THEY WANT</p><p style={{color:"rgba(255,255,255,.7)",fontSize:11,margin:0}}>{prepData.roleAnalysis}</p></div>}
-          {prepData.talkingPoints&&<div style={{marginBottom:6}}><p style={{color:"rgba(255,255,255,.5)",fontSize:9,margin:"0 0 2px"}}>YOUR TALKING POINTS</p>{(Array.isArray(prepData.talkingPoints)?prepData.talkingPoints:[]).map((tp,i)=><p key={i} style={{color:"rgba(255,255,255,.6)",fontSize:10,margin:"2px 0"}}>• {tp}</p>)}</div>}
-          {prepData.commonQuestions&&<div style={{marginBottom:6}}><p style={{color:"rgba(255,255,255,.5)",fontSize:9,margin:"0 0 2px"}}>LIKELY QUESTIONS</p>{(Array.isArray(prepData.commonQuestions)?prepData.commonQuestions:[]).map((q,i)=><p key={i} style={{color:"rgba(255,255,255,.6)",fontSize:10,margin:"2px 0"}}>{i+1}. {q}</p>)}</div>}
-          {prepData.questionsToAsk&&<div><p style={{color:"rgba(255,255,255,.5)",fontSize:9,margin:"0 0 2px"}}>ASK THEM</p>{(Array.isArray(prepData.questionsToAsk)?prepData.questionsToAsk:[]).map((q,i)=><p key={i} style={{color:"#22D3EE",fontSize:10,margin:"2px 0"}}>• {q}</p>)}</div>}
-        </div>
-        )}
+        {/* Interview Prep Results — rendered as modal overlay so it persists */}
+        {/* (actual modal is rendered outside the detail panel below) */}
         
         {/* Mock Interview Mode */}
         {mockMode&&(
@@ -4918,6 +5217,31 @@ function JobsView({userId}){
     <div style={{padding:"8px 0 0",borderTop:"1px solid rgba(255,255,255,.05)",marginTop:8}}>
       <p style={{color:"rgba(255,255,255,.3)",fontSize:10,textAlign:"center",margin:0}}>{filtered.length} of {jobs.length} jobs • AWA powered by ABA</p>
     </div>
+    
+    {/* ⬡B:AUDRA:FIX6:interview_prep_modal:20260402⬡ Fixed overlay modal for interview prep — persists across job switches */}
+    {prepData&&!mockMode&&(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={e=>{if(e.target===e.currentTarget)return}}>
+      <div style={{width:"100%",maxWidth:440,maxHeight:"80vh",overflowY:"auto",background:"rgba(20,20,30,.98)",borderRadius:16,border:"1px solid rgba(245,158,11,.2)",padding:20,boxShadow:"0 20px 60px rgba(0,0,0,.5)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div>
+            <span style={{color:"#FBBF24",fontSize:13,fontWeight:700}}>Interview Prep</span>
+            {prepData._jobTitle&&<p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"2px 0 0"}}>{prepData._jobTitle} {prepData._jobOrg?`at ${prepData._jobOrg}`:""}</p>}
+          </div>
+          <button onClick={()=>setPrepData(null)} style={{background:"rgba(255,255,255,.05)",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:18,width:28,height:28,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+        </div>
+        {prepData.roleAnalysis&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(245,158,11,.06)"}}><p style={{color:"rgba(245,158,11,.7)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>What They Want</p><p style={{color:"rgba(255,255,255,.75)",fontSize:12,margin:0,lineHeight:1.5}}>{typeof prepData.roleAnalysis==="object"?prepData.roleAnalysis.summary||JSON.stringify(prepData.roleAnalysis):prepData.roleAnalysis}</p></div>}
+        {prepData.talkingPoints&&Array.isArray(prepData.talkingPoints)&&prepData.talkingPoints.length>0&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(139,92,246,.06)"}}><p style={{color:"rgba(139,92,246,.7)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Your Talking Points</p>{prepData.talkingPoints.map((tp,i)=><p key={i} style={{color:"rgba(255,255,255,.65)",fontSize:11,margin:"3px 0",lineHeight:1.4}}>• {typeof tp==="object"?(tp.point||"")+" "+(tp.detail||""):tp}</p>)}</div>}
+        {prepData.commonQuestions&&Array.isArray(prepData.commonQuestions)&&prepData.commonQuestions.length>0&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(59,130,246,.06)"}}><p style={{color:"rgba(96,165,250,.8)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Likely Questions</p>{prepData.commonQuestions.map((q,i)=><p key={i} style={{color:"rgba(255,255,255,.65)",fontSize:11,margin:"3px 0",lineHeight:1.4}}>{i+1}. {typeof q==="object"?(q.question||"")+(q.tip?(" (Tip: "+q.tip+")"):""):q}</p>)}</div>}
+        {prepData.questionsToAsk&&Array.isArray(prepData.questionsToAsk)&&prepData.questionsToAsk.length>0&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(6,182,212,.06)"}}><p style={{color:"rgba(34,211,238,.7)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Ask Them</p>{prepData.questionsToAsk.map((q,i)=><p key={i} style={{color:"#22D3EE",fontSize:11,margin:"3px 0",lineHeight:1.4}}>• {typeof q==="object"?(q.question||""):q}</p>)}</div>}
+        {prepData.redFlags&&Array.isArray(prepData.redFlags)&&prepData.redFlags.length>0&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(239,68,68,.06)"}}><p style={{color:"rgba(239,68,68,.7)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Watch For</p>{prepData.redFlags.map((rf,i)=><p key={i} style={{color:"rgba(239,68,68,.6)",fontSize:11,margin:"3px 0",lineHeight:1.4}}>• {typeof rf==="object"?(rf.flag||"")+" "+(rf.detail||""):rf}</p>)}</div>}
+        {prepData.dresscode&&<div style={{padding:10,borderRadius:8,background:"rgba(255,255,255,.03)"}}><p style={{color:"rgba(255,255,255,.4)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Dress Code</p><p style={{color:"rgba(255,255,255,.6)",fontSize:11,margin:0}}>{typeof prepData.dresscode==="object"?(prepData.dresscode.recommendation||"")+" "+(prepData.dresscode.details||""):prepData.dresscode}</p></div>}
+        <button onClick={()=>setPrepData(null)} style={{width:"100%",marginTop:12,padding:10,borderRadius:8,border:"none",background:"rgba(245,158,11,.15)",color:"#FBBF24",cursor:"pointer",fontSize:12,fontWeight:600}}>Close Prep</button>
+      </div>
+    </div>
+    )}
+    
+    {/* ⬡B:AUDRA:FIX7:vara_mock_interview_render:20260402⬡ */}
+    {varaInterview&&<MockInterviewVARA job={varaInterview} userId={userId} onClose={()=>setVaraInterview(null)}/>}
   </div>);
 }
 
@@ -5581,7 +5905,7 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
         // Map email to ham_id for Nylas OAuth
         const email=(user?.email||"").toLowerCase();
         const hamId=resolveHamId(email);
-        window.open(`https://abacia-services.onrender.com/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
+        window.open(`${ABABASE}/api/nylas/connect?ham_id=${encodeURIComponent(hamId)}`,"_blank");
       }} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"14px 16px",borderRadius:14,border:"1px solid rgba(16,185,129,.2)",background:"rgba(16,185,129,.06)",color:"rgba(16,185,129,.8)",cursor:"pointer",fontSize:14,fontWeight:600,marginBottom:8}}>
         <Mail size={18}/>Connect Email
       </button>
@@ -5608,7 +5932,8 @@ function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,use
 // ═══════════════════════════════════════════════════════════════════════════
 // MYABA — v1.1.3-P1: All Phase 1 fixes applied
 // ═══════════════════════════════════════════════════════════════════════════
-export default function MyABA(){
+// ⬡B:AUDRA.C4:FIX:wrap_errorboundary:20260403⬡ Wrapped in ErrorBoundary
+function MyABAInner(){
   const[user,setUser]=useState(null);const[authLoading,setAuthLoading]=useState(true);
   const[convos,setConvos]=useState([]);const[activeId,setActiveId]=useState(null);
   const activeConv=convos.find(c=>c.id===activeId);const messages=activeConv?.messages||[];
@@ -5660,9 +5985,10 @@ export default function MyABA(){
   // ⬡B:snap.quick_question:STATE:20260317⬡
   const[snapOpen,setSnapOpen]=useState(false);
   const[proactiveTip,setProactiveTip]=useState(null);
+  // ⬡B:AUDRA.C2:FIX:alerts_via_backend:20260403⬡ Routed through backend per 90/10 rule
   useEffect(()=>{
-    fetch("https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory?tags=cs.%7Bhunch%7D&tags=cs.%7Bunread%7D&order=created_at.desc&limit=1",{headers:{apikey:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw"}})
-      .then(r=>r.json()).then(d=>{if(d&&d[0]){try{const c=JSON.parse(d[0].content);setProactiveTip(c.hint||c.message||null)}catch{}}}).catch(()=>{});
+    fetch(`${ABABASE}/api/alerts/hunch`)
+      .then(r=>r.json()).then(d=>{const arr=d.alerts||d||[];if(arr&&arr[0]){try{const c=typeof arr[0].content==="string"?JSON.parse(arr[0].content):arr[0].content;setProactiveTip(c.hint||c.message||null)}catch{}}}).catch(()=>{});
   },[]);
   const[captionText,setCaptionText]=useState("");const[captionVisible,setCaptionVisible]=useState(false);
   const[editorDoc,setEditorDoc]=useState(null); // {content, type} for MobileDocEditor from Jobs
@@ -6651,3 +6977,6 @@ export default function MyABA(){
     {isHAM(user?.email)&&<AdminPanel open={adminPanelOpen} onClose={()=>setAdminPanelOpen(false)} lastResponse={lastABAResponse}/>}
     {toast&&<Toast message={toast.message} type={toast.type} onClose={()=>setToast(null)}/>}
   </div>)}
+
+// ⬡B:AUDRA.C4:FIX:error_boundary_export:20260403⬡
+export default function MyABA(){ return <ErrorBoundary><MyABAInner/></ErrorBoundary> }
