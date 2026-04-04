@@ -1648,40 +1648,51 @@ function MeetingModeView({ userId }) {
       </div>
     </div>
 
-    {/* Panel Tabs */}
-    <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
-      {panels.map(p => <button key={p.id} onClick={()=>setPanel(p.id)} style={panelStyle(p.id)}>
-        {p.Icon&&<p.Icon size={12}/>}{p.label}{p.count>0&&<span style={{fontSize:9,background:panel===p.id?"rgba(6,182,212,.3)":"rgba(255,255,255,.06)",padding:"2px 6px",borderRadius:8,fontWeight:600}}>{p.count}</span>}
-      </button>)}
-    </div>
-
-    {/* Panel Content */}
+    {/* Single scroll — everything visible */}
     <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
-      {panel==="transcript" && (transcript.length===0
-        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><Mic size={36} style={{margin:"0 auto 12px",display:"block",opacity:.2}}/><p style={{fontSize:13,margin:0,fontWeight:300}}>{running?"Listening for speech...":"Tap Start Meeting to begin"}</p></div>
-        : transcript.map((t,i) => <div key={i} style={{padding:"10px 12px",marginBottom:5,borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)",animation:"mf .3s ease",transition:"all 0.2s ease"}}><span style={{color:"rgba(6,182,212,.35)",fontSize:9,fontWeight:600,marginRight:8,fontFamily:"monospace"}}>{t.time}</span><span style={{color:"rgba(255,255,255,.8)",fontSize:12.5,lineHeight:1.6}}>{t.text}</span></div>)
-      )}
-      {panel==="coaching" && (cookAnswers.length===0
-        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><Sparkles size={36} style={{margin:"0 auto 12px",display:"block",opacity:.2}}/><p style={{fontSize:13,margin:0,fontWeight:300}}>COOK's polished answers appear here as the meeting progresses</p><p style={{fontSize:10,color:"rgba(255,255,255,.08)",marginTop:4}}>TIM fires quick cues at the top, COOK delivers substance here</p></div>
-        : cookAnswers.map((a,i) => <div key={i} style={{padding:14,marginBottom:8,borderRadius:14,background:"linear-gradient(135deg, rgba(139,92,246,.06), rgba(139,92,246,.02))",border:"1px solid rgba(139,92,246,.1)",boxShadow:a.streaming?"0 0 15px rgba(139,92,246,.08)":"none",transition:"all 0.3s ease"}}>
-          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+      {/* TRANSCRIPT */}
+      <div style={{marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"0 4px"}}><Mic size={11} style={{color:"rgba(6,182,212,.4)"}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(6,182,212,.4)",letterSpacing:"0.1em"}}>TRANSCRIPT</span>{transcript.length>0&&<span style={{fontSize:9,background:"rgba(6,182,212,.1)",padding:"2px 6px",borderRadius:8,color:"rgba(6,182,212,.5)",fontWeight:600}}>{transcript.length}</span>}</div>
+        {transcript.length===0
+          ? <div style={{textAlign:"center",padding:"30px 16px",color:"rgba(255,255,255,.1)"}}><p style={{fontSize:12,margin:0}}>{running?"Listening...":"Tap Start Meeting"}</p></div>
+          : transcript.slice(-8).map((t,i) => <div key={i} style={{padding:"8px 10px",marginBottom:4,borderRadius:10,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}><span style={{color:"rgba(6,182,212,.3)",fontSize:9,fontWeight:600,marginRight:6,fontFamily:"monospace"}}>{t.time}</span><span style={{color:"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.5}}>{t.text}</span></div>)
+        }
+      </div>
+
+      {/* COOK ANSWERS */}
+      {cookAnswers.length > 0 && <div style={{marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"0 4px"}}><Sparkles size={11} style={{color:"rgba(139,92,246,.4)"}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(139,92,246,.4)",letterSpacing:"0.1em"}}>COACHING</span><span style={{fontSize:9,background:"rgba(139,92,246,.1)",padding:"2px 6px",borderRadius:8,color:"rgba(139,92,246,.5)",fontWeight:600}}>{cookAnswers.length}</span></div>
+        {cookAnswers.map((a,i) => <div key={i} style={{padding:12,marginBottom:6,borderRadius:12,background:"linear-gradient(135deg, rgba(139,92,246,.08), rgba(139,92,246,.02))",border:"1px solid rgba(139,92,246,.12)",boxShadow:a.streaming?"0 0 12px rgba(139,92,246,.08)":"none"}}>
+          <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}>
             <div style={{width:5,height:5,borderRadius:"50%",background:a.streaming?"#a78bfa":"rgba(139,92,246,.3)",...(a.streaming?{animation:"mb 1s infinite"}:{})}}/>
-            <span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",letterSpacing:"1px",textTransform:"uppercase"}}>{a.streaming?"COOK is thinking...":"COOK"}</span>
-            <span style={{fontSize:8,color:"rgba(255,255,255,.15)",marginLeft:"auto"}}>{a.time}</span>
+            <span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.5)",letterSpacing:"0.5px"}}>{a.streaming?"THINKING...":"COOK"}</span>
+            <span style={{fontSize:8,color:"rgba(255,255,255,.12)",marginLeft:"auto"}}>{a.time}</span>
+            {!a.streaming&&<button onClick={()=>navigator.clipboard.writeText(a.text||"")} style={{padding:"2px 6px",borderRadius:4,fontSize:8,background:"rgba(139,92,246,.08)",border:"1px solid rgba(139,92,246,.1)",color:"rgba(139,92,246,.4)",cursor:"pointer"}}>Copy</button>}
           </div>
-          {a.q && <p style={{color:"rgba(139,92,246,.5)",fontSize:10,margin:"0 0 6px",fontStyle:"italic"}}>Re: {a.q}</p>}
-          <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{a.text}</p>
-        </div>)
-      )}
-      {panel==="glossary" && (glossary.length===0
-        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><p style={{fontSize:13,margin:0,fontWeight:300}}>Key terms will appear here as they are mentioned</p></div>
-        : glossary.map((g,i) => <div key={i} style={{padding:10,marginBottom:5,borderRadius:10,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}><span style={{color:"#22d3ee",fontSize:12,fontWeight:600}}>{g.term}</span><p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"3px 0 0",lineHeight:1.5}}>{g.definition}</p></div>)
-      )}
-      {summary && <div style={{padding:16,borderRadius:14,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.12)",marginTop:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><CheckCircle size={14} color="#34d399"/><span style={{fontSize:11,fontWeight:700,color:"#34d399",letterSpacing:"0.5px"}}>Meeting Summary</span></div>
-        <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{summary}</p>
-        <button onClick={()=>navigator.clipboard.writeText(summary||"").catch(()=>{})} style={{marginTop:8,padding:"6px 12px",borderRadius:8,border:"1px solid rgba(52,211,153,.2)",background:"rgba(52,211,153,.06)",color:"rgba(52,211,153,.6)",fontSize:11,cursor:"pointer"}}>Copy</button>
-        <p style={{fontSize:10,color:"rgba(139,92,246,.4)",marginTop:6}}>Action items saved to your task list</p>
+          {a.q && <p style={{color:"rgba(139,92,246,.4)",fontSize:10,margin:"0 0 4px",fontStyle:"italic"}}>Re: {a.q}</p>}
+          <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:0,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{a.text}</p>
+        </div>)}
+      </div>}
+
+      {/* AUTO-CONTEXT */}
+      {autoContext && <div style={{padding:10,borderRadius:10,background:"linear-gradient(135deg, rgba(34,211,238,.05), rgba(34,211,238,.02))",border:"1px solid rgba(34,211,238,.08)",marginBottom:8}}>
+        <div style={{fontSize:9,fontWeight:700,color:"rgba(34,211,238,.5)",marginBottom:4,letterSpacing:"0.1em"}}>AUTO-DETECTED</div>
+        {autoContext.topic&&<p style={{fontSize:12,color:"rgba(255,255,255,.7)",margin:"0 0 2px",fontWeight:600}}>{autoContext.topic}</p>}
+        {autoContext.participants&&<p style={{fontSize:10,color:"rgba(255,255,255,.4)",margin:0}}>{autoContext.participants}</p>}
+        {autoContext.suggested_approach&&<p style={{fontSize:10,color:"rgba(16,185,129,.6)",margin:"4px 0 0",fontStyle:"italic"}}>{autoContext.suggested_approach}</p>}
+      </div>}
+
+      {/* GLOSSARY */}
+      {glossary.length > 0 && <div style={{marginBottom:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,padding:"0 4px"}}><BookOpen size={11} style={{color:"rgba(34,211,238,.4)"}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(34,211,238,.4)",letterSpacing:"0.1em"}}>GLOSSARY</span></div>
+        {glossary.map((g,i) => <div key={i} style={{padding:8,marginBottom:4,borderRadius:8,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}><span style={{color:"#22d3ee",fontSize:11,fontWeight:600}}>{g.term}</span><p style={{color:"rgba(255,255,255,.4)",fontSize:10,margin:"2px 0 0"}}>{g.definition}</p></div>)}
+      </div>}
+
+      {/* SUMMARY */}
+      {summary && <div style={{padding:14,borderRadius:12,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.12)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}><CheckCircle size={12} color="#34d399"/><span style={{fontSize:10,fontWeight:700,color:"#34d399",letterSpacing:"0.5px"}}>SUMMARY</span></div>
+        <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:0,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{summary}</p>
+        <button onClick={()=>navigator.clipboard.writeText(summary||"")} style={{marginTop:6,padding:"5px 10px",borderRadius:6,border:"1px solid rgba(52,211,153,.2)",background:"rgba(52,211,153,.06)",color:"rgba(52,211,153,.6)",fontSize:10,cursor:"pointer"}}>Copy</button>
       </div>}
     </div>
 
@@ -2143,31 +2154,45 @@ function InterviewModeView({ userId }) {
       </div>
     </div>
     <div style={{display:"flex",gap:3,padding:"6px 10px",borderBottom:"1px solid rgba(255,255,255,.03)"}}>
-      {livePanels.map(p => <button key={p.id} onClick={()=>setPanel(p.id)} style={{flex:1,padding:"7px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:panel===p.id?700:400,background:panel===p.id?`linear-gradient(135deg, ${amber(.15)}, ${amber(.05)})`:"transparent",color:panel===p.id?"#fbbf24":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>{p.Icon&&<p.Icon size={12}/>}{p.label}{p.count>0&&<span style={{fontSize:9,background:amber(.2),padding:"2px 6px",borderRadius:8,fontWeight:600}}>{p.count}</span>}</button>)}
     </div>
     <div style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
-      {panel==="transcript" && (transcript.length===0
-        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><Mic size={36} style={{margin:"0 auto 12px",display:"block",opacity:.2}}/><p style={{fontSize:13,margin:0,fontWeight:300}}>{running?"Listening...":"Tap Record to start"}</p></div>
-        : transcript.map((t,i) => <div key={i} style={{padding:"10px 12px",marginBottom:5,borderRadius:12,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)",animation:"mf .3s ease"}}><span style={{color:amber(.35),fontSize:9,fontWeight:600,marginRight:8,fontFamily:"monospace"}}>{t.time}</span><span style={{color:"rgba(255,255,255,.8)",fontSize:12.5,lineHeight:1.6}}>{t.text}</span></div>)
-      )}
-      {panel==="coaching" && (cookAnswers.length===0
-        ? <div style={{textAlign:"center",padding:"50px 20px",color:"rgba(255,255,255,.15)"}}><Sparkles size={36} style={{margin:"0 auto 12px",display:"block",opacity:.2}}/><p style={{fontSize:13,margin:0,fontWeight:300}}>COOK's STAR-method answers appear here</p></div>
-        : cookAnswers.map((a,i) => <div key={i} style={{padding:14,marginBottom:8,borderRadius:14,background:"linear-gradient(135deg, rgba(139,92,246,.06), rgba(139,92,246,.02))",border:"1px solid rgba(139,92,246,.1)",boxShadow:a.streaming?"0 0 15px rgba(139,92,246,.08)":"none"}}>
-          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+      {/* TRANSCRIPT */}
+      <div style={{marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"0 4px"}}><Mic size={11} style={{color:amber(.4)}}/><span style={{fontSize:10,fontWeight:700,color:amber(.4),letterSpacing:"0.1em"}}>TRANSCRIPT</span>{transcript.length>0&&<span style={{fontSize:9,background:amber(.1),padding:"2px 6px",borderRadius:8,color:amber(.5),fontWeight:600}}>{transcript.length}</span>}</div>
+        {transcript.length===0
+          ? <div style={{textAlign:"center",padding:"30px 16px",color:"rgba(255,255,255,.1)"}}><p style={{fontSize:12,margin:0}}>{running?"Listening...":"Tap Record to start"}</p></div>
+          : transcript.slice(-8).map((t,i) => <div key={i} style={{padding:"8px 10px",marginBottom:4,borderRadius:10,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}><span style={{color:amber(.3),fontSize:9,fontWeight:600,marginRight:6,fontFamily:"monospace"}}>{t.time}</span><span style={{color:"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.5}}>{t.text}</span></div>)
+        }
+      </div>
+
+      {/* COOK ANSWERS */}
+      {cookAnswers.length > 0 && <div style={{marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"0 4px"}}><Sparkles size={11} style={{color:"rgba(139,92,246,.4)"}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(139,92,246,.4)",letterSpacing:"0.1em"}}>COACHING</span><span style={{fontSize:9,background:"rgba(139,92,246,.1)",padding:"2px 6px",borderRadius:8,color:"rgba(139,92,246,.5)",fontWeight:600}}>{cookAnswers.length}</span></div>
+        {cookAnswers.map((a,i) => <div key={i} style={{padding:12,marginBottom:6,borderRadius:12,background:"linear-gradient(135deg, rgba(139,92,246,.08), rgba(139,92,246,.02))",border:"1px solid rgba(139,92,246,.12)",boxShadow:a.streaming?"0 0 12px rgba(139,92,246,.08)":"none"}}>
+          <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}>
             <div style={{width:5,height:5,borderRadius:"50%",background:a.streaming?"#a78bfa":"rgba(139,92,246,.3)",...(a.streaming?{animation:"mb 1s infinite"}:{})}}/>
-            <span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",letterSpacing:"1px",textTransform:"uppercase"}}>{a.streaming?"COOK is preparing...":"COOK"}</span>
+            <span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.5)",letterSpacing:"0.5px"}}>{a.streaming?"THINKING...":"COOK"}</span>
+            <span style={{fontSize:8,color:"rgba(255,255,255,.12)",marginLeft:"auto"}}>{a.time}</span>
+            {!a.streaming&&<button onClick={()=>navigator.clipboard.writeText(a.text||"")} style={{padding:"2px 6px",borderRadius:4,fontSize:8,background:"rgba(139,92,246,.08)",border:"1px solid rgba(139,92,246,.1)",color:"rgba(139,92,246,.4)",cursor:"pointer"}}>Copy</button>}
           </div>
-          {a.q && <p style={{color:"rgba(139,92,246,.5)",fontSize:10,margin:"0 0 6px",fontStyle:"italic"}}>Re: {a.q}</p>}
-          <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{a.text}</p>
-        </div>)
-      )}
-      {summary && <div style={{padding:16,borderRadius:14,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.12)",marginTop:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><CheckCircle size={14} color="#34d399"/><span style={{fontSize:11,fontWeight:700,color:"#34d399"}}>Interview Performance Summary</span></div>
-        <p style={{color:"rgba(255,255,255,.8)",fontSize:12.5,margin:0,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{summary}</p>
-        <div style={{display:"flex",gap:8,marginTop:10,alignItems:"center"}}>
-          <button onClick={()=>navigator.clipboard.writeText(summary||"").catch(()=>{})} style={{padding:"6px 12px",borderRadius:8,border:"1px solid rgba(52,211,153,.2)",background:"rgba(52,211,153,.06)",color:"rgba(52,211,153,.6)",fontSize:11,cursor:"pointer"}}>Copy</button>
-          <span style={{fontSize:10,color:"rgba(245,158,11,.4)"}}>Follow-up actions saved to your task list</span>
-        </div>
+          {a.q && <p style={{color:"rgba(139,92,246,.4)",fontSize:10,margin:"0 0 4px",fontStyle:"italic"}}>Re: {a.q}</p>}
+          <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:0,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{a.text}</p>
+        </div>)}
+      </div>}
+
+      {/* AUTO-CONTEXT */}
+      {autoContext_iv && <div style={{padding:10,borderRadius:10,background:`linear-gradient(135deg, ${amber(.05)}, ${amber(.02)})`,border:`1px solid ${amber(.08)}`,marginBottom:8}}>
+        <div style={{fontSize:9,fontWeight:700,color:amber(.5),marginBottom:4,letterSpacing:"0.1em"}}>AUTO-DETECTED</div>
+        {autoContext_iv.role&&<p style={{fontSize:12,color:"rgba(255,255,255,.7)",margin:"0 0 2px",fontWeight:600}}>{autoContext_iv.role}</p>}
+        {autoContext_iv.company&&<p style={{fontSize:10,color:"rgba(255,255,255,.4)",margin:0}}>{autoContext_iv.company}</p>}
+        {autoContext_iv.coaching_tip&&<p style={{fontSize:10,color:"rgba(16,185,129,.6)",margin:"4px 0 0",fontStyle:"italic"}}>{autoContext_iv.coaching_tip}</p>}
+      </div>}
+
+      {/* SUMMARY */}
+      {summary && <div style={{padding:14,borderRadius:12,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.12)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}><CheckCircle size={12} color="#34d399"/><span style={{fontSize:10,fontWeight:700,color:"#34d399"}}>SUMMARY</span></div>
+        <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:0,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{summary}</p>
+        <button onClick={()=>navigator.clipboard.writeText(summary||"")} style={{marginTop:6,padding:"5px 10px",borderRadius:6,border:"1px solid rgba(52,211,153,.2)",background:"rgba(52,211,153,.06)",color:"rgba(52,211,153,.6)",fontSize:10,cursor:"pointer"}}>Copy</button>
       </div>}
     </div>
   </div>);
