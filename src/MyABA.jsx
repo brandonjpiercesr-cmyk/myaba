@@ -3858,6 +3858,7 @@ function ApproveView({userId,onAction}){
   const[velocityData,setVelocityData]=useState(null);
   const[velocityLoading,setVelocityLoading]=useState(false);
   const[showVelocity,setShowVelocity]=useState(false);
+  const[categoryFilter,setCategoryFilter]=useState(null); // ⬡B:AUDRA.W12:FIX:category_filter_state:20260403⬡
   
   // Fetch pending approvals from v2 endpoint
   useEffect(()=>{
@@ -3873,7 +3874,9 @@ function ApproveView({userId,onAction}){
     })();
   },[userId]);
   
-  const currentItem=items[currentIndex];
+  // ⬡B:AUDRA.W12:FIX:filtered_items:20260403⬡
+  const filteredItems = categoryFilter ? items.filter(it=>(it.type||"other")===categoryFilter) : items;
+  const currentItem=filteredItems[currentIndex];
   
   const handleSwipe=(direction)=>{
     if(!currentItem)return;
@@ -3891,7 +3894,7 @@ function ApproveView({userId,onAction}){
     setTimeout(()=>{
       setSwipeDir(null);
       setTouchDelta(0);
-      if(currentIndex<items.length-1){
+      if(currentIndex<filteredItems.length-1){
         setCurrentIndex(currentIndex+1);
       }else{
         setItems([]);
@@ -3920,7 +3923,7 @@ function ApproveView({userId,onAction}){
     </div>);
   }
   
-  if(items.length===0||currentIndex>=items.length){
+  if(filteredItems.length===0||currentIndex>=filteredItems.length){
     return(<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:20}}>
       <CheckCircle size={56} style={{color:"rgba(16,185,129,.6)"}}/>
       <p style={{color:"rgba(255,255,255,.7)",fontSize:16,fontWeight:600}}>All caught up!</p>
@@ -3973,13 +3976,21 @@ function ApproveView({userId,onAction}){
   };
   
   return(<div style={{flex:1,display:"flex",flexDirection:"column",padding:"8px 4px"}}>
+    {/* ⬡B:AUDRA.W12:FIX:category_filters:20260403⬡ Category filter buttons */}
+    {items.length>1&&<div style={{display:"flex",gap:4,padding:"0 8px",marginBottom:8,flexWrap:"wrap"}}>
+      {["all",...[...new Set(items.map(it=>it.type||"other"))]].map(cat=>{
+        const count=cat==="all"?items.length:items.filter(it=>(it.type||"other")===cat).length;
+        const active=!categoryFilter&&cat==="all"||categoryFilter===cat;
+        return <button key={cat} onClick={()=>setCategoryFilter(cat==="all"?null:cat)} style={{padding:"5px 10px",borderRadius:8,border:"none",cursor:"pointer",fontSize:10,fontWeight:active?600:400,background:active?"rgba(139,92,246,.2)":"rgba(255,255,255,.04)",color:active?"#a78bfa":"rgba(255,255,255,.4)",textTransform:"capitalize"}}>{cat} ({count})</button>;
+      })}
+    </div>}
     {/* Progress */}
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,padding:"0 8px"}}>
-      <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{currentIndex+1} of {items.length}</span>
+      <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{currentIndex+1} of {filteredItems.length}</span>
       <div style={{flex:1,margin:"0 12px",height:3,background:"rgba(255,255,255,.1)",borderRadius:99}}>
-        <div style={{width:`${((currentIndex+1)/items.length)*100}%`,height:"100%",background:"rgba(139,92,246,.6)",borderRadius:99,transition:"width .3s"}}/>
+        <div style={{width:`${((currentIndex+1)/filteredItems.length)*100}%`,height:"100%",background:"rgba(139,92,246,.6)",borderRadius:99,transition:"width .3s"}}/>
       </div>
-      <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{items.length-currentIndex-1} left</span>
+      <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{filteredItems.length-currentIndex-1} left</span>
     </div>
     
     {/* Swipe hints */}
