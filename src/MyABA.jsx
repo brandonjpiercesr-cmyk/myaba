@@ -342,11 +342,11 @@ function GMGUniversityView() {
   const [view, setView] = useState("home");
   const [vol, setVol] = useState("v1");
   const [day, setDay] = useState(null);
-  const [voice, setVoice] = useState(false);
+  const [voice, setVoice] = useState(true);
   const [msgs, setMsgs] = useState([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
-  let sentBuf = "";
+  const sentBufRef = useRef("");
   const [isTyping, setIsTyping] = useState(false);
   const audioRef = useRef();
   const endRef = useRef();
@@ -356,7 +356,7 @@ function GMGUniversityView() {
   const BG = { pink:"https://i.imgur.com/3RkebB2.jpeg", embers:"https://i.imgur.com/9HZYnlX.png", nebula:"https://i.imgur.com/nLBRQ82.jpeg", city:"https://i.imgur.com/h8zNCw1.jpeg" };
   const INTERACTIVES = {"v1-d1":{"type":"matching","title":"Match Source to Percentage","pairs":[{"l":"Individual Donors","r":"70%"},{"l":"Foundations","r":"18%"},{"l":"Corporations","r":"5%"},{"l":"Bequests","r":"7%"}]},"v1-d2":{"type":"sorting","title":"Rank Giving Motivations","items":["Personal Connection","Relationship with Asker","Belief in Impact","Tax Benefits"]},"v1-d3":{"type":"sorting","title":"Put Lifecycle Stages in Order","items":["Identification","Cultivation","Solicitation","Stewardship"]},"v1-d4":{"type":"slider","title":"Top donors provide what %?","answer":80,"tolerance":10},"v1-d6":{"type":"matching","title":"Match Channel to Best Use","pairs":[{"l":"Direct Mail","r":"Older donors"},{"l":"Email","r":"Quick updates"},{"l":"Phone","r":"Personal touch"},{"l":"Social Media","r":"Awareness"}]},"v1-d7":{"type":"slider","title":"Foundation grant success rate?","answer":20,"tolerance":10},"v1-d9":{"type":"sorting","title":"Rank Revenue Types by Restriction","items":["Government Grant","Foundation Grant","Corporate Sponsorship","Earned Revenue"]},"v1-d13":{"type":"slider","title":"Industry avg donor retention?","answer":45,"tolerance":10},"v1-d16":{"type":"sorting","title":"Put Grant Sections in Order","items":["Organizational Overview","Statement of Need","Project Description","Evaluation Plan","Budget"]},"v1-d23":{"type":"slider","title":"Quiet phase percentage?","answer":60,"tolerance":15},"v1-d24":{"type":"slider","title":"$25/month per year?","answer":300,"tolerance":0},"v1-d29":{"type":"sorting","title":"Put Planning Steps in Order","items":["Assess Current State","Set Goals","Develop Strategies","Create Calendar","Allocate Resources"]}};
   const quizData = INTERACTIVES[vol+"-d"+day];
-  const ABA_LOGO = "https://i.imgur.com/0be7HCF.png";
+  // ABA_LOGO replaced with energy blob CSS — see below
   const GMG_LOGO = "https://i.imgur.com/qslzgTU.png";
   const glass = { background:"rgba(255,255,255,0.08)", backdropFilter:"blur(12px)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:16, padding:16 };
 
@@ -431,7 +431,7 @@ function GMGUniversityView() {
             if (d.type==="chunk") { 
                 acc+=d.text; sentBuf+=d.text;
                 setMsgs(p=>{const c=[...p];const l=c[c.length-1];if(l?.aba)c[c.length-1]={...l,text:acc};return c;});
-                if (voice && sentBuf.match(/[.!?]\s*$/)) { speak(sentBuf.trim()); sentBuf=""; }
+                if (voice && sentBuf.match(/[.!?]\s*$/)) { speak(sentBufRef.current.trim()); sentBuf=""; }
               }
             else if (d.type==="done") { setMsgs(p=>{const c=[...p];const l=c[c.length-1];if(l?.aba)c[c.length-1]={...l,text:d.fullResponse||acc,streaming:false};return c;}); }
           } catch {}
@@ -461,14 +461,14 @@ function GMGUniversityView() {
       <div style={{position:"relative",zIndex:1,display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderBottom:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",backdropFilter:"blur(12px)"}}>
         <button onClick={()=>setView("home")} style={{color:"rgba(255,255,255,.5)",background:"none",border:"none",cursor:"pointer",fontSize:16}}>←</button>
         <button onClick={()=>setVoice(!voice)} style={{color:voice?"#a78bfa":"rgba(255,255,255,.3)",background:"none",border:"none",cursor:"pointer",fontSize:14}}>{voice?"🔊":"🔇"}</button>
-        <img src={ABA_LOGO} alt="ABA" style={{width:28,height:28}}/>
+        <div style={{width:28,height:28,position:"relative",flexShrink:0}}><div style={{position:"absolute",inset:0,borderRadius:"42% 58% 55% 45%/48% 42% 58% 52%",background:"linear-gradient(135deg,rgba(139,92,246,.85),rgba(236,72,153,.6),rgba(99,102,241,.7))",filter:"blur(0.5px)",boxShadow:"0 0 9px rgba(139,92,246,.35)",animation:"morph 4s ease-in-out infinite"}}/><div style={{position:"absolute",inset:0,borderRadius:"55% 45% 40% 60%/60% 35% 65% 40%",background:"linear-gradient(225deg,rgba(167,139,250,.5),rgba(45,212,191,.3),rgba(132,204,22,.2))",filter:"blur(1px)",animation:"morph 4s ease-in-out -2s infinite",mixBlendMode:"screen"}}/></div>
         <div style={{flex:1}}><p style={{color:"#a78bfa",fontSize:9,letterSpacing:2,margin:0}}>DAY {day} OF {VOL[vol].d}</p><p style={{color:"white",fontSize:13,margin:0}}>{title}</p></div>
       </div>
       <div style={{flex:1,overflowY:"auto",padding:12,paddingBottom:140,position:"relative",zIndex:1}}>
         {msgs.map((m,i) => <div key={i} style={{marginBottom:16,display:"flex",justifyContent:m.aba?"flex-start":"flex-end",gap:8}}>
-          {m.aba && <img src={ABA_LOGO} alt="ABA" style={{width:28,height:28,marginTop:4,flexShrink:0}}/>}
+          {m.aba && <div style={{width:28,height:28,marginTop:4,flexShrink:0,position:"relative"}}><div style={{position:"absolute",inset:0,borderRadius:"42% 58% 55% 45%/48% 42% 58% 52%",background:"linear-gradient(135deg,rgba(139,92,246,.85),rgba(236,72,153,.6),rgba(99,102,241,.7))",filter:"blur(0.5px)",animation:"morph 4s ease-in-out infinite"}}/></div>}
           <div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:14,background:m.aba?"rgba(255,255,255,0.1)":"rgba(139,92,246,0.3)",border:"1px solid "+(m.aba?"rgba(255,255,255,0.15)":"rgba(139,92,246,0.4)"),backdropFilter:"blur(8px)"}}>
-            <p style={{color:"rgba(255,255,255,0.9)",fontSize:14,lineHeight:1.6,whiteSpace:"pre-wrap",margin:0}}>{m.text}{m.streaming&&<span style={{display:"inline-block",width:6,height:14,background:"#a78bfa",marginLeft:3,animation:"pulse 1s infinite"}}/>}</p>
+            <p style={{color:"rgba(255,255,255,0.9)",fontSize:14,lineHeight:1.6,whiteSpace:"pre-wrap",margin:0}}>{(m.text||"").split(/(\*\*.*?\*\*)/g).map((part,pi)=>part.startsWith("**")&&part.endsWith("**")?<strong key={pi} style={{color:"#a78bfa",fontWeight:600}}>{part.slice(2,-2)}</strong>:part)}{m.streaming&&<span style={{display:"inline-block",width:6,height:14,background:"#a78bfa",marginLeft:3,animation:"pulse 1s infinite"}}/>}</p>
           </div>
         </div>)}
         <div ref={endRef}/>
@@ -487,7 +487,7 @@ function GMGUniversityView() {
     {!isTyping && <button onClick={markComplete} style={{width:"100%",marginTop:10,padding:14,borderRadius:12,border:"none",background:dn?"rgba(255,255,255,0.1)":"linear-gradient(to right,#10b981,#14b8a6)",color:dn?"rgba(255,255,255,0.4)":"white",fontSize:14,fontWeight:500,cursor:"pointer"}}>{dn?"Completed":"Mark Complete +100 XP"}</button>}
       </div>
       <audio ref={audioRef}/>
-      <style>{"@keyframes pulse{0%,100%{opacity:1}50%{opacity:0}} @keyframes slowZoom{0%{transform:scale(1) translate(0,0)}50%{transform:scale(1.1) translate(-2%,-1%)}100%{transform:scale(1) translate(0,0)}}"}</style>
+      <style>{"@keyframes pulse{0%,100%{opacity:1}50%{opacity:0}} @keyframes morph{0%,100%{border-radius:42% 58% 55% 45%/48% 42% 58% 52%}25%{border-radius:55% 45% 40% 60%/60% 35% 65% 40%}50%{border-radius:38% 62% 58% 42%/45% 55% 45% 55%}75%{border-radius:60% 40% 45% 55%/38% 62% 42% 58%}} @keyframes slowZoom{0%{transform:scale(1) translate(0,0)}50%{transform:scale(1.1) translate(-2%,-1%)}100%{transform:scale(1) translate(0,0)}}"}</style>
     </div>);
   }
 
@@ -516,7 +516,7 @@ function GMGUniversityView() {
     <div style={{position:"relative",zIndex:1}}>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
         <img src={GMG_LOGO} alt="GMG" style={{width:36,height:36,opacity:0.7}}/>
-        <img src={ABA_LOGO} alt="ABA" style={{width:48,height:48}}/>
+        <div style={{width:48,height:48,position:"relative"}}><div style={{position:"absolute",inset:0,borderRadius:"42% 58% 55% 45%/48% 42% 58% 52%",background:"linear-gradient(135deg,rgba(139,92,246,.85),rgba(236,72,153,.6),rgba(99,102,241,.7))",filter:"blur(0.5px)",boxShadow:"0 0 16px rgba(139,92,246,.35)",animation:"morph 4s ease-in-out infinite"}}/><div style={{position:"absolute",inset:0,borderRadius:"55% 45% 40% 60%/60% 35% 65% 40%",background:"linear-gradient(225deg,rgba(167,139,250,.5),rgba(45,212,191,.3),rgba(132,204,22,.2))",filter:"blur(1px)",animation:"morph 4s ease-in-out -2s infinite",mixBlendMode:"screen"}}/></div>
         <div><h1 style={{fontSize:18,color:"white",margin:0}}>Hey, <span style={{color:"#a78bfa"}}>{firstName}</span></h1><p style={{color:"rgba(255,255,255,.4)",fontSize:13,margin:0}}>{cnt===0?"Ready to start?":pct+"% complete"}</p></div>
       </div>
       <div style={{display:"flex",gap:10,marginBottom:20}}>
