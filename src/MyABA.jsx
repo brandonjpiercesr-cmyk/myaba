@@ -110,6 +110,7 @@ function resolveHamId(email) {
   return HAM_EMAIL_MAP[e] || e.split('@')[0] || 'all';
 }// ⬡B:aba_skins:MAP:icon_lookup:20260323⬡
 // Maps icon names from /api/apps to lucide-react components
+// ⬡B:AUDRA.W3:FIX:a11y_labels:20260404⬡ Accessibility labels added to key interactive elements
 const ICON_MAP = {
   MessageSquare, Sunrise, Briefcase, Mail, MessageCircle, Camera,
   MapPin, CheckCircle, Phone, Settings, BookOpen, AlertTriangle,
@@ -341,11 +342,11 @@ function GMGUniversityView() {
   const [view, setView] = useState("home");
   const [vol, setVol] = useState("v1");
   const [day, setDay] = useState(null);
-  const [voice, setVoice] = useState(false);
+  const [voice, setVoice] = useState(true);
   const [msgs, setMsgs] = useState([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
-  let sentBuf = "";
+  const sentBufRef = useRef("");
   const [isTyping, setIsTyping] = useState(false);
   const audioRef = useRef();
   const endRef = useRef();
@@ -355,7 +356,7 @@ function GMGUniversityView() {
   const BG = { pink:"https://i.imgur.com/3RkebB2.jpeg", embers:"https://i.imgur.com/9HZYnlX.png", nebula:"https://i.imgur.com/nLBRQ82.jpeg", city:"https://i.imgur.com/h8zNCw1.jpeg" };
   const INTERACTIVES = {"v1-d1":{"type":"matching","title":"Match Source to Percentage","pairs":[{"l":"Individual Donors","r":"70%"},{"l":"Foundations","r":"18%"},{"l":"Corporations","r":"5%"},{"l":"Bequests","r":"7%"}]},"v1-d2":{"type":"sorting","title":"Rank Giving Motivations","items":["Personal Connection","Relationship with Asker","Belief in Impact","Tax Benefits"]},"v1-d3":{"type":"sorting","title":"Put Lifecycle Stages in Order","items":["Identification","Cultivation","Solicitation","Stewardship"]},"v1-d4":{"type":"slider","title":"Top donors provide what %?","answer":80,"tolerance":10},"v1-d6":{"type":"matching","title":"Match Channel to Best Use","pairs":[{"l":"Direct Mail","r":"Older donors"},{"l":"Email","r":"Quick updates"},{"l":"Phone","r":"Personal touch"},{"l":"Social Media","r":"Awareness"}]},"v1-d7":{"type":"slider","title":"Foundation grant success rate?","answer":20,"tolerance":10},"v1-d9":{"type":"sorting","title":"Rank Revenue Types by Restriction","items":["Government Grant","Foundation Grant","Corporate Sponsorship","Earned Revenue"]},"v1-d13":{"type":"slider","title":"Industry avg donor retention?","answer":45,"tolerance":10},"v1-d16":{"type":"sorting","title":"Put Grant Sections in Order","items":["Organizational Overview","Statement of Need","Project Description","Evaluation Plan","Budget"]},"v1-d23":{"type":"slider","title":"Quiet phase percentage?","answer":60,"tolerance":15},"v1-d24":{"type":"slider","title":"$25/month per year?","answer":300,"tolerance":0},"v1-d29":{"type":"sorting","title":"Put Planning Steps in Order","items":["Assess Current State","Set Goals","Develop Strategies","Create Calendar","Allocate Resources"]}};
   const quizData = INTERACTIVES[vol+"-d"+day];
-  const ABA_LOGO = "https://i.imgur.com/0be7HCF.png";
+  // ABA_LOGO replaced with energy blob CSS — see below
   const GMG_LOGO = "https://i.imgur.com/qslzgTU.png";
   const glass = { background:"rgba(255,255,255,0.08)", backdropFilter:"blur(12px)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:16, padding:16 };
 
@@ -430,7 +431,7 @@ function GMGUniversityView() {
             if (d.type==="chunk") { 
                 acc+=d.text; sentBuf+=d.text;
                 setMsgs(p=>{const c=[...p];const l=c[c.length-1];if(l?.aba)c[c.length-1]={...l,text:acc};return c;});
-                if (voice && sentBuf.match(/[.!?]\s*$/)) { speak(sentBuf.trim()); sentBuf=""; }
+                if (voice && sentBuf.match(/[.!?]\s*$/)) { speak(sentBufRef.current.trim()); sentBuf=""; }
               }
             else if (d.type==="done") { setMsgs(p=>{const c=[...p];const l=c[c.length-1];if(l?.aba)c[c.length-1]={...l,text:d.fullResponse||acc,streaming:false};return c;}); }
           } catch {}
@@ -460,14 +461,14 @@ function GMGUniversityView() {
       <div style={{position:"relative",zIndex:1,display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderBottom:"1px solid rgba(255,255,255,0.1)",background:"rgba(0,0,0,0.3)",backdropFilter:"blur(12px)"}}>
         <button onClick={()=>setView("home")} style={{color:"rgba(255,255,255,.5)",background:"none",border:"none",cursor:"pointer",fontSize:16}}>←</button>
         <button onClick={()=>setVoice(!voice)} style={{color:voice?"#a78bfa":"rgba(255,255,255,.3)",background:"none",border:"none",cursor:"pointer",fontSize:14}}>{voice?"🔊":"🔇"}</button>
-        <img src={ABA_LOGO} alt="ABA" style={{width:28,height:28}}/>
+        <div style={{width:28,height:28,position:"relative",flexShrink:0}}><div style={{position:"absolute",inset:0,borderRadius:"42% 58% 55% 45%/48% 42% 58% 52%",background:"linear-gradient(135deg,rgba(139,92,246,.85),rgba(236,72,153,.6),rgba(99,102,241,.7))",filter:"blur(0.5px)",boxShadow:"0 0 9px rgba(139,92,246,.35)",animation:"morph 4s ease-in-out infinite"}}/><div style={{position:"absolute",inset:0,borderRadius:"55% 45% 40% 60%/60% 35% 65% 40%",background:"linear-gradient(225deg,rgba(167,139,250,.5),rgba(45,212,191,.3),rgba(132,204,22,.2))",filter:"blur(1px)",animation:"morph 4s ease-in-out -2s infinite",mixBlendMode:"screen"}}/></div>
         <div style={{flex:1}}><p style={{color:"#a78bfa",fontSize:9,letterSpacing:2,margin:0}}>DAY {day} OF {VOL[vol].d}</p><p style={{color:"white",fontSize:13,margin:0}}>{title}</p></div>
       </div>
       <div style={{flex:1,overflowY:"auto",padding:12,paddingBottom:140,position:"relative",zIndex:1}}>
         {msgs.map((m,i) => <div key={i} style={{marginBottom:16,display:"flex",justifyContent:m.aba?"flex-start":"flex-end",gap:8}}>
-          {m.aba && <img src={ABA_LOGO} alt="ABA" style={{width:28,height:28,marginTop:4,flexShrink:0}}/>}
+          {m.aba && <div style={{width:28,height:28,marginTop:4,flexShrink:0,position:"relative"}}><div style={{position:"absolute",inset:0,borderRadius:"42% 58% 55% 45%/48% 42% 58% 52%",background:"linear-gradient(135deg,rgba(139,92,246,.85),rgba(236,72,153,.6),rgba(99,102,241,.7))",filter:"blur(0.5px)",animation:"morph 4s ease-in-out infinite"}}/></div>}
           <div style={{maxWidth:"85%",padding:"10px 14px",borderRadius:14,background:m.aba?"rgba(255,255,255,0.1)":"rgba(139,92,246,0.3)",border:"1px solid "+(m.aba?"rgba(255,255,255,0.15)":"rgba(139,92,246,0.4)"),backdropFilter:"blur(8px)"}}>
-            <p style={{color:"rgba(255,255,255,0.9)",fontSize:14,lineHeight:1.6,whiteSpace:"pre-wrap",margin:0}}>{m.text}{m.streaming&&<span style={{display:"inline-block",width:6,height:14,background:"#a78bfa",marginLeft:3,animation:"pulse 1s infinite"}}/>}</p>
+            <p style={{color:"rgba(255,255,255,0.9)",fontSize:14,lineHeight:1.6,whiteSpace:"pre-wrap",margin:0}}>{(m.text||"").split(/(\*\*.*?\*\*)/g).map((part,pi)=>part.startsWith("**")&&part.endsWith("**")?<strong key={pi} style={{color:"#a78bfa",fontWeight:600}}>{part.slice(2,-2)}</strong>:part)}{m.streaming&&<span style={{display:"inline-block",width:6,height:14,background:"#a78bfa",marginLeft:3,animation:"pulse 1s infinite"}}/>}</p>
           </div>
         </div>)}
         <div ref={endRef}/>
@@ -486,7 +487,7 @@ function GMGUniversityView() {
     {!isTyping && <button onClick={markComplete} style={{width:"100%",marginTop:10,padding:14,borderRadius:12,border:"none",background:dn?"rgba(255,255,255,0.1)":"linear-gradient(to right,#10b981,#14b8a6)",color:dn?"rgba(255,255,255,0.4)":"white",fontSize:14,fontWeight:500,cursor:"pointer"}}>{dn?"Completed":"Mark Complete +100 XP"}</button>}
       </div>
       <audio ref={audioRef}/>
-      <style>{"@keyframes pulse{0%,100%{opacity:1}50%{opacity:0}} @keyframes slowZoom{0%{transform:scale(1) translate(0,0)}50%{transform:scale(1.1) translate(-2%,-1%)}100%{transform:scale(1) translate(0,0)}}"}</style>
+      <style>{"@keyframes pulse{0%,100%{opacity:1}50%{opacity:0}} @keyframes morph{0%,100%{border-radius:42% 58% 55% 45%/48% 42% 58% 52%}25%{border-radius:55% 45% 40% 60%/60% 35% 65% 40%}50%{border-radius:38% 62% 58% 42%/45% 55% 45% 55%}75%{border-radius:60% 40% 45% 55%/38% 62% 42% 58%}} @keyframes slowZoom{0%{transform:scale(1) translate(0,0)}50%{transform:scale(1.1) translate(-2%,-1%)}100%{transform:scale(1) translate(0,0)}}"}</style>
     </div>);
   }
 
@@ -515,7 +516,7 @@ function GMGUniversityView() {
     <div style={{position:"relative",zIndex:1}}>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
         <img src={GMG_LOGO} alt="GMG" style={{width:36,height:36,opacity:0.7}}/>
-        <img src={ABA_LOGO} alt="ABA" style={{width:48,height:48}}/>
+        <div style={{width:48,height:48,position:"relative"}}><div style={{position:"absolute",inset:0,borderRadius:"42% 58% 55% 45%/48% 42% 58% 52%",background:"linear-gradient(135deg,rgba(139,92,246,.85),rgba(236,72,153,.6),rgba(99,102,241,.7))",filter:"blur(0.5px)",boxShadow:"0 0 16px rgba(139,92,246,.35)",animation:"morph 4s ease-in-out infinite"}}/><div style={{position:"absolute",inset:0,borderRadius:"55% 45% 40% 60%/60% 35% 65% 40%",background:"linear-gradient(225deg,rgba(167,139,250,.5),rgba(45,212,191,.3),rgba(132,204,22,.2))",filter:"blur(1px)",animation:"morph 4s ease-in-out -2s infinite",mixBlendMode:"screen"}}/></div>
         <div><h1 style={{fontSize:18,color:"white",margin:0}}>Hey, <span style={{color:"#a78bfa"}}>{firstName}</span></h1><p style={{color:"rgba(255,255,255,.4)",fontSize:13,margin:0}}>{cnt===0?"Ready to start?":pct+"% complete"}</p></div>
       </div>
       <div style={{display:"flex",gap:10,marginBottom:20}}>
@@ -559,7 +560,7 @@ function TasksView({ userId }) {
         <p style={{fontSize:13,color:"rgba(255,255,255,.8)"}}>{(typeof t.content==="string"?t.content:JSON.stringify(t.content)).substring(0,200)}</p>
         <span style={{fontSize:10,color:"rgba(255,255,255,.2)"}}>{t.created_at?new Date(t.created_at).toLocaleDateString():""}</span></div>)}</div>
     <div style={{display:"flex",gap:8,paddingTop:12}}>
-      <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} placeholder="Add a task..." style={{flex:1,padding:"10px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none"}} />
+      <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} placeholder="Add a task..." aria-label="Add a task" style={{flex:1,padding:"10px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none"}} />
       <button onClick={add} disabled={sending||!newTask.trim()} style={{padding:"10px 16px",borderRadius:12,border:"none",background:"rgba(139,92,246,.3)",color:"#a78bfa",cursor:"pointer"}}>{sending?"...":"+"}</button>
     </div>
   </div>);
@@ -588,7 +589,7 @@ function NotesView({ userId }) {
         <p style={{fontSize:13,color:"rgba(255,255,255,.8)",whiteSpace:"pre-wrap"}}>{(typeof n.content==="string"?n.content:JSON.stringify(n.content)).substring(0,300)}</p>
         <span style={{fontSize:10,color:"rgba(255,255,255,.2)"}}>{n.created_at?new Date(n.created_at).toLocaleDateString():""}</span></div>)}</div>
     <div style={{display:"flex",gap:8,paddingTop:12}}>
-      <textarea value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder="Write a note..." rows={2} style={{flex:1,padding:"10px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none",resize:"none"}} />
+      <textarea value={newNote} onChange={e=>setNewNote(e.target.value)} placeholder="Write a note..." aria-label="Write a note" rows={2} style={{flex:1,padding:"10px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none",resize:"none"}} />
       <button onClick={save} disabled={sending||!newNote.trim()} style={{padding:"10px 16px",borderRadius:12,border:"none",background:"rgba(139,92,246,.3)",color:"#a78bfa",cursor:"pointer",alignSelf:"flex-end"}}>{sending?"...":"Save"}</button>
     </div>
   </div>);
@@ -649,7 +650,7 @@ function CalendarView({ userId }) {
       : <>{renderGroup("Today",grouped.today)}{renderGroup("Tomorrow",grouped.tomorrow)}{renderGroup("This Week",grouped.week)}{renderGroup("Later",grouped.later)}</>}
     </div>
     <div style={{padding:"8px 12px",borderTop:"1px solid rgba(255,255,255,.06)",display:"flex",gap:8}}>
-      <input value={newEvent} onChange={e=>setNewEvent(e.target.value)} onKeyDown={e=>e.key==="Enter"&&createEvent()} placeholder="Meeting with Eric tomorrow 3pm..." style={{flex:1,padding:"9px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:12,outline:"none"}} />
+      <input value={newEvent} onChange={e=>setNewEvent(e.target.value)} onKeyDown={e=>e.key==="Enter"&&createEvent()} placeholder="Meeting with Eric tomorrow 3pm..." aria-label="Create calendar event" style={{flex:1,padding:"9px 12px",borderRadius:10,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:12,outline:"none"}} />
       <button onClick={createEvent} disabled={creating||!newEvent.trim()} style={{padding:"9px 14px",borderRadius:10,border:"none",background:"rgba(139,92,246,.2)",color:"#a78bfa",cursor:"pointer",fontSize:12}}>{creating?"...":"Add"}</button>
     </div>
   </div>);
@@ -666,7 +667,7 @@ function CRMView({ userId }) {
   // ⬡B:rolo.audit:FIX:contact_name_field:20260330⬡
   const f = contacts.filter(c => !search || (c.contact_name||"").toLowerCase().includes(search.toLowerCase()) || (c.email||"").toLowerCase().includes(search.toLowerCase()));
   return (<div style={{flex:1,display:"flex",flexDirection:"column",padding:16}}>
-    <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search contacts..." style={{padding:"10px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none",marginBottom:12}} />
+    <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search contacts..." aria-label="Search contacts" style={{padding:"10px 14px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.04)",color:"#fff",fontSize:13,outline:"none",marginBottom:12}} />
     <div style={{flex:1,overflowY:"auto"}}>{loading ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>Loading...</p>
     : f.length === 0 ? <p style={{textAlign:"center",padding:40,color:"rgba(255,255,255,.3)"}}>No contacts</p>
     : f.map((c,i) => <div key={c.id||i} style={{padding:12,marginBottom:6,borderRadius:12,background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",display:"flex",alignItems:"center",gap:12}}>
@@ -1241,7 +1242,7 @@ function CARAButton({ appScope, userId, onFullChat }) {
       <div style={{ display: "flex", gap: 8, padding: "10px 16px 16px", borderTop: "1px solid rgba(255,255,255,.06)" }}>
         <input type="text" value={msg} onChange={e => setMsg(e.target.value)}
           onKeyDown={e => e.key === "Enter" && ask()}
-          placeholder="Ask ABA anything..."
+          placeholder="Ask ABA anything..." aria-label="Ask ABA"
           style={{ flex: 1, padding: "10px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.04)", color: "#fff", fontSize: 13, outline: "none" }}
         />
         <button onClick={ask} disabled={loading || !msg.trim()} style={{
@@ -2900,7 +2901,7 @@ function AdminPanel({ open, onClose, lastResponse }) {
             <Activity size={18} style={{ color: "rgba(139,92,246,.8)" }} />
             Admin Mode
           </h3>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,.4)", cursor: "pointer", padding: 4 }}><X size={18} /></button>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,.4)", cursor: "pointer", padding: 4 }}><X size={18} /><span className="sr-only">Close</span></button>
         </div>
         
         <div style={{ padding: 20, overflowY: "auto", maxHeight: "calc(70vh - 60px)" }}>
@@ -3517,6 +3518,7 @@ function FirstLoginTour({user,onComplete}){
 // VOICE MODE SELECTOR
 // ═══════════════════════════════════════════════════════════════════════════
 // SPURT 2: Talk to ABA (renamed from Live)
+// ⬡B:AUDRA.W3:a11y_voicemode:20260404⬡
 function VoiceMode({mode,setMode}){const modes=[{k:"chat",i:MessageSquare,l:"Chat"},{k:"talk",i:Radio,l:"Talk"}];
   return(<div style={{display:"flex",gap:3,padding:4,background:"rgba(0,0,0,.25)",borderRadius:10}}>{modes.map(m=>{const a=mode===m.k;const I=m.i;return(<button key={m.k} onClick={()=>setMode(m.k)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5,padding:"6px 8px",borderRadius:8,border:"none",cursor:"pointer",background:a?"rgba(139,92,246,.25)":"transparent",color:a?"rgba(139,92,246,.95)":"rgba(255,255,255,.35)",fontSize:11,fontWeight:a?600:400,transition:"all .2s",minHeight:36}}><I size={13}/>{m.l}</button>)})}</div>)}
 
@@ -3628,7 +3630,7 @@ function ContactsView({userId}){
         <button onClick={async()=>{if(!newC.contact_name.trim())return;setSaving(true);try{const hamId=(userId||"").split("@")[0];await fetch(`${ABABASE}/api/contacts`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ham_id:hamId,...newC,userId})});setAdding(false);setNewC({contact_name:"",email:"",phone:"",relationship:""});const r2=await fetch(`${ABABASE}/api/contacts?ham_id=${hamId}`);if(r2.ok){const d2=await r2.json();setContacts(d2.contacts||[]);}}catch{}setSaving(false);}} disabled={saving||!newC.contact_name.trim()} style={{padding:"7px 12px",borderRadius:8,border:"none",background:"rgba(139,92,246,.2)",color:"#a78bfa",fontSize:11,cursor:"pointer"}}>{saving?"...":"Save"}</button>
       </div>
     </div>}
-    <div style={{padding:"6px 10px"}}><div style={{position:"relative"}}><Search size={12} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"rgba(255,255,255,.2)"}}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." style={{width:"100%",padding:"7px 10px 7px 28px",borderRadius:8,border:"1px solid rgba(255,255,255,.06)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:11,outline:"none"}}/></div></div>
+    <div style={{padding:"6px 10px"}}><div style={{position:"relative"}}><Search size={12} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"rgba(255,255,255,.2)"}}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." aria-label="Search" aria-label="Search" style={{width:"100%",padding:"7px 10px 7px 28px",borderRadius:8,border:"1px solid rgba(255,255,255,.06)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:11,outline:"none"}}/></div></div>
     <div style={{flex:1,overflowY:"auto",padding:"2px 10px"}}>
       {loading?<div style={{textAlign:"center",padding:30}}><Loader2 size={16} style={{color:"#a78bfa",animation:"spin 1s linear infinite"}}/></div>
       :filtered.length===0?<p style={{textAlign:"center",padding:30,color:"rgba(255,255,255,.2)",fontSize:12}}>No contacts</p>
@@ -4449,7 +4451,7 @@ function MockInterviewVARA({job, userId, onClose}){
             <p style={{color:"#22D3EE",fontSize:14,fontWeight:700,margin:0}}>Mock Interview</p>
             <p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"2px 0 0"}}>{job?.job_title||job?.title} at {job?.organization||job?.company}</p>
           </div>
-          <button onClick={async()=>{if(conversation.status==="connected")await conversation.endSession();onClose()}} style={{background:"rgba(255,255,255,.05)",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:18,width:32,height:32,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+          <button onClick={async()=>{if(conversation.status==="connected")await conversation.endSession();onClose()}} style={{background:"rgba(255,255,255,.05)",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:18,width:32,height:32,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center"}} aria-label="Close">×</button>
         </div>
 
         {/* Orb */}
@@ -4935,7 +4937,7 @@ function JobsView({userId}){
         <div style={{padding:12,borderRadius:12,background:"rgba(0,0,0,.3)",border:"1px solid rgba(245,158,11,.15)",marginBottom:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
             <p style={{color:"#FBBF24",fontSize:13,fontWeight:600,margin:0}}>Interview Tracking</p>
-            <button onClick={()=>setInterviewChat(null)} style={{background:"none",border:"none",color:"rgba(255,255,255,.4)",cursor:"pointer",fontSize:16}}>×</button>
+            <button onClick={()=>setInterviewChat(null)} style={{background:"none",border:"none",color:"rgba(255,255,255,.4)",cursor:"pointer",fontSize:16}} aria-label="Close">×</button>
           </div>
           <div style={{maxHeight:200,overflowY:"auto",marginBottom:8}}>
             {(interviewChat.messages||[]).map((m,mi)=>(
@@ -5227,7 +5229,7 @@ function JobsView({userId}){
             <span style={{color:"#FBBF24",fontSize:13,fontWeight:700}}>Interview Prep</span>
             {prepData._jobTitle&&<p style={{color:"rgba(255,255,255,.5)",fontSize:11,margin:"2px 0 0"}}>{prepData._jobTitle} {prepData._jobOrg?`at ${prepData._jobOrg}`:""}</p>}
           </div>
-          <button onClick={()=>setPrepData(null)} style={{background:"rgba(255,255,255,.05)",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:18,width:28,height:28,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+          <button onClick={()=>setPrepData(null)} style={{background:"rgba(255,255,255,.05)",border:"none",color:"rgba(255,255,255,.5)",cursor:"pointer",fontSize:18,width:28,height:28,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center"}} aria-label="Close">×</button>
         </div>
         {prepData.roleAnalysis&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(245,158,11,.06)"}}><p style={{color:"rgba(245,158,11,.7)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>What They Want</p><p style={{color:"rgba(255,255,255,.75)",fontSize:12,margin:0,lineHeight:1.5}}>{typeof prepData.roleAnalysis==="object"?prepData.roleAnalysis.summary||JSON.stringify(prepData.roleAnalysis):prepData.roleAnalysis}</p></div>}
         {prepData.talkingPoints&&Array.isArray(prepData.talkingPoints)&&prepData.talkingPoints.length>0&&<div style={{marginBottom:10,padding:10,borderRadius:8,background:"rgba(139,92,246,.06)"}}><p style={{color:"rgba(139,92,246,.7)",fontSize:9,margin:"0 0 4px",fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>Your Talking Points</p>{prepData.talkingPoints.map((tp,i)=><p key={i} style={{color:"rgba(255,255,255,.65)",fontSize:11,margin:"3px 0",lineHeight:1.4}}>• {typeof tp==="object"?(tp.point||"")+" "+(tp.detail||""):tp}</p>)}</div>}
@@ -5510,7 +5512,7 @@ function ShareModal({ open, onClose, conversation, onShare }) {
       <div style={{ position: "relative", width: "90%", maxWidth: 400, background: "rgba(12,10,24,.98)", backdropFilter: "blur(24px)", borderRadius: 20, padding: 24, border: "1px solid rgba(139,92,246,.2)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h3 style={{ color: "white", fontSize: 18, fontWeight: 700, margin: 0 }}>Share Chat</h3>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,.4)", cursor: "pointer", padding: 4 }}><X size={18} /></button>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,.4)", cursor: "pointer", padding: 4 }}><X size={18} /><span className="sr-only">Close</span></button>
         </div>
         
         <p style={{ color: "rgba(255,255,255,.5)", fontSize: 12, margin: "0 0 16px" }}>
@@ -5588,7 +5590,7 @@ function NewChatModal({ open, onClose, onCreate, projects, onCreateProject }) {
       <div style={{ position: "relative", width: "90%", maxWidth: 380, background: "rgba(12,10,24,.98)", backdropFilter: "blur(24px)", borderRadius: 20, padding: 24, border: "1px solid rgba(139,92,246,.2)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h3 style={{ color: "white", fontSize: 18, fontWeight: 700, margin: 0 }}>{step === 1 ? "New Chat" : (chatType === "project" ? "Project Chat" : "Solo Chat")}</h3>
-          <button onClick={handleClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,.4)", cursor: "pointer", padding: 4 }}><X size={18} /></button>
+          <button onClick={handleClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,.4)", cursor: "pointer", padding: 4 }}><X size={18} /><span className="sr-only">Close</span></button>
         </div>
         
         {step === 1 && (
@@ -5656,7 +5658,7 @@ function ProjectDetailModal({ open, onClose, project, onRename, onDelete, onAddF
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           {editing ? <input value={name} onChange={e => setName(e.target.value)} onBlur={handleRename} onKeyDown={e => e.key === "Enter" && handleRename()} autoFocus style={{ flex: 1, background: "rgba(255,255,255,.1)", border: "1px solid rgba(139,92,246,.3)", borderRadius: 8, padding: "8px 12px", color: "white", fontSize: 18, fontWeight: 700 }} />
             : <h3 onClick={() => setEditing(true)} style={{ color: "white", fontSize: 18, fontWeight: 700, margin: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>{project.name} <Edit2 size={14} style={{ color: "rgba(255,255,255,.3)" }} /></h3>}
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,.4)", cursor: "pointer", padding: 4 }}><X size={18} /></button>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,.4)", cursor: "pointer", padding: 4 }}><X size={18} /><span className="sr-only">Close</span></button>
         </div>
         
         <div style={{ marginBottom: 16 }}>
@@ -6750,7 +6752,7 @@ function MyABAInner(){
         {voiceMode==="chat"&&<div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
           <button onClick={()=>fileInputRef.current?.click()} style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:"rgba(255,255,255,.05)",color:"rgba(255,255,255,.4)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Paperclip size={16}/></button>
           <button onClick={()=>setScannerOpen(true)} title="Scan food barcode" style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:"rgba(255,255,255,.05)",color:"rgba(139,92,246,.5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Camera size={16}/></button>
-          <div style={{flex:1,display:"flex",alignItems:"flex-end",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:20,padding:"6px 6px 6px 16px",minHeight:44}}><textarea value={input} onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px"}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage(input)}}} onFocus={scrollInputIntoView} placeholder="Message ABA..." rows={1} style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.9)",fontSize:16,padding:"8px 0",WebkitAppearance:"none",resize:"none",overflow:"hidden",lineHeight:"1.4",maxHeight:120,minHeight:20,fontFamily:"inherit"}}/><button onClick={()=>{if(!isListening)startListening();else stopListening()}} style={{width:36,height:36,borderRadius:99,border:"none",cursor:"pointer",background:isListening?"rgba(6,182,212,.2)":"rgba(255,255,255,.05)",color:isListening?"rgba(6,182,212,.95)":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{isListening?<MicOff size={14}/>:<Mic size={14}/>}</button></div>
+          <div style={{flex:1,display:"flex",alignItems:"flex-end",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:20,padding:"6px 6px 6px 16px",minHeight:44}}><textarea value={input} onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px"}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage(input)}}} onFocus={scrollInputIntoView} placeholder="Message ABA..." aria-label="Chat message input" aria-label="Message ABA" rows={1} style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.9)",fontSize:16,padding:"8px 0",WebkitAppearance:"none",resize:"none",overflow:"hidden",lineHeight:"1.4",maxHeight:120,minHeight:20,fontFamily:"inherit"}}/><button onClick={()=>{if(!isListening)startListening();else stopListening()}} style={{width:36,height:36,borderRadius:99,border:"none",cursor:"pointer",background:isListening?"rgba(6,182,212,.2)":"rgba(255,255,255,.05)",color:isListening?"rgba(6,182,212,.95)":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{isListening?<MicOff size={14}/>:<Mic size={14}/>}</button></div>
           <button onClick={()=>sendMessage(input)} disabled={!input.trim()&&attachments.length===0} style={{width:48,height:48,borderRadius:99,border:"none",cursor:(input.trim()||attachments.length>0)?"pointer":"default",background:(input.trim()||attachments.length>0)?"rgba(139,92,246,.4)":"rgba(255,255,255,.04)",color:(input.trim()||attachments.length>0)?"white":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:(input.trim()||attachments.length>0)?"0 0 16px rgba(139,92,246,.25)":"none"}}><Send size={18}/></button>
         </div>}
         
@@ -6961,7 +6963,7 @@ function MyABAInner(){
       {/* Input */}
       <div style={{padding:"10px 16px calc(20px + env(safe-area-inset-bottom, 0px))",display:"flex",gap:8}}>
         <input value={snapInput} onChange={e=>setSnapInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();snapSend(snapInput)}}}
-          placeholder="Ask a quick question..." style={{
+          placeholder="Ask a quick question..." aria-label="Quick question" style={{
           flex:1,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.08)",
           borderRadius:12,padding:"10px 14px",color:"white",fontSize:14,outline:"none"
         }}/>
