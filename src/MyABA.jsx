@@ -4059,7 +4059,6 @@ function MemosView({userId}){
   const[composeForm,setComposeForm]=useState({to:"",subject:"",body:"",priority:"normal"});
   const[sending,setSending]=useState(false);
 
-  const TEAM=[
   // ⬡B:AUDRA.W1:FIX:memos_dynamic_team:20260403⬡ Dynamic team from HAM_TEAM, no hardcoded emails
   const hamId = (userId||"").split("@")[0];
   const TEAM = HAM_TEAM.map(t => ({id: t.ham_id||t.id, name: t.name||t.ham_id, email: t.email||""})).filter(t => t.id !== hamId && t.id !== userId);
