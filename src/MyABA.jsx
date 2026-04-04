@@ -1247,6 +1247,9 @@ function MeetingModeView({ userId }) {
   const [timCues, setTimCues] = useState([]);
   const [cookAnswers, setCookAnswers] = useState([]);
   const [glossary, setGlossary] = useState([]);
+  const [autoContext, setAutoContext] = useState(null);
+  const autoContextRef = useRef(null);
+  const lastContextCheck = useRef(0);
   const [panel, setPanel] = useState("transcript");
   const [recording, setRecording] = useState(false);
   const [askInput, setAskInput] = useState("");
@@ -1285,7 +1288,7 @@ function MeetingModeView({ userId }) {
       const isHamTurn = hamSpeakerRef.current !== null && (speakerId === null || speakerId === hamSpeakerRef.current);
       const res = await fetch(`${ABABASE}/api/tim/cue`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "meeting", userId, whose_turn: isHamTurn ? "ham" : "other" })
+        body: JSON.stringify({ transcript_chunk: text, context: (autoContextRef.current ? 'Topic: '+(autoContextRef.current.topic||'')+'. ' : '') + transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "meeting", userId, whose_turn: isHamTurn ? "ham" : "other" })
       });
       if (res.ok) {
         const d = await res.json();
@@ -1312,7 +1315,7 @@ function MeetingModeView({ userId }) {
     try {
       const res = await fetch(`${ABABASE}/api/cook/answer`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: 'Someone said: "' + question + '" — Give a polished 1-paragraph answer. Always answer. Never hold.', transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "meeting", userId, last_said_by_ham: lastSaidByHamRef.current })
+        body: JSON.stringify({ question: (autoContextRef.current ? 'Meeting about '+(autoContextRef.current.topic||'unknown topic')+'. ' : '') + 'Someone said: "' + question + '" — Give a polished 1-paragraph answer. Always answer. Never hold.', transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "meeting", userId, last_said_by_ham: lastSaidByHamRef.current })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1333,6 +1336,19 @@ function MeetingModeView({ userId }) {
     setCookStreaming(false);
   };
 
+  // ⬡B:CIP.MESA:FEAT:auto_context:20260403⬡
+  const detectContext = async () => {
+    const segs = transcriptRef.current;
+    if (segs.length < 4 || Date.now() - lastContextCheck.current < 25000) return;
+    lastContextCheck.current = Date.now();
+    try {
+      const r = await fetch(ABABASE+'/api/air/process',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({message:'Analyze this meeting transcript. Return ONLY JSON: {"topic":"...","participants":"...","key_points":["..."],"org":"...","suggested_approach":"..."}. Transcript: '+segs.slice(-15).map(s=>s.text).join(' ').substring(0,2000),user_id:userId,channel:'myaba',appScope:'meeting'})});
+      const d=await r.json();const m=(d.response||'').match(/\{[\s\S]*\}/);
+      if(m){const ctx=JSON.parse(m[0]);setAutoContext(ctx);autoContextRef.current=ctx;}
+    }catch{}
+  };
+
   const processSegment = async (text, speakerId) => {
     const hamSpeaker = hamSpeakerRef.current;
     const isHam = hamSpeaker !== null && speakerId === hamSpeaker;
@@ -1342,6 +1358,7 @@ function MeetingModeView({ userId }) {
     const interrogatives = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on', 'your take'];
     const isQuestion = text.includes('?') || interrogatives.some(w => text.toLowerCase().includes(w)) || text.length > 100;
     if (isQuestion) setTimeout(() => fetchCookAnswer(text), 2000);
+    detectContext();
   };
 
   const startMeeting = async () => {
@@ -1571,6 +1588,9 @@ function InterviewModeView({ userId }) {
   const [activeCue, setActiveCue] = useState(null);
   const [cookStreaming, setCookStreaming] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [autoContext_iv, setAutoContext_iv] = useState(null);
+  const autoContextRef_iv = useRef(null);
+  const lastCtxCheck_iv = useRef(0);
   const [mockQ, setMockQ] = useState(null);
   const [mockHistory, setMockHistory] = useState([]);
   const [mockAnswer, setMockAnswer] = useState("");
@@ -1639,7 +1659,7 @@ function InterviewModeView({ userId }) {
       const isHamTurn = hamSpeakerRef_iv.current !== null && (speakerId === null || speakerId === hamSpeakerRef_iv.current);
       const res = await fetch(`${ABABASE}/api/tim/cue`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, userId, whose_turn: isHamTurn ? "ham" : "other" })
+        body: JSON.stringify({ transcript_chunk: text, context: (autoContextRef_iv.current ? 'Role: '+(autoContextRef_iv.current.role||'')+', Company: '+(autoContextRef_iv.current.company||'')+'. ' : '') + transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, userId, whose_turn: isHamTurn ? "ham" : "other" })
       });
       if (res.ok) {
         const d = await res.json();
@@ -1665,7 +1685,7 @@ function InterviewModeView({ userId }) {
     try {
       const res = await fetch(`${ABABASE}/api/cook/answer`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: 'Interviewer said: "' + question + '" — Give a STAR-method answer. Always answer.', transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId, last_said_by_ham: lastSaidByHamRef_iv.current })
+        body: JSON.stringify({ question: (autoContextRef_iv.current ? 'Interview for '+(autoContextRef_iv.current.role||'a role')+' at '+(autoContextRef_iv.current.company||'a company')+'. ' : '') + 'Interviewer said: "' + question + '" — Give a STAR-method answer. Always answer.', transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId, last_said_by_ham: lastSaidByHamRef_iv.current })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -1686,6 +1706,19 @@ function InterviewModeView({ userId }) {
     setCookStreaming(false);
   };
 
+  // ⬡B:CIP.IRIS:FEAT:auto_context:20260403⬡
+  const detectContext_iv = async () => {
+    const segs = transcriptRef.current;
+    if (segs.length < 4 || Date.now() - lastCtxCheck_iv.current < 25000) return;
+    lastCtxCheck_iv.current = Date.now();
+    try {
+      const r = await fetch(ABABASE+'/api/air/process',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({message:'Analyze this interview transcript. Return ONLY JSON: {"role":"...","company":"...","interviewer":"...","key_topics":["..."],"coaching_tip":"..."}. Transcript: '+segs.slice(-15).map(s=>s.text).join(' ').substring(0,2000),user_id:userId,channel:'myaba',appScope:'interview'})});
+      const d=await r.json();const m=(d.response||'').match(/\{[\s\S]*\}/);
+      if(m){const ctx=JSON.parse(m[0]);setAutoContext_iv(ctx);autoContextRef_iv.current=ctx;}
+    }catch{}
+  };
+
   const processSegment = async (text, speakerId) => {
     const hamSpeaker = hamSpeakerRef_iv.current;
     const isHam = hamSpeaker !== null && speakerId === hamSpeaker;
@@ -1695,6 +1728,7 @@ function InterviewModeView({ userId }) {
     const interrogatives_iv = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on', 'your take'];
     const isQuestion_iv = text.includes('?') || interrogatives_iv.some(w => text.toLowerCase().includes(w)) || text.length > 100;
     if (isQuestion_iv) setTimeout(() => fetchCookAnswer(text), 2000);
+    detectContext_iv();
   };
 
   const loadPrep = async (job) => {
