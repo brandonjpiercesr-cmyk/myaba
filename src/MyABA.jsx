@@ -725,16 +725,16 @@ function GMGUniversityView({ userEmail: propEmail, userName: propName }) {
   if (!profile) return (<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}><ABAConsciousness size={40}/></div>);
 
   const totalDone=(profile.completedDays||[]).length;
-  return (<div style={{height:"100%",display:"flex",flexDirection:"column",position:"relative",background:"rgba(10,10,15,.95)",overflow:"hidden"}}>
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",position:"relative",background:"rgba(10,10,15,.95)",overflow:"hidden"}}>
     <style>{"@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}@keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes micPulse{0%,100%{box-shadow:0 0 0 0 rgba(124,58,237,.4)}50%{box-shadow:0 0 0 10px rgba(124,58,237,0)}}@keyframes dotBounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}"}</style>
     <audio ref={audioRef}/>
-    <div style={{padding:"8px 12px",display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid rgba(255,255,255,.06)",background:"rgba(10,10,15,.95)",flexShrink:0,position:"sticky",top:0,zIndex:15}}>
+    <div style={{padding:"8px 12px",display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid rgba(255,255,255,.06)",background:"rgba(10,10,15,.95)",flexShrink:0}}>
       <ABAConsciousness size={28}/>
       <div style={{flex:1,minWidth:0}}><p style={{color:"white",fontSize:14,fontWeight:600,margin:0}}>ABA</p><p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentLesson?"Day "+currentLesson.day+" · "+currentLesson.title:totalDone+"/"+totalLessons+" lessons"}</p></div>
       <button onClick={()=>setShowSidebar(true)} style={{background:"none",border:"none",color:"rgba(255,255,255,.4)",fontSize:18,cursor:"pointer",padding:"0 4px"}}>≡</button>
       <button onClick={()=>setVoice(!voice)} style={{background:voice?"rgba(124,58,237,.12)":"transparent",border:"1px solid "+(voice?"rgba(124,58,237,.25)":"rgba(255,255,255,.06)"),borderRadius:6,padding:"4px 8px",cursor:"pointer",color:voice?"#a78bfa":"rgba(255,255,255,.2)",fontSize:11}}>{voice?"\ud83d\udd0a":"\ud83d\udd07"}</button>
     </div>
-    <div style={{flex:1,overflowY:"auto",padding:"8px 0",paddingBottom:80}}>
+    <div style={{flex:1,overflowY:"auto",padding:"8px 0",paddingBottom:12}}>
       {msgs.length===0&&!streaming&&<div style={{textAlign:"center",padding:"40px 24px",color:"rgba(255,255,255,.1)"}}><p style={{fontSize:12}}>Starting session...</p></div>}
       {msgs.map((m,i)=>{const isAba=m.role==="aba";return(<div key={i} style={{display:"flex",alignItems:"flex-end",gap:6,justifyContent:isAba?"flex-start":"flex-end",padding:"2px 12px",animation:i===msgs.length-1?"msgIn .2s ease-out":"none"}}>
         {isAba&&<ABAConsciousness size={24}/>}
@@ -744,7 +744,7 @@ function GMGUniversityView({ userEmail: propEmail, userName: propName }) {
       {streaming&&msgs[msgs.length-1]?.text===""&&<div style={{display:"flex",alignItems:"flex-end",gap:6,padding:"2px 12px"}}><div style={{width:24,height:24,position:"relative"}}><div style={{position:"absolute",inset:0,borderRadius:"42% 58% 55% 45%/48% 42% 58% 52%",background:"linear-gradient(135deg,rgba(139,92,246,.85),rgba(236,72,153,.6),rgba(99,102,241,.7))",animation:"morph 4s ease-in-out infinite"}}/></div><div style={{background:"rgba(255,255,255,.06)",borderRadius:"16px 16px 16px 4px",padding:"10px 14px",display:"flex",gap:4}}>{[0,1,2].map(j=><div key={j} style={{width:5,height:5,borderRadius:"50%",background:"#a78bfa",animation:"dotBounce 1.2s ease-in-out "+j*.15+"s infinite"}}/>)}</div></div>}
       <div ref={endRef}/>
     </div>
-    <div style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(10,10,15,.85)",backdropFilter:"blur(16px)",borderTop:"1px solid rgba(255,255,255,.06)",padding:10,zIndex:20}}>
+    <div style={{flexShrink:0,background:"rgba(10,10,15,.85)",borderTop:"1px solid rgba(255,255,255,.06)",padding:10}}>
       <div style={{display:"flex",gap:6,alignItems:"flex-end"}}>
         <div style={{flex:1,display:"flex",alignItems:"flex-end",background:"rgba(255,255,255,.05)",borderRadius:18,border:"1px solid "+(listening?"rgba(124,58,237,.35)":"rgba(255,255,255,.06)"),padding:"2px 4px 2px 12px",minHeight:36}}>
           <textarea value={input} onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,90)+"px";}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleSend();}}} placeholder={listening?"Listening...":"Message ABA..."} rows={1} disabled={streaming} style={{flex:1,background:"none",border:"none",outline:"none",color:listening?"#a78bfa":"rgba(255,255,255,.85)",fontSize:14,padding:"7px 0",resize:"none",lineHeight:1.35,maxHeight:90}}/>
