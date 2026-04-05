@@ -1353,6 +1353,30 @@ function AOAView({ userId }) {
   );
 }
 
+// ⬡B:SHADOW:APP:cip_view:20260404⬡
+// SHADOW Oversight — deep-links directly to portal /shadow page
+function ShadowView() {
+  return (
+    <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+      <iframe
+        src="https://aba-portal.onrender.com/shadow"
+        style={{
+          width: "100%",
+          height: "100%",
+          border: "none",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+        }}
+        title="SHADOW Oversight"
+        allow="clipboard-write"
+      />
+    </div>
+  );
+}
+
 function ProactiveTip({ tip, onDismiss }) {
   if (!tip) return null;
   return (<div style={{margin:"0 16px 8px",padding:"10px 14px",borderRadius:12,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.12)",display:"flex",alignItems:"flex-start",gap:10}}>
@@ -6794,7 +6818,8 @@ function MyABAInner(){
       {mainTab==="sports"&&<SportsView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="music"&&<MusicView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="ccwa"&&<CCWAView userId={user?.email||user?.uid||"unknown"}/>}
-      {mainTab==="aoa"&&<AOAView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="aoa"&&<AOAView userId={user?.email||user?.uid||"unknown"}/>
+      {mainTab==="shadow"&&<ShadowView/>}}
       {mainTab==="meeting"&&<MeetingModeView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="interview"&&<InterviewModeView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="nura"&&<NURAView userId={user?.email||user?.uid||"unknown"} onScan={()=>setScannerOpen(true)}/>}
