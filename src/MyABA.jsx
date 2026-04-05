@@ -563,6 +563,65 @@ const ABAConsciousness = ({ size = 200, state = 'idle' }) => {
   return <canvas ref={canvasRef} width={size} height={size} style={{ width: size, height: size, borderRadius: '50%' }} />;
 };
 
+// ⬡B:audra.gmg_university:FIX:twin_features_cip:20260405⬡
+function QuizDeckCIP({ deck, glass }) {
+  const [selected, setSelected] = useState(null);
+  const [revealed, setRevealed] = useState(false);
+  const correct = deck.correct;
+  const handlePick = (opt, i) => { if (revealed) return; setSelected(i); setRevealed(true); };
+  const isCorrect = (opt, i) => { if (!revealed) return null; if (opt === correct || String.fromCharCode(65+i) === correct) return "correct"; if (i === selected) return "wrong"; return null; };
+  return (<div>
+    <p style={{color:"rgba(255,255,255,0.85)",fontSize:14,lineHeight:1.6,marginBottom:14}}>{deck.question}</p>
+    {(deck.options||[]).map((opt,i)=>{const r=isCorrect(opt,i);return(<button key={i} onClick={()=>handlePick(opt,i)} style={{width:"100%",marginBottom:8,textAlign:"left",cursor:revealed?"default":"pointer",background:r==="correct"?"rgba(16,185,129,.12)":r==="wrong"?"rgba(239,68,68,.08)":"rgba(255,255,255,.06)",border:"1px solid "+(r==="correct"?"rgba(16,185,129,.4)":r==="wrong"?"rgba(239,68,68,.4)":"rgba(255,255,255,.08)"),borderRadius:12,padding:14,color:r==="correct"?"#10b981":r==="wrong"?"#ef4444":"rgba(255,255,255,.8)",fontSize:13}}>{String.fromCharCode(65+i)}. {opt}{r==="correct"&&" ✓"}{r==="wrong"&&" ✗"}</button>);})}
+    {revealed&&<p style={{color:selected!==null&&isCorrect(deck.options[selected],selected)==="correct"?"#10b981":"#ef4444",fontSize:13,marginTop:8,fontWeight:500}}>{isCorrect(deck.options[selected],selected)==="correct"?"Correct!":"Not quite. The answer is "+correct+"."}</p>}
+  </div>);
+}
+function DeckPanel({ deck, onClose }) {
+  if (!deck) return null;
+  const glass = {background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.08)",borderRadius:12,padding:14};
+  return (<div style={{position:"fixed",top:0,right:0,bottom:0,width:320,maxWidth:"90vw",background:"rgba(10,10,15,.95)",backdropFilter:"blur(24px)",borderLeft:"1px solid rgba(255,255,255,.08)",zIndex:40,display:"flex",flexDirection:"column"}}>
+    <div style={{padding:"12px 14px",borderBottom:"1px solid rgba(255,255,255,.06)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <span style={{color:"#a78bfa",fontSize:13,fontWeight:600}}>{deck.title||"Interactive"}</span>
+      <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.4)",fontSize:18,cursor:"pointer"}}>×</button>
+    </div>
+    <div style={{flex:1,overflowY:"auto",padding:14}}>
+      {deck.type==="quiz"&&<QuizDeckCIP deck={deck} glass={glass}/>}
+      {deck.type==="matching"&&<div>{(deck.pairs||[]).map((p,i)=>(<div key={i} style={{...glass,marginBottom:8,display:"flex",justifyContent:"space-between"}}><span style={{color:"rgba(255,255,255,.7)",fontSize:13}}>{p.left}</span><span style={{color:"#a78bfa",fontSize:13,fontWeight:500}}>{p.right}</span></div>))}</div>}
+      {deck.type==="scenario"&&<div><div style={{...glass,marginBottom:14,borderColor:"rgba(124,58,237,.2)",background:"rgba(124,58,237,.08)"}}><p style={{color:"rgba(255,255,255,.85)",fontSize:14,lineHeight:1.6}}>{deck.situation}</p></div></div>}
+    </div>
+  </div>);
+}
+function LessonSidebar({ show, onClose, completedDays, onSelect, onReset, currentLesson }) {
+  if (!show) return null;
+  const completed = completedDays || [];
+  const VOL_M = {v1:{name:"Fundraising Foundations",days:30},v2:{name:"The GMG Way",days:30},v3:{name:"CPP Model",days:15}};
+  const TITLES_S = {v1:["The Four Sources of Money","Why People Actually Give","The Donor Lifecycle","The Donor Pyramid","Quiz 1-4","Annual Giving Programs","Foundation Grants Reality","Corporate Partnerships","Earned Revenue Strategies","Quiz 6-9","Board Fundraising Responsibility","Grant Research Methods","Donor Retention Fundamentals","Fundraising Systems and Tools","Quiz 11-14","Grant Writing Basics","Major Donor Identification","Planned Giving Basics","Corporate Sponsorship Strategy","Quiz 16-19","Digital Fundraising","Storytelling for Fundraising","Capital Campaigns","Monthly Giving Programs","Quiz 21-24","Board Development","Prospect Research Deep Dive","Fundraising Metrics","Strategic Fundraising Planning","Volume 1 Capstone"],v2:["What Makes GMG Different","Both Sides of the Table","Brandon\'s Writing Standards","The 360 Assessment","Quiz 1-4","Data Science Development Planning","Prospect Precision System","Grant Catalyst Method","Implementation Engine","Quiz 6-9","Tic-Tac-Toe Framework Intro","Tic-Tac-Toe Implementation","Recipe Pitch Framework","Board Training GMG Style","Quiz 11-14","Foundation Pipeline Management","Major Donor Strategy","Corporate Small-Dollar Approach","Merchandise Programs","Quiz 16-19","Monthly Giving as Default","Membership Programs","Tax-Advantaged Giving","Event Strategy GMG Way","Quiz 21-24","CRM Optimization","AI in Fundraising","Building Your Tech Stack","Final Assessment Prep","Volume 2 Certification"],v3:["What Is CPP","Legal Structure","Money Flow","Capacity Planning","Quiz 1-4","Building Your Resume","Certifications","Online Presence","Crafting Your Pitch","Quiz 6-9","Client Interviews","Documentation Mastery","Folder Structure","Client Communication","CPP Final Assessment"]};
+  const totalDone = completed.length;
+  const totalAll = Object.values(VOL_M).reduce((s,v)=>s+v.days,0);
+  return (<>
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:90}}/>
+    <div style={{position:"fixed",top:0,left:0,bottom:0,width:280,maxWidth:"85vw",background:"rgba(15,15,20,.95)",backdropFilter:"blur(24px)",borderRight:"1px solid rgba(255,255,255,.08)",zIndex:91,display:"flex",flexDirection:"column"}}>
+      <div style={{padding:"16px 14px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{color:"white",fontSize:15,fontWeight:600}}>Curriculum</span><button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.4)",fontSize:22,cursor:"pointer"}}>×</button></div>
+        <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8}}>
+          <div style={{flex:1,height:4,background:"rgba(255,255,255,.08)",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",background:"linear-gradient(90deg,#7c3aed,#a78bfa)",borderRadius:2,width:(totalDone/totalAll)*100+"%"}}/></div>
+          <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{totalDone}/{totalAll}</span>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"6px 0"}}>
+        {Object.entries(VOL_M).map(([vol,meta])=>(<div key={vol}>
+          <div style={{padding:"10px 14px 4px",color:"#a78bfa",fontSize:10,fontWeight:600,letterSpacing:1.5,textTransform:"uppercase"}}>{meta.name}</div>
+          {(TITLES_S[vol]||[]).map((title,i)=>{const d=i+1;const k=vol+"-d"+d;const done=completed.includes(k);const cur=currentLesson?.vol===vol&&currentLesson?.day===d;return(<button key={k} onClick={()=>{onSelect(vol,d);onClose();}} style={{width:"100%",padding:"8px 14px",display:"flex",alignItems:"center",gap:8,background:cur?"rgba(124,58,237,.15)":"transparent",border:"none",cursor:"pointer",textAlign:"left",borderLeft:cur?"3px solid #7c3aed":"3px solid transparent"}}>
+            <span style={{width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:600,flexShrink:0,background:done?"rgba(16,185,129,.2)":"rgba(255,255,255,.06)",color:done?"#10b981":"rgba(255,255,255,.3)",border:"1px solid "+(done?"rgba(16,185,129,.3)":"rgba(255,255,255,.08)")}}>{done?"✓":d}</span>
+            <span style={{color:done?"rgba(255,255,255,.5)":"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.3}}>{title}</span>
+          </button>);})}
+        </div>))}
+      </div>
+      <div style={{padding:10,borderTop:"1px solid rgba(255,255,255,.06)"}}><button onClick={()=>{if(window.confirm("Reset ALL progress?"))onReset();}} style={{width:"100%",padding:8,borderRadius:8,border:"1px solid rgba(239,68,68,.25)",background:"rgba(239,68,68,.06)",color:"#ef4444",fontSize:11,cursor:"pointer"}}>Reset Progress</button></div>
+    </div>
+  </>);
+}
+
 function GMGUniversityView({ userEmail: propEmail, userName: propName }) {
   // ⬡B:audra.gmg_university:FIX:cip_user_props:20260405⬡
   const userEmail = propEmail || window.__ABA_USER_EMAIL || "";
@@ -577,6 +636,8 @@ function GMGUniversityView({ userEmail: propEmail, userName: propName }) {
   const [currentLesson, setCurrentLesson] = useState(null);
   const [initDone, setInitDone] = useState(false);
   const [listening, setListening] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [deckContent, setDeckContent] = useState(null);
   const sentBufRef = useRef("");
   const audioRef = useRef();
   const endRef = useRef();
@@ -619,6 +680,23 @@ function GMGUniversityView({ userEmail: propEmail, userName: propName }) {
     } catch (e) { console.error("[GMG-U] Load:", e.message); setProfile({ completedDays:[], xp:0 }); }
   };
   const getNext = () => { const done=profile?.completedDays||[]; for (const [v,info] of Object.entries(VOL)) { for (let d=1;d<=info.d;d++) { if (!done.includes(v+"-d"+d)) return {vol:v,day:d,title:(TITLES[v]||[])[d-1]||"Day "+d}; } } return null; };
+  const selectLesson = (vol, day) => {
+    const title = (TITLES[vol]||[])[day-1]||"Day "+day;
+    setCurrentLesson({vol,day,title});
+    setMsgs([]);
+    setInitDone(false);
+    // Let auto-init pick it up with the new currentLesson
+    setTimeout(() => {
+      const msg = "I want to study Day "+day+" of "+VOL[vol].f+": \""+title+"\". Teach me.";
+      streamFromAIR(msg, true);
+    }, 100);
+  };
+  const resetProgress = async () => {
+    if (!userEmail) return;
+    try { await fetch(ABABASE+"/api/gmg-university/progress",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:userEmail,completedDays:[],xp:0})}); } catch(e) { console.error("[GMG-U] Reset:",e.message); }
+    setProfile(p=>({...p,completedDays:[],xp:0}));
+    setMsgs([]); setInitDone(false); setCurrentLesson(null);
+  };
   const speak = async (text) => { if (!voice||!text.trim()) return; try { const r=await fetch(ABABASE+"/api/tts/speak",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:text.substring(0,500)})}); if(r.ok){const url=URL.createObjectURL(await r.blob());audioQueue.current.push(url);playNext();} } catch(e){console.error('[GMG-U] TTS:',e.message);} };
   function playNext() { if(isPlaying.current||audioQueue.current.length===0)return; isPlaying.current=true; const url=audioQueue.current.shift(); if(audioRef.current){audioRef.current.src=url;audioRef.current.onended=()=>{isPlaying.current=false;URL.revokeObjectURL(url);playNext();};audioRef.current.onerror=()=>{isPlaying.current=false;URL.revokeObjectURL(url);playNext();};audioRef.current.play().catch(()=>{isPlaying.current=false;playNext();});} }
 
@@ -631,7 +709,7 @@ function GMGUniversityView({ userEmail: propEmail, userName: propName }) {
       const history=msgs.slice(-20).map(m=>({role:m.role==="aba"?"assistant":"user",content:m.text||""})).filter(m=>m.content);
       const r=await fetch(ABABASE+"/api/air/stream",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:userMsg,user_id:userEmail,userId:userEmail,channel:"gmg-university",conversationHistory:history})});
       const reader=r.body.getReader(); const decoder=new TextDecoder();
-      while(true){const{done,value}=await reader.read();if(done)break;for(const line of decoder.decode(value,{stream:true}).split("\n").filter(l=>l.startsWith("data: "))){try{const d=JSON.parse(line.slice(6));if(d.type==="chunk"){acc+=d.text;sentBufRef.current+=d.text;setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:acc};return c;});if(sentBufRef.current.match(/[.!?]\s*$/)){speak(sentBufRef.current.trim());sentBufRef.current="";}}else if(d.type==="done"){const final=d.fullResponse||acc;setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:final,streaming:false};return c;});if(sentBufRef.current.trim())speak(sentBufRef.current.trim());const shouldComplete=final.includes("[LESSON_COMPLETE]"); final=final.replace(/\[LESSON_STARTED\]/g,"").replace(/\[LESSON_COMPLETE\]/g,"").trim(); if(shouldComplete)markComplete();}}catch(e){console.error('[GMG-U] SSE:',e.message);}}}
+      while(true){const{done,value}=await reader.read();if(done)break;for(const line of decoder.decode(value,{stream:true}).split("\n").filter(l=>l.startsWith("data: "))){try{const d=JSON.parse(line.slice(6));if(d.type==="chunk"){acc+=d.text;sentBufRef.current+=d.text;setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:acc};return c;});if(sentBufRef.current.match(/[.!?]\s*$/)){speak(sentBufRef.current.trim());sentBufRef.current="";}}else if(d.type==="done"){const final=d.fullResponse||acc;setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:final,streaming:false};return c;});if(sentBufRef.current.trim())speak(sentBufRef.current.trim());const deckMatch=final.match(/\[DECK\](.*?)\[\/DECK\]/s); if(deckMatch){try{setDeckContent(JSON.parse(deckMatch[1].trim()));}catch(e){console.error("[GMG-U] Deck:",e);} final=final.replace(/\[DECK\].*?\[\/DECK\]/s,"");} const shouldComplete=final.includes("[LESSON_COMPLETE]"); final=final.replace(/\[LESSON_STARTED\]/g,"").replace(/\[LESSON_COMPLETE\]/g,"").trim(); if(shouldComplete)markComplete();}}catch(e){console.error('[GMG-U] SSE:',e.message);}}}
     } catch{setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:"Connection issue.",streaming:false};return c;});}
     finally{setStreaming(false);}
   };
@@ -653,6 +731,7 @@ function GMGUniversityView({ userEmail: propEmail, userName: propName }) {
     <div style={{padding:"8px 12px",display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid rgba(255,255,255,.06)",background:"rgba(10,10,15,.95)",flexShrink:0,position:"sticky",top:0,zIndex:15}}>
       <ABAConsciousness size={28}/>
       <div style={{flex:1,minWidth:0}}><p style={{color:"white",fontSize:14,fontWeight:600,margin:0}}>ABA</p><p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentLesson?"Day "+currentLesson.day+" · "+currentLesson.title:totalDone+"/"+totalLessons+" lessons"}</p></div>
+      <button onClick={()=>setShowSidebar(true)} style={{background:"none",border:"none",color:"rgba(255,255,255,.4)",fontSize:18,cursor:"pointer",padding:"0 4px"}}>≡</button>
       <button onClick={()=>setVoice(!voice)} style={{background:voice?"rgba(124,58,237,.12)":"transparent",border:"1px solid "+(voice?"rgba(124,58,237,.25)":"rgba(255,255,255,.06)"),borderRadius:6,padding:"4px 8px",cursor:"pointer",color:voice?"#a78bfa":"rgba(255,255,255,.2)",fontSize:11}}>{voice?"\ud83d\udd0a":"\ud83d\udd07"}</button>
     </div>
     <div style={{flex:1,overflowY:"auto",padding:"8px 0",paddingBottom:80}}>
@@ -674,6 +753,8 @@ function GMGUniversityView({ userEmail: propEmail, userName: propName }) {
         {!input.trim()&&<button onClick={toggleMic} disabled={streaming} style={{width:36,height:36,borderRadius:"50%",border:"1px solid "+(listening?"transparent":"rgba(124,58,237,.2)"),background:listening?"#7c3aed":"rgba(124,58,237,.1)",color:listening?"white":"#a78bfa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,animation:listening?"micPulse 1.5s infinite":"none"}}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={16} height={16}><rect x={9} y={2} width={6} height={11} rx={3}/><path d="M5 11a7 7 0 0014 0"/><line x1={12} y1={18} x2={12} y2={22}/></svg></button>}
       </div>
     </div>
+    <LessonSidebar show={showSidebar} onClose={()=>setShowSidebar(false)} completedDays={profile?.completedDays} onSelect={selectLesson} onReset={resetProgress} currentLesson={currentLesson}/>
+    <DeckPanel deck={deckContent} onClose={()=>setDeckContent(null)}/>
   </div>);
 }
 
