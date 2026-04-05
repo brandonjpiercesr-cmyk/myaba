@@ -329,10 +329,10 @@ function MobileDocEditor({ content: initialContent, docId, docType, onClose, onS
   );
 }
 
-function GMGUniversityView() {
-  // ⬡B:audra.gmg_university:FIX:H2_H15_cip_v9_supabase:20260404⬡
-  const userEmail = window.__ABA_USER_EMAIL || "";
-  const userName = window.__ABA_USER_NAME || "there";
+function GMGUniversityView({ userEmail: propEmail, userName: propName }) {
+  // ⬡B:audra.gmg_university:FIX:cip_user_props:20260405⬡
+  const userEmail = propEmail || window.__ABA_USER_EMAIL || "";
+  const userName = propName || window.__ABA_USER_NAME || "there";
   const firstName = (userName || "there").split(" ")[0];
 
   const [profile, setProfile] = useState(null);
@@ -6680,7 +6680,7 @@ function MyABAInner(){
       
       {/* Approve Mode */}
       {mainTab==="approve"&&<ApproveView userId={user?.email||user?.uid||"unknown"}/>}
-      {mainTab==="gmg_university"&&<GMGUniversityView/>}
+      {mainTab==="gmg_university"&&<GMGUniversityView userEmail={user?.email||""} userName={user?.displayName||""}/>}
       {mainTab==="tasks"&&<TasksView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="notes"&&<NotesView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="calendar"&&<CalendarView userId={user?.email||user?.uid||"unknown"}/>}
