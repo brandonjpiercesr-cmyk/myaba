@@ -48,6 +48,7 @@ import { onAuthStateChanged } from "firebase/auth";
 
 // ⬡B:AUDRA.C4:FIX:error_boundary:20260403⬡ Crash = fallback UI, not white screen
 import React from "react";
+import { ABAPresence } from './ABAPresence.jsx';
 class ErrorBoundary extends React.Component {
   constructor(props){super(props);this.state={hasError:false,error:null}}
   static getDerivedStateFromError(error){return{hasError:true,error}}
@@ -554,6 +555,13 @@ const ABAConsciousness = ({ size = 200, state = 'idle' }) => {
       
       animationRef.current = requestAnimationFrame(animate);
     };
+
+    animate();
+    return () => { if (animationRef.current) cancelAnimationFrame(animationRef.current); };
+  }, [size]);
+
+  return <canvas ref={canvasRef} width={size} height={size} style={{ width: size, height: size, borderRadius: '50%' }} />;
+};
 
 function GMGUniversityView({ userEmail: propEmail, userName: propName }) {
   // ⬡B:audra.gmg_university:FIX:cip_user_props:20260405⬡
@@ -3328,8 +3336,7 @@ async function fetchBriefing(userId) {
 // ═══════════════════════════════════════════════════════════════════════════
 // ABA PRESENCE — Premium glass translucent animated orb
 // ═══════════════════════════════════════════════════════════════════════════
-// v1.2.0: Premium animated ABA presence imported
-import { ABAPresence } from './ABAPresence.jsx';
+// v1.2.0: Premium animated ABA presence (imported at top of file)
 
 // Alias for backward compatibility
 
