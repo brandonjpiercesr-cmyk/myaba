@@ -1411,9 +1411,8 @@ function MeetingModeView({ userId }) {
   const processSegment = async (text, speakerId) => {
     const hamSpeaker = hamSpeakerRef.current;
     const isHam = hamSpeaker !== null && speakerId === hamSpeaker;
-    const noDiarization = hamSpeaker === null;
     if (isHam || speakerId === null) lastSaidByHamRef.current = text;
-    fetchTimCue(text, noDiarization ? null : speakerId);
+    fetchTimCue(text, speakerId);
     const interrogatives = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on', 'your take'];
     const isQuestion = text.includes('?') || interrogatives.some(w => text.toLowerCase().includes(w)) || text.length > 100;
     if (isQuestion) setTimeout(() => fetchCookAnswer(text), 2000);
@@ -1495,20 +1494,6 @@ function MeetingModeView({ userId }) {
     fetchCookAnswer(q);
     setAskLoading(false);
   };
-
-  const panels = [
-    { id: "transcript", label: "Transcript", count: transcript.length, Icon: FileText },
-    { id: "coaching", label: "Coaching", count: cookAnswers.length, Icon: MessageSquare },
-    { id: "glossary", label: "Glossary", count: glossary.length, Icon: BookOpen }
-  ];
-
-  const panelStyle = (id) => ({
-    flex: 1, padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer",
-    fontSize: 11, fontWeight: panel === id ? 700 : 400, letterSpacing: panel === id ? "0.5px" : "0",
-    background: panel === id ? "linear-gradient(135deg, rgba(6,182,212,.2), rgba(6,182,212,.08))" : "transparent",
-    color: panel === id ? "#22d3ee" : "rgba(255,255,255,.35)",
-    transition: "all 0.3s ease", display: "flex", alignItems: "center", justifyContent: "center", gap: 5
-  });
 
   // ⬡B:CIP.MESA:UI:cara_prep_gate:20260402⬡
   // ⬡B:CIP.MESA:UI:chat_first_prep:20260402⬡
@@ -1641,6 +1626,7 @@ function MeetingModeView({ userId }) {
 // ═══════════════════════════════════════════════════════════
 function InterviewModeView({ userId }) {
   const [mode, setMode] = useState("prep");
+  const modeRef_iv = useRef("prep");
   const [starAnswer, setStarAnswer] = useState("");
   const [starScoring, setStarScoring] = useState(null);
   const [starLoading, setStarLoading] = useState(false);
@@ -1690,8 +1676,9 @@ function InterviewModeView({ userId }) {
     else clearInterval(intervalRef.current);
     return () => clearInterval(intervalRef.current);
   }, [running]);
+  useEffect(() => { modeRef_iv.current = mode; }, [mode]);
 
-    const doResearch = async () => {
+  const doResearch = async () => {
     if (!selectedJob) return;
     setResearchLoading(true);
     try {
@@ -1774,9 +1761,8 @@ function InterviewModeView({ userId }) {
   const processSegment = async (text, speakerId) => {
     const hamSpeaker = hamSpeakerRef_iv.current;
     const isHam = hamSpeaker !== null && speakerId === hamSpeaker;
-    const noDiarization = hamSpeaker === null;
     if (isHam || speakerId === null) lastSaidByHamRef_iv.current = text;
-    fetchTimCue(text, noDiarization ? null : speakerId);
+    fetchTimCue(text, speakerId);
     const interrogatives_iv = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on', 'your take'];
     const isQuestion_iv = text.includes('?') || interrogatives_iv.some(w => text.toLowerCase().includes(w)) || text.length > 100;
     if (isQuestion_iv) setTimeout(() => fetchCookAnswer(text), 2000);
@@ -1797,23 +1783,12 @@ function InterviewModeView({ userId }) {
   const startMock = async () => {
     setMode("mock"); setMockHistory([]); setMockLoading(true);
     try {
-      const res = await fetch(`${ABABASE}/api/air/stream`, {
+      const res = await fetch(`${ABABASE}/api/air/process`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: `You are interviewing me for "${selectedJob?.title || "a professional position"}" at ${selectedJob?.organization || "an organization"}. Ask me one interview question. Just the question, nothing else.`, user_id: userId, channel: "myaba", appScope: "interview" })
       });
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let q = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n").filter(l => l.startsWith("data: "));
-        for (const line of lines) {
-          try { const p = JSON.parse(line.slice(6)); if (p.type === "text") q += p.text; } catch {}
-        }
-      }
-      setMockQ(q || "Tell me about yourself.");
+      const d = await res.json();
+      setMockQ(d.response || "Tell me about yourself.");
     } catch { setMockQ("Tell me about yourself."); }
     setMockLoading(false);
   };
@@ -1824,22 +1799,12 @@ function InterviewModeView({ userId }) {
     const answer = mockAnswer; setMockAnswer("");
     setMockHistory(prev => [...prev, { q: mockQ, a: answer, scoring: true }]);
     try {
-      const res = await fetch(`${ABABASE}/api/air/stream`, {
+      const res = await fetch(`${ABABASE}/api/air/process`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: `Mock interview for "${selectedJob?.title || "a role"}" at ${selectedJob?.organization || "org"}.\nQuestion: "${mockQ}"\nAnswer: "${answer}"\n\nScore the answer using STAR components:\nSITUATION (20%): Did they set the scene with specific context?\nTASK (20%): Did they clarify their role and responsibility?\nACTION (35%): Did they describe specific actions THEY took?\nRESULT (25%): Did they quantify outcomes and impact?\n\nFormat:\nSCORE: X/10\nS: X/10 - [feedback]\nT: X/10 - [feedback]\nA: X/10 - [feedback]\nR: X/10 - [feedback]\nSTRENGTHS: ...\nIMPROVE: ...\nBETTER ANSWER: ...\nNEXT QUESTION: ...`, user_id: userId, channel: "myaba", appScope: "interview" })
       });
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let fullText = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n").filter(l => l.startsWith("data: "));
-        for (const line of lines) {
-          try { const p = JSON.parse(line.slice(6)); if (p.type === "text") fullText += p.text; } catch {}
-        }
-      }
+      const d = await res.json();
+      const fullText = d.response || '';
       const scoreM = fullText.match(/SCORE:\s*(\d+)/i);
       const sM = fullText.match(/\bS:\s*(\d+)\/10\s*-?\s*(.+?)(?=\bT:|STRENGTHS|$)/is);
       const tM = fullText.match(/\bT:\s*(\d+)\/10\s*-?\s*(.+?)(?=\bA:|STRENGTHS|$)/is);
@@ -1849,7 +1814,7 @@ function InterviewModeView({ userId }) {
       const impM = fullText.match(/IMPROVE:\s*(.+?)(?=BETTER|NEXT|$)/is);
       const betM = fullText.match(/BETTER ANSWER:\s*(.+?)(?=NEXT|$)/is);
       const nqM = fullText.match(/NEXT QUESTION:\s*(.+)/is);
-      setMockHistory(prev => { const u = [...prev]; const last = u[u.length-1]; if(last) { last.score = scoreM?scoreM[1]:"?"; last.star = { s: sM?{score:sM[1],note:sM[2].trim()}:null, t: tM?{score:tM[1],note:tM[2].trim()}:null, a: aM?{score:aM[1],note:aM[2].trim()}:null, r: rM?{score:rM[1],note:rM[2].trim()}:null }; last.strengths = strM?strM[1].trim():""; last.improve = impM?impM[1].trim():""; last.better = betM?betM[1].trim():""; last.scoring = false; } return [...u]; });
+      setMockHistory(prev => { const u = [...prev]; if (u.length > 0) { u[u.length-1] = { ...u[u.length-1], score: scoreM?scoreM[1]:"?", star: { s: sM?{score:sM[1],note:sM[2].trim()}:null, t: tM?{score:tM[1],note:tM[2].trim()}:null, a: aM?{score:aM[1],note:aM[2].trim()}:null, r: rM?{score:rM[1],note:rM[2].trim()}:null }, strengths: strM?strM[1].trim():"", improve: impM?impM[1].trim():"", better: betM?betM[1].trim():"", scoring: false }; } return u; });
       setMockQ(nqM ? nqM[1].trim() : "Tell me more about your experience.");
     } catch {}
     setMockLoading(false);
@@ -1878,7 +1843,7 @@ function InterviewModeView({ userId }) {
               const entry = { text: text.trim(), time: fmt(secondsRef.current), speaker: speakerId_iv };
               setTranscript(prev => [...prev, entry]);
               transcriptRef.current = [...transcriptRef.current, entry];
-              if (mode === "mock") setMockAnswer(prev => prev ? prev + " " + text.trim() : text.trim());
+              if (modeRef_iv.current === "mock") setMockAnswer(prev => prev ? prev + " " + text.trim() : text.trim());
               else processSegment(text.trim(), speakerId_iv);
             }
           }
