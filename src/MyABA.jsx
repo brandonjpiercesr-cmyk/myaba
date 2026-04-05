@@ -1571,6 +1571,8 @@ function MeetingModeView({ userId }) {
   const audioCtxRef = useRef(null);
   const hamSpeakerRef = useRef(0);
   const lastSaidByHamRef = useRef("");
+  const lastTimFire = useRef(0);
+  const lastCookFire = useRef(0);
 
   useEffect(() => {
     if (running) { intervalRef.current = setInterval(() => { setSeconds(s => { secondsRef.current = s + 1; return s + 1; }); }, 1000); }
@@ -1638,10 +1640,17 @@ function MeetingModeView({ userId }) {
     const hamSpeaker = hamSpeakerRef.current;
     const isHam = hamSpeaker !== null && speakerId === hamSpeaker;
     if (isHam || speakerId === null) lastSaidByHamRef.current = text;
-    fetchTimCue(text, speakerId);
+    const now = Date.now();
+    if (now - lastTimFire.current >= 8000) {
+      lastTimFire.current = now;
+      fetchTimCue(text, speakerId);
+    }
     const interrogatives = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on', 'your take'];
-    const isQuestion = text.includes('?') || interrogatives.some(w => text.toLowerCase().includes(w)) || text.length > 100;
-    if (isQuestion) setTimeout(() => fetchCookAnswer(text), 2000);
+    const isQuestion = text.includes('?') || interrogatives.some(w => text.toLowerCase().includes(w));
+    if (isQuestion && now - lastCookFire.current >= 15000) {
+      lastCookFire.current = now;
+      setTimeout(() => fetchCookAnswer(text), 2000);
+    }
   };
 
   const startMeeting = async () => {
@@ -1887,6 +1896,8 @@ function InterviewModeView({ userId }) {
   const audioCtxRef_iv = useRef(null);
   const hamSpeakerRef_iv = useRef(0);
   const lastSaidByHamRef_iv = useRef("");
+  const lastTimFire_iv = useRef(0);
+  const lastCookFire_iv = useRef(0);
 
   useEffect(() => {
     (async () => {
@@ -1988,10 +1999,17 @@ function InterviewModeView({ userId }) {
     const hamSpeaker = hamSpeakerRef_iv.current;
     const isHam = hamSpeaker !== null && speakerId === hamSpeaker;
     if (isHam || speakerId === null) lastSaidByHamRef_iv.current = text;
-    fetchTimCue(text, speakerId);
+    const now = Date.now();
+    if (now - lastTimFire_iv.current >= 8000) {
+      lastTimFire_iv.current = now;
+      fetchTimCue(text, speakerId);
+    }
     const interrogatives_iv = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on', 'your take'];
-    const isQuestion_iv = text.includes('?') || interrogatives_iv.some(w => text.toLowerCase().includes(w)) || text.length > 100;
-    if (isQuestion_iv) setTimeout(() => fetchCookAnswer(text), 2000);
+    const isQuestion_iv = text.includes('?') || interrogatives_iv.some(w => text.toLowerCase().includes(w));
+    if (isQuestion_iv && now - lastCookFire_iv.current >= 15000) {
+      lastCookFire_iv.current = now;
+      setTimeout(() => fetchCookAnswer(text), 2000);
+    }
   };
 
   const loadPrep = async (job) => {
