@@ -6725,8 +6725,8 @@ function MyABAInner(){
       {mainTab==="sports"&&<SportsView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="music"&&<MusicView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="ccwa"&&<CCWAView userId={user?.email||user?.uid||"unknown"}/>}
-      {mainTab==="aoa"&&<AOAView userId={user?.email||user?.uid||"unknown"}/>
-      {mainTab==="shadow"&&<ShadowView/>}}
+      {mainTab==="aoa"&&<AOAView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="shadow"&&<ShadowView/>}
       {mainTab==="meeting"&&<MeetingModeView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="interview"&&<InterviewModeView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="nura"&&<NURAView userId={user?.email||user?.uid||"unknown"} onScan={()=>setScannerOpen(true)}/>}
