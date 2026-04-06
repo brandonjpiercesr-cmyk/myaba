@@ -1,9 +1,22 @@
-// ⬡B:MACE.phase0:VIEW:email_extract:20260405⬡
+// ⬡B:MACE.phase4:VIEW:email_migrated:20260406⬡
 // EmailView + EmailDetail — extracted from MyABA.jsx.
 
 import { useState, useEffect } from "react";
 import { RefreshCw, Mail, ChevronRight } from "lucide-react";
 import { ABABASE } from "../utils/api.js";
+import {
+  MARK_READ_DELAY, EMAIL_FOLDERS,
+  fetchEmails as coreFetchEmails, markEmailRead, askAboutEmail,
+} from "../utils/email-core.js";
+
+const api = async (path, opts = {}) => {
+  const res = await fetch(ABABASE + path, {
+    method: opts.method || "GET",
+    headers: opts.body ? { "Content-Type": "application/json" } : {},
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  return res.json();
+};
 import ABALogo from "../components/shared/ABALogo.jsx";
 
 function EmailDetail({email,onBack,userId}){
@@ -15,7 +28,7 @@ function EmailDetail({email,onBack,userId}){
   useEffect(()=>{
     if(!email?.id||!email.unread)return;
     const timer=setTimeout(async()=>{
-      try{ await fetch(`${ABABASE}/api/email/${email.id}/read?userId=${encodeURIComponent(userId)}`,{method:"PATCH"}); }catch{}
+      try{ await markEmailRead(api, email.id, userId); }catch{}
     },3000);
     return()=>clearTimeout(timer);
   },[email?.id]);
@@ -25,11 +38,8 @@ function EmailDetail({email,onBack,userId}){
     setAskLoading(true);
     const q=askInput; setAskInput("");
     try{
-      const r=await fetch(`${ABABASE}/api/air/process`,{
-        method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({message:`About this email from ${email.from?.[0]?.name||"someone"} with subject "${email.subject||""}": ${q}\n\nEmail content: ${(email.snippet||email.body||"").substring(0,500)}`,user_id:userId,channel:"myaba"})
-      });
-      if(r.ok){const d=await r.json();setAskResult(d.response||d.message||"");}
+      const result = await askAboutEmail(api, email, q, userId);
+      setAskResult(result);
     }catch{setAskResult("Could not reach ABA right now")}
     setAskLoading(false);
   };
@@ -66,9 +76,8 @@ export default function EmailView({userId}){
   const loadEmails=async(f)=>{
     setLoading(true);setSelectedEmail(null);
     try{
-      const r=await fetch(`${ABABASE}/api/email/${f}?userId=${encodeURIComponent(userId)}&limit=20`);
-      if(r.ok){const d=await r.json();setEmails(d.emails||d.messages||d.data||[])}
-      else setEmails([]);
+      const result = await coreFetchEmails(api, f, userId);
+      setEmails(result);
     }catch(e){console.error("[EMAIL]",e);setEmails([])}
     setLoading(false);
   };

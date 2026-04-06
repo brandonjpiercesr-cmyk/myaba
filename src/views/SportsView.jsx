@@ -1,8 +1,18 @@
-// ⬡B:MACE.phase0:VIEW:sports_extract:20260405⬡
+// ⬡B:MACE.phase4:VIEW:sports_migrated:20260406⬡
 // SportsView — extracted from MyABA.jsx. NASH (Nimble Athletic Scoreboard Hub) scores + search.
 
 import { useState, useEffect } from "react";
 import { ABABASE } from "../utils/api.js";
+import { fetchScores, searchTeam, useSports } from "../utils/sports-core.js";
+
+const api = async (path, opts = {}) => {
+  const res = await fetch(ABABASE + path, {
+    method: opts.method || "GET",
+    headers: opts.body ? { "Content-Type": "application/json" } : {},
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  return res.json();
+};
 
 export default function SportsView({ userId }) {
   const [scores, setScores] = useState([]);
@@ -14,8 +24,8 @@ export default function SportsView({ userId }) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(ABABASE + "/api/nash/briefing?userId=" + encodeURIComponent(userId));
-        if (res.ok) { const d = await res.json(); setScores(d.scores || []); }
+        const result = await fetchScores(api, userId);
+        setScores(result);
       } catch (e) { console.error("[SPORTS]", e); }
       setLoading(false);
     })();
@@ -25,8 +35,8 @@ export default function SportsView({ userId }) {
     if (!search.trim()) return;
     setSearching(true); setSearchResult(null);
     try {
-      const res = await fetch(ABABASE + "/api/nash/scores?team=" + encodeURIComponent(search) + "&userId=" + encodeURIComponent(userId));
-      if (res.ok) { const d = await res.json(); setSearchResult(d); }
+      const result = await searchTeam(api, search, userId);
+      if (result) setSearchResult(result);
     } catch (e) { console.error("[SPORTS]", e); }
     setSearching(false);
   };
