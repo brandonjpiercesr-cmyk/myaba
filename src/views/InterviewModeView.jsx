@@ -1,9 +1,9 @@
-// ⬡B:MACE.phase2:VIEW:interview_migrated:20260406⬡
-// InterviewModeView + MockInterviewVARA — extracted from MyABA.jsx.
-// IRIS (Interview Readiness and Intelligence System) — CIP surface.
+// ⬡B:MACE.parity:VIEW:interview_rich:20260406⬡
+// InterviewModeView + MockInterviewVARA — CIP surface with FULL feature parity.
+// IRIS (Interview Readiness and Intelligence System) — rich mobile components.
 
 import { useState, useRef, useEffect } from "react";
-import { Mic, MicOff, Timer, Send, Loader2, ChevronRight, Target, Play, Square } from "lucide-react";
+import { Mic, MicOff, Timer, Send, Loader2, ChevronRight, Target, Play, Square, FileText, Search, Award, CheckCircle, Sparkles } from "lucide-react";
 import { useConversation } from "@elevenlabs/react";
 import { ABABASE, reachTranscribe } from "../utils/api.js";
 import {
@@ -11,6 +11,10 @@ import {
   fetchTimCue as coreTimCue, cleanInterviewTitle,
   TIM_COOLDOWN, COOK_COOLDOWN, TIM_CUE_DURATION, TIM_CUE_MAX_AGE, TIM_CUE_MAX_VISIBLE,
 } from "../utils/iris-core.js";
+import {
+  STARCoachMobile, CompanyResearchMobile, PostInterviewMobile,
+  TIMQueueMobile, MockInterviewPanel,
+} from "../components/interview/InterviewMobileComponents.jsx";
 
 const api = async (path, opts = {}) => {
   const res = await fetch(ABABASE + path, {
@@ -408,13 +412,8 @@ export default function InterviewModeView({ userId }) {
       {modeTab("prep","Prep",FileText)}{modeTab("research","Research",Search)}{modeTab("practice","Practice",Award)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
     </div>
     <div style={{flex:1,overflowY:"auto",padding:12}}>
-      {!selectedJob?<p style={{color:"rgba(255,255,255,.4)",textAlign:"center",padding:40}}>Select a job first to research the company.</p>:<>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <div><p style={{color:"white",fontSize:14,fontWeight:600,margin:0}}>{selectedJob.organization}</p><p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:0}}>{selectedJob.title||selectedJob.job_title}</p></div>
-          <button onClick={doResearch} disabled={researchLoading} style={{padding:"6px 14px",borderRadius:8,border:"none",background:"#d97706",color:"white",fontSize:11,cursor:"pointer",fontWeight:600}}>{researchLoading?"Researching...":research?"Refresh":"Research Company"}</button>
-        </div>
-        {research&&<div style={{background:"rgba(255,255,255,.05)",border:"1px solid rgba(245,158,11,.15)",borderRadius:10,padding:12}}><p style={{color:"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.7,whiteSpace:"pre-wrap",margin:0}}>{research}</p></div>}
-      </>}
+      {!selectedJob?<p style={{color:"rgba(255,255,255,.4)",textAlign:"center",padding:40}}>Select a job first to research the company.</p>
+      :<CompanyResearchMobile job={selectedJob} api={api} userId={userId}/>}
     </div>
   </div>);
   // ═══════ PRACTICE MODE (STAR Coach) ═══════
@@ -423,18 +422,11 @@ export default function InterviewModeView({ userId }) {
       {modeTab("prep","Prep",FileText)}{modeTab("research","Research",Search)}{modeTab("practice","Practice",Award)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
     </div>
     <div style={{flex:1,overflowY:"auto",padding:12}}>
-      <p style={{color:"#fbbf24",fontSize:10,fontWeight:600,letterSpacing:1,marginBottom:4}}>QUESTION:</p>
-      <input value={starQuestion} onChange={e=>setStarQuestion(e.target.value)} style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.15)",background:"rgba(255,255,255,.05)",color:"white",fontSize:12,marginBottom:10,boxSizing:"border-box"}}/>
-      <p style={{color:"#fbbf24",fontSize:10,fontWeight:600,letterSpacing:1,marginBottom:4}}>YOUR ANSWER:</p>
-      <textarea value={starAnswer} onChange={e=>setStarAnswer(e.target.value)} placeholder="Situation → Task → Action → Result" rows={8} style={{width:"100%",padding:10,borderRadius:8,border:"1px solid rgba(255,255,255,.15)",background:"rgba(255,255,255,.05)",color:"white",fontSize:12,resize:"vertical",boxSizing:"border-box",lineHeight:1.6}}/>
-      <button onClick={scoreSTAR} disabled={starLoading||!starAnswer.trim()} style={{marginTop:8,padding:"10px 20px",borderRadius:8,border:"none",background:starLoading?"rgba(255,255,255,.1)":"#d97706",color:"white",fontSize:12,cursor:"pointer",fontWeight:600}}>{starLoading?"Scoring...":"Score My Answer"}</button>
-      {starScoring&&<div style={{marginTop:16,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.2)",borderRadius:12,padding:14}}>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
-          {[["S",starScoring.situation_score,"20%"],["T",starScoring.task_score,"20%"],["A",starScoring.action_score,"35%"],["R",starScoring.result_score,"25%"]].map(([l,s,w])=><div key={l} style={{textAlign:"center",padding:8,borderRadius:8,background:"rgba(255,255,255,.05)"}}><p style={{color:"#fbbf24",fontSize:20,fontWeight:700,margin:0}}>{s||0}</p><p style={{color:"rgba(255,255,255,.4)",fontSize:9,margin:0}}>{l} ({w})</p></div>)}
-        </div>
-        <div style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:3}}><span style={{color:"rgba(255,255,255,.4)"}}>Overall</span><span style={{color:(starScoring.total_percent||0)>=80?"#10b981":"#f59e0b"}}>{starScoring.total_percent||0}%</span></div><div style={{height:6,background:"rgba(255,255,255,.1)",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:(starScoring.total_percent||0)+"%",background:(starScoring.total_percent||0)>=80?"#10b981":"#d97706",borderRadius:3,transition:"width .5s"}}/></div></div>
-        {starScoring.coaching_tip&&<p style={{color:"rgba(255,255,255,.75)",fontSize:12,lineHeight:1.6,marginTop:8,padding:8,background:"rgba(255,255,255,.03)",borderRadius:8}}>{starScoring.coaching_tip}</p>}
-      </div>}
+      <STARCoachMobile question={starQuestion || "Tell me about a time you demonstrated leadership."} api={api} userId={userId}/>
+      <div style={{marginTop:10}}>
+        <p style={{color:"rgba(255,255,255,.3)",fontSize:10,fontWeight:600,marginBottom:4}}>CUSTOM QUESTION:</p>
+        <input value={starQuestion} onChange={e=>setStarQuestion(e.target.value)} placeholder="Type a custom interview question..." style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.03)",color:"white",fontSize:12,boxSizing:"border-box"}}/>
+      </div>
     </div>
   </div>);
   // ═══════ PREP MODE ═══════
@@ -478,49 +470,17 @@ export default function InterviewModeView({ userId }) {
     </div>
   </div>);
 
-  // ═══════ MOCK MODE ═══════
+  // ═══════ MOCK MODE — Rich multi-round mock with STAR coach ═══════
   if (mode === "mock") return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"linear-gradient(180deg, rgba(245,158,11,.03) 0%, transparent 40%)"}}>
     <div style={{display:"flex",gap:3,padding:"8px 10px",borderBottom:`1px solid ${amber(.08)}`}}>
       {modeTab("prep","Prep",FileText)}{modeTab("research","Research",Search)}{modeTab("practice","Practice",Award)}{modeTab("live","Live",Mic)}{modeTab("mock","Mock",Target)}
     </div>
     <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
-      {mockHistory.map((h,i) => <div key={i} style={{marginBottom:14}}>
-        <div style={{padding:"12px 14px",borderRadius:"14px 14px 4px 14px",background:`linear-gradient(135deg, ${amber(.08)}, ${amber(.03)})`,border:`1px solid ${amber(.12)}`,marginBottom:4}}>
-          <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}><span style={{fontSize:9,fontWeight:700,color:amber(.6),letterSpacing:"0.5px",textTransform:"uppercase"}}>Interviewer</span></div>
-          <p style={{fontSize:12.5,color:"rgba(255,255,255,.8)",margin:0,lineHeight:1.6}}>{h.q}</p>
-        </div>
-        <div style={{padding:"12px 14px",borderRadius:"4px 14px 14px 14px",background:"linear-gradient(135deg, rgba(139,92,246,.06), rgba(139,92,246,.02))",border:"1px solid rgba(139,92,246,.1)",marginBottom:4}}>
-          <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}><span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",letterSpacing:"0.5px",textTransform:"uppercase"}}>You</span></div>
-          <p style={{fontSize:12.5,color:"rgba(255,255,255,.75)",margin:0,lineHeight:1.6}}>{h.a}</p>
-        </div>
-        {h.scoring ? <div style={{padding:10,textAlign:"center"}}><Loader2 size={14} style={{color:"#fbbf24",animation:"spin 1s linear infinite"}}/></div>
-        : h.score && <div style={{padding:"12px 14px",borderRadius:12,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.1)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-            <span style={{fontSize:22,fontWeight:800,color:parseInt(h.score)>=7?"#34d399":parseInt(h.score)>=5?"#fbbf24":"#f87171"}}>{h.score}<span style={{fontSize:12,fontWeight:400,color:"rgba(255,255,255,.3)"}}>/10</span></span>
-          </div>
-          {h.star && <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
-            {[{k:"S",label:"Situation",w:"20%",data:h.star.s},{k:"T",label:"Task",w:"20%",data:h.star.t},{k:"A",label:"Action",w:"35%",data:h.star.a},{k:"R",label:"Result",w:"25%",data:h.star.r}].map(c => c.data && <div key={c.k} style={{flex:"1 1 45%",padding:"6px 8px",borderRadius:8,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
-                <span style={{fontSize:9,fontWeight:700,color:amber(.5)}}>{c.k} ({c.w})</span>
-                <span style={{fontSize:11,fontWeight:700,color:parseInt(c.data.score)>=7?"#34d399":parseInt(c.data.score)>=5?"#fbbf24":"#f87171"}}>{c.data.score}/10</span>
-              </div>
-              <p style={{fontSize:10,color:"rgba(255,255,255,.4)",margin:0,lineHeight:1.4}}>{c.data.note}</p>
-            </div>)}
-          </div>}
-          {h.strengths && <div style={{marginBottom:6}}><span style={{fontSize:9,fontWeight:700,color:"rgba(16,185,129,.6)",letterSpacing:"0.5px"}}>STRENGTHS</span><p style={{fontSize:11.5,color:"rgba(255,255,255,.6)",margin:"2px 0 0",lineHeight:1.5}}>{h.strengths}</p></div>}
-          {h.improve && <div style={{marginBottom:6}}><span style={{fontSize:9,fontWeight:700,color:amber(.6),letterSpacing:"0.5px"}}>IMPROVE</span><p style={{fontSize:11.5,color:"rgba(255,255,255,.6)",margin:"2px 0 0",lineHeight:1.5}}>{h.improve}</p></div>}
-          {h.better && <div><span style={{fontSize:9,fontWeight:700,color:"rgba(139,92,246,.6)",letterSpacing:"0.5px"}}>POLISHED VERSION</span><p style={{fontSize:11.5,color:"rgba(255,255,255,.7)",margin:"2px 0 0",lineHeight:1.5,fontStyle:"italic"}}>{h.better}</p></div>}
-        </div>}
-      </div>)}
-      {mockQ && <div style={{padding:"14px 16px",borderRadius:14,background:`linear-gradient(135deg, ${amber(.1)}, ${amber(.04)})`,border:`1px solid ${amber(.15)}`,boxShadow:`0 0 20px ${amber(.05)}`}}>
-        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}><span style={{fontSize:9,fontWeight:700,color:amber(.7),letterSpacing:"1px",textTransform:"uppercase"}}>Interviewer asks</span></div>
-        <p style={{fontSize:14,color:"rgba(255,255,255,.9)",margin:0,lineHeight:1.6,fontWeight:500}}>{mockQ}</p>
-      </div>}
-    </div>
-    <div style={{padding:"10px 12px",borderTop:`1px solid ${amber(.08)}`,display:"flex",gap:6,background:"rgba(0,0,0,.2)"}}>
-      <button onClick={toggleRecord} style={{padding:"9px 12px",borderRadius:10,border:"none",cursor:"pointer",background:recording?"rgba(239,68,68,.12)":"rgba(255,255,255,.04)",color:recording?"#fca5a5":"rgba(255,255,255,.35)",display:"flex",alignItems:"center",gap:4}}>{recording?<MicOff size={13}/>:<Mic size={13}/>}</button>
-      <input value={mockAnswer} onChange={e=>setMockAnswer(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submitMockAnswer()} placeholder="Type or speak your answer..." style={{flex:1,padding:"9px 12px",borderRadius:10,border:`1px solid ${amber(.1)}`,background:"rgba(255,255,255,.03)",color:"#fff",fontSize:12,outline:"none"}}/>
-      <button onClick={submitMockAnswer} disabled={mockLoading||!mockAnswer.trim()} style={{padding:"9px 16px",borderRadius:10,border:"none",cursor:"pointer",background:mockAnswer.trim()?`linear-gradient(135deg, ${amber(.25)}, ${amber(.1)})`:"rgba(255,255,255,.03)",color:"#fbbf24",fontSize:12,fontWeight:600}}>{mockLoading?<Loader2 size={13} style={{animation:"spin 1s linear infinite"}}/>:<Send size={13}/>}</button>
+      {!selectedJob ? <p style={{color:"rgba(255,255,255,.4)",textAlign:"center",padding:40}}>Select a job in Prep mode first.</p>
+      : <MockInterviewPanel job={selectedJob} api={api} userId={userId} onClose={()=>setMode("prep")}/>}
+      {selectedJob && varaInterview===null && <button onClick={()=>setVaraInterview(selectedJob)} style={{width:"100%",marginTop:10,padding:"10px",borderRadius:10,border:"1px solid rgba(34,211,238,.2)",background:"rgba(34,211,238,.06)",color:"#22d3ee",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+        Voice Mock (VARA)
+      </button>}
     </div>
   </div>);
 
@@ -562,6 +522,9 @@ export default function InterviewModeView({ userId }) {
         }
       </div>
 
+      {/* TIM CUE QUEUE */}
+      <TIMQueueMobile cues={timCues} activeCue={activeCue}/>
+
       {/* COOK ANSWERS */}
       {cookAnswers.length > 0 && <div style={{marginBottom:12}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"0 4px"}}><Sparkles size={11} style={{color:"rgba(139,92,246,.4)"}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(139,92,246,.4)",letterSpacing:"0.1em"}}>COACHING</span><span style={{fontSize:9,background:"rgba(139,92,246,.1)",padding:"2px 6px",borderRadius:8,color:"rgba(139,92,246,.5)",fontWeight:600}}>{cookAnswers.length}</span></div>
@@ -591,6 +554,9 @@ export default function InterviewModeView({ userId }) {
         <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:0,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{summary}</p>
         <button onClick={()=>navigator.clipboard.writeText(summary||"")} style={{marginTop:6,padding:"5px 10px",borderRadius:6,border:"1px solid rgba(52,211,153,.2)",background:"rgba(52,211,153,.06)",color:"rgba(52,211,153,.6)",fontSize:10,cursor:"pointer"}}>Copy</button>
       </div>}
+
+      {/* POST-INTERVIEW ACTIONS — thank you email, recap notes, follow-up tasks */}
+      {summary && selectedJob && <div style={{marginTop:10}}><PostInterviewMobile job={selectedJob} api={api} userId={userId}/></div>}
     </div>
   </div>);
 }

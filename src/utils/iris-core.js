@@ -5,7 +5,9 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 // TIM/COOK shared with MESA — one source of truth
-export { fetchTimCue, fetchCookAnswer, isQuestion, INTERROGATIVES, formatTime } from "./mesa-core.js";
+export { fetchTimCue, fetchCookAnswer, isQuestion, INTERROGATIVES, formatTime,
+  TIM_COOLDOWN, COOK_COOLDOWN, TIM_CUE_DURATION, TIM_CUE_MAX_AGE, TIM_CUE_MAX_VISIBLE
+} from "./mesa-core.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CONSTANTS
