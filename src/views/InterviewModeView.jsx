@@ -1,4 +1,4 @@
-// ⬡B:MACE.phase0:VIEW:interview_extract:20260405⬡
+// ⬡B:MACE.phase2:VIEW:interview_migrated:20260406⬡
 // InterviewModeView + MockInterviewVARA — extracted from MyABA.jsx.
 // IRIS (Interview Readiness and Intelligence System) — CIP surface.
 
@@ -6,6 +6,20 @@ import { useState, useRef, useEffect } from "react";
 import { Mic, MicOff, Timer, Send, Loader2, ChevronRight, Target, Play, Square } from "lucide-react";
 import { useConversation } from "@elevenlabs/react";
 import { ABABASE, reachTranscribe } from "../utils/api.js";
+import {
+  INTERVIEW_MODES, STAR_COMPONENTS, isQuestion, formatTime,
+  fetchTimCue as coreTimCue, cleanInterviewTitle,
+  TIM_COOLDOWN, COOK_COOLDOWN, TIM_CUE_DURATION, TIM_CUE_MAX_AGE, TIM_CUE_MAX_VISIBLE,
+} from "../utils/iris-core.js";
+
+const api = async (path, opts = {}) => {
+  const res = await fetch(ABABASE + path, {
+    method: opts.method || "GET",
+    headers: opts.body ? { "Content-Type": "application/json" } : {},
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  return res.json();
+};
 
 function MockInterviewVARA({job, userId, onClose}){
   const[orbState,setOrbState]=useState("idle");
@@ -187,7 +201,7 @@ export default function InterviewModeView({ userId }) {
     setStarLoading(false);
   };
 
-  const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+  const fmt = formatTime;
   const amber = (opacity) => `rgba(245,158,11,${opacity})`;
 
   const fetchTimCue = async (text, speakerId) => {
@@ -247,13 +261,12 @@ export default function InterviewModeView({ userId }) {
     const isHam = hamSpeaker !== null && speakerId === hamSpeaker;
     if (isHam || speakerId === null) lastSaidByHamRef_iv.current = text;
     const now = Date.now();
-    if (now - lastTimFire_iv.current >= 8000) {
+    if (now - lastTimFire_iv.current >= TIM_COOLDOWN) {
       lastTimFire_iv.current = now;
       fetchTimCue(text, speakerId);
     }
-    const interrogatives_iv = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on', 'your take'];
-    const isQuestion_iv = text.includes('?') || interrogatives_iv.some(w => text.toLowerCase().includes(w));
-    if (isQuestion_iv && now - lastCookFire_iv.current >= 15000) {
+    const isQuestion_iv = isQuestion(text);
+    if (isQuestion_iv && now - lastCookFire_iv.current >= COOK_COOLDOWN) {
       lastCookFire_iv.current = now;
       setTimeout(() => fetchCookAnswer(text), 2000);
     }

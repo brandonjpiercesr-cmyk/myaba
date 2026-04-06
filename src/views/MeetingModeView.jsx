@@ -1,10 +1,24 @@
-// ⬡B:MACE.phase0:VIEW:meeting_extract:20260405⬡
-// MeetingModeView — extracted from MyABA.jsx lines 1634-1950.
-// MESA (Meeting Support Application) — CIP surface.
+// ⬡B:MACE.phase2:VIEW:meeting_migrated:20260406⬡
+// MeetingModeView — CIP surface, migrated to use mesa-core.js shared library.
+// Constants, TIM logic, isQuestion from mesa-core.
+// COOK streaming kept local due to different SSE parser format.
 
 import { useState, useRef, useEffect } from "react";
 import { Mic, MicOff, Play, Pause, Square, Timer, Send, Loader2, ChevronRight } from "lucide-react";
 import { ABABASE, reachTranscribe } from "../utils/api.js";
+import {
+  INTERROGATIVES, TIM_COOLDOWN, COOK_COOLDOWN, TIM_CUE_DURATION, TIM_CUE_MAX_AGE, TIM_CUE_MAX_VISIBLE,
+  formatTime, isQuestion, fetchTimCue as coreTimCue,
+} from "../utils/mesa-core.js";
+
+const api = async (path, opts = {}) => {
+  const res = await fetch(ABABASE + path, {
+    method: opts.method || "GET",
+    headers: opts.body ? { "Content-Type": "application/json" } : {},
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  return res.json();
+};
 
 export default function MeetingModeView({ userId }) {
   const [running, setRunning] = useState(false);
@@ -44,32 +58,22 @@ export default function MeetingModeView({ userId }) {
     return () => clearInterval(intervalRef.current);
   }, [running]);
 
-  const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+  const fmt = formatTime;
 
-  // TIM verbal filler — fires every 5 seconds, HAM says this out loud
-  const fetchTimCue = async (text, speakerId) => {
-    try {
-      const isHamTurn = hamSpeakerRef.current !== null && (speakerId === null || speakerId === hamSpeakerRef.current);
-      const res = await fetch(`${ABABASE}/api/tim/cue`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript_chunk: text, context: transcriptRef.current.slice(-3).map(t=>t.text).join(" "), mode: "meeting", userId, whose_turn: isHamTurn ? "ham" : "other" })
+  // TIM verbal filler — uses mesa-core fetchTimCue
+  const fireTimCue = async (text, speakerId) => {
+    const isHamTurn = hamSpeakerRef.current !== null && (speakerId === null || speakerId === hamSpeakerRef.current);
+    const result = await coreTimCue(api, { text, mode: 'meeting', whose_turn: isHamTurn ? 'ham' : 'other' }, userId, transcriptRef.current.slice(-3).map(t=>t.text).join(' '));
+    if (result && result.cue) {
+      const cue = { text: result.cue, type: result.type, time: fmt(secondsRef.current), latency: result.latency_ms };
+      setTimCues(prev => {
+        const now = Date.now();
+        return [...prev, { ...cue, ts: now }].filter(c => now - (c.ts || 0) < TIM_CUE_MAX_AGE).slice(-TIM_CUE_MAX_VISIBLE);
       });
-      if (res.ok) {
-        const d = await res.json();
-        if (d.cue) {
-          const cue = { text: d.cue, type: d.type, time: fmt(secondsRef.current), latency: d.latency_ms };
-          setTimCues(prev => {
-            const now = Date.now();
-            // Queue management: max 5 cues, drop stale (older than 30s), ALERT priority
-            const fresh = [...prev, { ...cue, ts: now }].filter(c => now - (c.ts || 0) < 30000).slice(-5);
-            return fresh;
-          });
-          setActiveCue(cue);
-          clearTimeout(cueTimeoutRef.current);
-          cueTimeoutRef.current = setTimeout(() => setActiveCue(null), 8000);
-        }
-      }
-    } catch {}
+      setActiveCue(cue);
+      clearTimeout(cueTimeoutRef.current);
+      cueTimeoutRef.current = setTimeout(() => setActiveCue(null), TIM_CUE_DURATION);
+    }
   };
 
   // COOK full script — one paragraph, copy-paste ready, SSE streaming
@@ -105,13 +109,12 @@ export default function MeetingModeView({ userId }) {
     const isHam = hamSpeaker !== null && speakerId === hamSpeaker;
     if (isHam || speakerId === null) lastSaidByHamRef.current = text;
     const now = Date.now();
-    if (now - lastTimFire.current >= 8000) {
+    if (now - lastTimFire.current >= TIM_COOLDOWN) {
       lastTimFire.current = now;
-      fetchTimCue(text, speakerId);
+      fireTimCue(text, speakerId);
     }
-    const interrogatives = ['how ', 'what ', 'why ', 'when ', 'where ', 'tell me', 'describe', 'explain', 'walk me through', 'can you', 'could you', 'would you', 'elaborate', 'thoughts on', 'your take'];
-    const isQuestion = text.includes('?') || interrogatives.some(w => text.toLowerCase().includes(w));
-    if (isQuestion && now - lastCookFire.current >= 15000) {
+    const questionDetected = isQuestion(text);
+    if (questionDetected && now - lastCookFire.current >= COOK_COOLDOWN) {
       lastCookFire.current = now;
       setTimeout(() => fetchCookAnswer(text), 2000);
     }
