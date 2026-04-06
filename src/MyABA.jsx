@@ -55,7 +55,7 @@ import { ABAPresence } from './ABAPresence.jsx';
 import { ABABASE, airRequest, airRequestStream, isOnline, airShareChat, airLoadProjects, airCreateProject, airLoadConversations, airCreateConversation, airAddMessage, airUpdateConversation, airDeleteConversation, airLoadSettings, airSaveSettings, airAddProjectFile, IMAGE_TYPES, fileToBase64, uploadAttachment, uploadAttachmentsBatch, reachTranscribe, reachSynthesize, reachPresence, airNameChat, getDawnGreeting, subscribeToPush, unsubscribeFromPush, safeParseGreeting } from "./utils/api.js";
 import { resolveHamId, isHAM, HAM_EMAIL_MAP, HAM_TEAM } from "./utils/ham.js";
 import { ICON_MAP } from "./utils/icons.js";
-import { renderMd, renderInline } from "./utils/markdown.js";
+import { renderMd, renderInline } from "./utils/markdown.jsx";
 import ABALogo from "./components/shared/ABALogo.jsx";
 // Extracted views
 import ShadowView from "./views/ShadowView.jsx";
