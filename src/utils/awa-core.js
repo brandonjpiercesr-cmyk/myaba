@@ -280,14 +280,28 @@ export function filterByStage(jobs, stage) {
   return jobs.filter(j => (j.status || 'NEW') === stage);
 }
 
-// Filter by status category (active = not dismissed/rejected/withdrawn, applied = applied+, all)
+// Filter by status category — workflow-oriented grouping
+// 'active' = pre-application (NEW, SAVED, MATERIALS_READY) — source: CIP, best UX
+// 'applied' = in-progress applications (APPLIED through ACCEPTED, excluding dismissed/rejected/withdrawn)
+// 'all' = everything including dismissed
 export function filterByStatusCategory(jobs, category) {
   if (category === 'all') return jobs;
-  if (category === 'active') return jobs.filter(j => !['DISMISSED', 'REJECTED', 'WITHDRAWN'].includes(j.status));
-  if (category === 'applied') return jobs.filter(j => {
-    const idx = PIPELINE_STAGES.indexOf(j.status || 'NEW');
-    return idx >= PIPELINE_STAGES.indexOf('APPLIED') && !['DISMISSED', 'REJECTED', 'WITHDRAWN'].includes(j.status);
-  });
+  if (category === 'active') {
+    // Pre-application: only jobs that haven't been applied to yet
+    const preApp = ['NEW', 'SAVED', 'MATERIALS_READY'];
+    return jobs.filter(j => preApp.includes((j.status || 'NEW').toUpperCase()));
+  }
+  if (category === 'applied') {
+    // In-progress: applied and beyond, but not dismissed/rejected/withdrawn
+    const inProgress = ['APPLIED', 'WAITING', 'INTERVIEW', 'INTERVIEW_SCHEDULED', 'INTERVIEWED', 'SECOND_INTERVIEW', 'OFFER', 'ACCEPTED'];
+    return jobs.filter(j => inProgress.includes((j.status || 'NEW').toUpperCase()));
+  }
+  if (category === 'unmatched') {
+    return jobs.filter(j => {
+      const assignees = j.assignees || [];
+      return assignees.length === 0 || assignees.includes('UNMATCHED') || assignees.includes('unmatched');
+    });
+  }
   return jobs;
 }
 

@@ -105,9 +105,13 @@ describe('awa-core.js — filter and sort', () => {
     expect(filterBySearch(mockJobs, '')).toHaveLength(4);
   });
 
-  it('filterByStatusCategory filters active vs all', async () => {
+  it('filterByStatusCategory filters active (pre-application) vs applied vs all', async () => {
     const { filterByStatusCategory } = await import('../utils/awa-core.js');
-    expect(filterByStatusCategory(mockJobs, 'active')).toHaveLength(3); // excludes DISMISSED
+    // active = only NEW (pre-application)
+    expect(filterByStatusCategory(mockJobs, 'active')).toHaveLength(2); // job 1 (NEW) + job 4 (NEW)
+    // applied = only APPLIED
+    expect(filterByStatusCategory(mockJobs, 'applied')).toHaveLength(1); // job 2 (APPLIED)
+    // all = everything
     expect(filterByStatusCategory(mockJobs, 'all')).toHaveLength(4);
   });
 

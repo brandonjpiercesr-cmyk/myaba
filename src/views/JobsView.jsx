@@ -1,164 +1,129 @@
-// ⬡B:MACE.phase0:VIEW:jobs_extract:20260405⬡
-// JobsView — extracted from MyABA.jsx lines 4709-5476.
-// AWA (ABA Workforce Automation) — CIP surface. Largest view (768 lines).
-// setEditorDoc passed as prop from MyABA.jsx (was parent scope closure).
+// ⬡B:MACE.phase1:VIEW:jobs_migrated:20260406⬡
+// JobsView — CIP surface, migrated to use awa-core.js shared library.
+// Constants, API functions, filtering, sorting all from awa-core.
+// Only JSX rendering and platform-specific UI state live here.
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Briefcase, Building, MapPin, ExternalLink, Download, ChevronDown, ChevronRight,
   Edit2, Loader2, Send, Search, FileText, RefreshCw, X, Users, Eye, Copy, Star
 } from "lucide-react";
 import { ABABASE } from "../utils/api.js";
 import { resolveHamId } from "../utils/ham.js";
+import {
+  TEAM, TEAM_COLORS, STAGE_COLORS, PERSONAL_EMAILS, PIPELINE_STAGES,
+  cleanTitle, getDisplayName, getTeamColor,
+  fetchJobs as coreFetchJobs, fetchUnmatchedJobs, runAction, updateStatus, assignJob,
+  bulkGenerate as coreBulkGenerate, loadReferences,
+  useJobs, useJobFilters, useMockInterview, useMiniChat,
+} from "../utils/awa-core.js";
+
+// CIP API adapter — wraps fetch(ABABASE + path) for awa-core functions
+const api = async (path, opts = {}) => {
+  const res = await fetch(ABABASE + path, {
+    method: opts.method || 'GET',
+    headers: opts.body ? { 'Content-Type': 'application/json', 'Accept': 'application/json' } : { 'Accept': 'application/json' },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  return res.json();
+};
 
 export default function JobsView({userId, setEditorDoc}){
-  // Map email to ham_id for default filter
-  const defaultHam=resolveHamId(userId);
-  const[sortBy,setSortBy]=useState('newest');
-  const[miniChat,setMiniChat]=useState('');
-  const[miniChatResult,setMiniChatResult]=useState(null);
-  const[miniChatLoading,setMiniChatLoading]=useState(false);
-  const[bulkSelected,setBulkSelected]=useState(new Set());
-  const[splitPane,setSplitPane]=useState(null);
-  const[bulkLoading,setBulkLoading]=useState(false);
+  const defaultHam = resolveHamId(userId);
   
-  const[jobs,setJobs]=useState([]);
-  const[loading,setLoading]=useState(true);
+  // Core hooks — jobs, filtering, mock interview, mini chat
+  const { jobs, loading, error, fetchJobs: refreshJobs, setJobs } = useJobs(api, userId);
+  const {
+    filtered, teamFilter, setTeamFilter, statusFilter, setStatusFilter,
+    searchTerm, setSearchTerm, activeStage, setActiveStage,
+    sortBy, setSortBy, stageCounts, totalActive,
+  } = useJobFilters(jobs, defaultHam);
+  const mock = useMockInterview(api, userId);
+  const chat = useMiniChat(api, userId);
+  
+  // Platform-specific UI state (CIP only)
   const[selectedJob,setSelectedJob]=useState(null);
-  const[filter,setFilter]=useState("");
-  const[teamFilter,setTeamFilter]=useState(defaultHam);
-  const[statusFilter,setStatusFilter]=useState("active"); // active | applied | all
   const[generating,setGenerating]=useState(null);
   const[output,setOutput]=useState(null);
   const[showRefs,setShowRefs]=useState(false);
   const[jobRefs,setJobRefs]=useState([]);
   const[applyPreview,setApplyPreview]=useState(null);
   const[applyLoading,setApplyLoading]=useState(false);
-  const[interviewChat,setInterviewChat]=useState(null); // {jobId, step, date, name, notes, messages}
-  const[offerForm,setOfferForm]=useState(null); // {jobId, salary, deadline, details}
-  const[prepData,setPrepData]=useState(null); // interview prep package
+  const[interviewChat,setInterviewChat]=useState(null);
+  const[offerForm,setOfferForm]=useState(null);
+  const[prepData,setPrepData]=useState(null);
   const[prepLoading,setPrepLoading]=useState(false);
-  const[mockMode,setMockMode]=useState(false); // mock interview active
-  const[mockQuestion,setMockQuestion]=useState(null); // current question
-  const[mockAnswer,setMockAnswer]=useState(""); // user's typed answer
-  const[mockEval,setMockEval]=useState(null); // evaluation result
-  const[mockHistory,setMockHistory]=useState([]); // past questions
+  const[mockMode,setMockMode]=useState(false);
+  const[mockQuestion,setMockQuestion]=useState(null);
+  const[mockAnswer,setMockAnswer]=useState("");
+  const[mockEval,setMockEval]=useState(null);
+  const[mockHistory,setMockHistory]=useState([]);
   const[mockLoading,setMockLoading]=useState(false);
-  const[varaInterview,setVaraInterview]=useState(null); // job object when VARA mock interview is active
+  const[varaInterview,setVaraInterview]=useState(null);
   const[unmatchedJobs,setUnmatchedJobs]=useState([]);
-  const[assigningJob,setAssigningJob]=useState(null); // job being assigned
+  const[assigningJob,setAssigningJob]=useState(null);
+  const[bulkSelected,setBulkSelected]=useState(new Set());
+  const[splitPane,setSplitPane]=useState(null);
+  const[bulkLoading,setBulkLoading]=useState(false);
+  const[miniChat,setMiniChat]=useState('');
+  const[miniChatResult,setMiniChatResult]=useState(null);
+  const[miniChatLoading,setMiniChatLoading]=useState(false);
   
-  // Team members for filter
-  const TEAM_MEMBERS=[
-    {id:"all",name:"All",color:"#6B7280"},
-    {id:"brandon",name:"Brandon",color:"#8B5CF6"},
-    {id:"eric",name:"Eric",color:"#3B82F6"},
-    {id:"bj",name:"BJ",color:"#10B981"},
-    {id:"cj",name:"CJ",color:"#F59E0B"},
-    {id:"vante",name:"Vante",color:"#F97316"},
-    {id:"dwayne",name:"Dwayne",color:"#EC4899"},
-    {id:"gmg",name:"GMG",color:"#6B7280"}
-  ];
-  
-  // Team colors for job cards
-  const TEAM_COLORS={"Brandon":"#8B5CF6","Eric":"#3B82F6","BJ":"#10B981","CJ":"#F59E0B","Vante":"#F97316","Dwayne":"#EC4899","GMG":"#6B7280"};
-  
-  useEffect(()=>{
-    (async()=>{
-      try{
-        const res=await fetch(`${ABABASE}/api/awa/jobs?userId=${encodeURIComponent(userId)}`,{
-          headers:{"Accept":"application/json"}
-        });
-        const data=await res.json();
-        if(data.success&&data.jobs){setJobs(data.jobs)}
-        else{
-          const parsed=(Array.isArray(data)?data:[]).map(j=>{
-            if(j.id&&j.job_title)return j;
-            try{return{...JSON.parse(j.content),id:j.id}}catch{return{title:"Unknown",id:j.id}}
-          });
-          setJobs(parsed);
-        }
-      }catch(e){console.error("[AWA] Load failed:",e)}
-      setLoading(false);
-    })();
-  },[]);
-  
-  // Filter by team, status, AND text
-  // ⬡B:MYABA:UNMATCHED_REVIEW:20260321⬡
+  // Unmatched jobs fetch
   useEffect(()=>{
     if(statusFilter==="unmatched"){
       (async()=>{
-        try{
-          const r=await fetch(`${ABABASE}/api/awa/jobs/unmatched`);
-          const d=await r.json();
-          if(d.success)setUnmatchedJobs(d.jobs||[]);
-        }catch(e){console.error("[AWA] Unmatched fetch:",e)}
+        try{ const result = await fetchUnmatchedJobs(api); setUnmatchedJobs(result); }
+        catch(e){ console.error("[AWA] Unmatched fetch:",e) }
       })();
     }
   },[statusFilter]);
   
-  const assignJobTo=async(jobId,assignTo)=>{
+  // Action handlers using core API functions
+  const assignJobTo = async(jobId, assignTo) => {
     setAssigningJob(jobId);
-    try{
-      await fetch(`${ABABASE}/api/awa/jobs/${jobId}/assign`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({assignTo,userId})});
-      setUnmatchedJobs(prev=>prev.filter(j=>j.id!==jobId));
-    }catch(e){console.error("[AWA] Assign failed:",e)}
+    try{ await assignJob(api, jobId, assignTo, userId); setUnmatchedJobs(prev=>prev.filter(j=>j.id!==jobId)); }
+    catch(e){ console.error("[AWA] Assign failed:",e) }
     setAssigningJob(null);
   };
   
-  const filtered=jobs.filter(j=>{
-    // Status filter
-    if(statusFilter==="active"){
-      const s=(j.status||"NEW").toUpperCase();
-      if(["APPLIED","WAITING","INTERVIEW_SCHEDULED","INTERVIEWED","SECOND_INTERVIEW","OFFER","ACCEPTED","REJECTED","WITHDRAWN","DISMISSED"].includes(s))return false;
-    }else if(statusFilter==="applied"){
-      const s=(j.status||"NEW").toUpperCase();
-      if(!["APPLIED","WAITING","INTERVIEW_SCHEDULED","INTERVIEWED","SECOND_INTERVIEW","OFFER","ACCEPTED"].includes(s))return false;
-    }
-    // Team filter - check ALL assignees
-    if(teamFilter!=="all"){
-      const allAssignees=(j.assignees||[j.assignee]||[]).map(a=>(a||"").toLowerCase());
-      if(!allAssignees.some(a=>a.includes(teamFilter)))return false;
-    }
-    // Text filter
-    if(!filter)return true;
-    const f=filter.toLowerCase();
-    const title=(j.job_title||j.title||"").toLowerCase();
-    const company=(j.organization||j.company||"").toLowerCase();
-    const assignees=((j.assignees||[])[0]||j.assignee||"").toLowerCase();
-    return title.includes(f)||company.includes(f)||assignees.includes(f);
-  });
-  
   const toggleBulk=(id)=>{setBulkSelected(p=>{const n=new Set(p);if(n.has(id))n.delete(id);else n.add(id);return n;});};
-  const bulkGenerate=async()=>{setBulkLoading(true);for(const j of filtered.filter(j=>bulkSelected.has(j.id))){const a=(j.assignees||[])[0]||'unmatched';try{await fetch(ABABASE+"/api/awa/cover-letter",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({job:j,userId:a})});await fetch(ABABASE+"/api/awa/resume",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({job:j,userId:a})})}catch{}}setBulkLoading(false);setBulkSelected(new Set());};
-  const openSplitPane=async(job)=>{
+  
+  const handleBulkGenerate = async() => {
+    setBulkLoading(true);
+    const selectedJobs = filtered.filter(j=>bulkSelected.has(j.id));
+    await coreBulkGenerate(api, selectedJobs, userId);
+    setBulkLoading(false);
+    setBulkSelected(new Set());
+  };
+  
+  const openSplitPane = async(job) => {
     const a=(job.assignees||[])[0]||userId;
     setSplitPane({job,cl:'',res:'',loading:true});
     try{
-      const[clR,resR]=await Promise.all([
-        fetch(ABABASE+"/api/awa/cover-letter",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({job,userId:a})}),
-        fetch(ABABASE+"/api/awa/resume",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({job,userId:a})})
+      const[clResult, resResult] = await Promise.all([
+        runAction(api, 'cover-letter', job, a),
+        runAction(api, 'resume', job, a),
       ]);
-      const clD=await clR.json(), resD=await resR.json();
-      setSplitPane(p=>({...p,cl:clD.coverLetter||clD.response||'',res:resD.resume||resD.response||'',loading:false}));
-    }catch{setSplitPane(p=>({...p,loading:false}));}
-  };
-  const handleGenerate=async(type)=>{
-    if(!selectedJob)return;
-    setGenerating(type);setOutput(null);
-    try{
-      const assignee=(selectedJob.assignees||[])[0]||selectedJob.assignee||"unmatched";
-      const endpoint = type==="cover" ? "cover-letter" : type==="resume" ? "resume" : "writing-sample";
-      const res=await fetch(`${ABABASE}/api/awa/${endpoint}`,{
-        method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({job:selectedJob,userId:assignee.toLowerCase().replace(" ","_")})
-      });
-      const data=await res.json();
-      setOutput(data.coverLetter||data.resume||data.writingSample||data.response||JSON.stringify(data,null,2));
-    }catch(e){setOutput("Error: "+e.message)}
-    setGenerating(null);
+      setSplitPane(p=>({...p, cl:clResult.coverLetter||clResult.response||'', res:resResult.resume||resResult.response||'', loading:false}));
+    }catch{ setSplitPane(p=>({...p,loading:false})); }
   };
   
+  const handleGenerate = async(type) => {
+    if(!selectedJob) return;
+    setGenerating(type); setOutput(null);
+    try{
+      const action = type==="cover" ? "cover-letter" : type==="resume" ? "resume" : "writing-sample";
+      const result = await runAction(api, action, selectedJob, userId);
+      setOutput(result.coverLetter||result.resume||result.writingSample||result.response||JSON.stringify(result,null,2));
+    }catch(e){ setOutput("Error: "+e.message) }
+    setGenerating(null);
+  };
+
+  // Alias filter/setFilter for JSX compatibility
+  const filter = searchTerm;
+  const setFilter = setSearchTerm;
+
   if(loading){
     return(<div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
       <div style={{width:50,height:50,borderRadius:"50%",border:"3px solid rgba(139,92,246,.2)",borderTopColor:"rgba(139,92,246,.8)",animation:"spin 1s linear infinite"}}/>
@@ -179,7 +144,7 @@ export default function JobsView({userId, setEditorDoc}){
     </div>
     {/* Team filter buttons */}
     <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
-      {TEAM_MEMBERS.map(tm=>(
+      {TEAM.map(tm=>(
         <button key={tm.id} onClick={()=>{setTeamFilter(tm.id);setSelectedJob(null);}} style={{
           padding:"6px 12px",borderRadius:20,border:"none",cursor:"pointer",fontSize:11,fontWeight:500,
           background:teamFilter===tm.id?`${tm.color}30`:"rgba(255,255,255,.05)",
@@ -222,8 +187,7 @@ export default function JobsView({userId, setEditorDoc}){
           const title=job.job_title||job.title||"Untitled";
           const company=job.organization||job.company||"Unknown";
           const assignee=(job.assignees||[])[0]||job.assignee||"Unassigned";
-          const DISPLAY_NAMES={"brandon":"Brandon","eric":"Eric","bj":"BJ","cj":"CJ","vante":"Vante","dwayne":"Dwayne","gmg":"GMG"};
-          const assigneeDisplay=DISPLAY_NAMES[assignee]||assignee;
+          const assigneeDisplay=getDisplayName(assignee);
           return(
           <div key={job.id} onClick={()=>{setSelectedJob(job);setApplyPreview(null);setInterviewChat(null);setOfferForm(null);setShowRefs(false);setMockMode(false);setMockQuestion(null);setMockEval(null);}} style={{padding:12,borderRadius:12,background:selectedJob?.id===job.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",border:`1px solid ${selectedJob?.id===job.id?"rgba(139,92,246,.3)":"rgba(255,255,255,.05)"}`,borderLeft:`3px solid ${TEAM_COLORS[assigneeDisplay]||"rgba(255,255,255,.2)"}`,cursor:"pointer",transition:"all .2s"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
@@ -283,7 +247,7 @@ export default function JobsView({userId, setEditorDoc}){
           <button onClick={async()=>{
             try{
               const assignee=(selectedJob.assignees||[])[0]||"unmatched";
-              const r=await fetch(`${ABABASE}/api/awa/export/combined/preview`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobId:selectedJob.id,format:"pdf",userId:assignee,includeReferences:true})});
+              const r=await api('/api/awa/export/combined/preview',{method:'POST',body:{jobId:selectedJob.id,format:"pdf",userId:assignee,includeReferences:true}});
               const d=await r.json();
               if(d.success&&d.base64){const blob=new Blob([Uint8Array.from(atob(d.base64),c=>c.charCodeAt(0))],{type:"application/pdf"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=d.filename||"application.pdf";a.click();URL.revokeObjectURL(url)}
               else{setOutput("PDF generation failed: "+(d.error||"Unknown error"))}
@@ -294,7 +258,7 @@ export default function JobsView({userId, setEditorDoc}){
           <button onClick={async()=>{
             try{
               const assignee=(selectedJob.assignees||[])[0]||"unmatched";
-              const r=await fetch(`${ABABASE}/api/awa/export/combined/preview`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobId:selectedJob.id,format:"docx",userId:assignee,includeReferences:true})});
+              const r=await api('/api/awa/export/combined/preview',{method:'POST',body:{jobId:selectedJob.id,format:"docx",userId:assignee,includeReferences:true}});
               const d=await r.json();
               if(d.success&&d.base64){const blob=new Blob([Uint8Array.from(atob(d.base64),c=>c.charCodeAt(0))],{type:d.contentType});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=d.filename||"application.docx";a.click();URL.revokeObjectURL(url)}
               else{setOutput("DOCX generation failed: "+(d.error||"Unknown error"))}
@@ -312,7 +276,7 @@ export default function JobsView({userId, setEditorDoc}){
             setApplyLoading(true);
             try{
               const assignee=(selectedJob.assignees||[])[0]||"unmatched";
-              const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/apply-preview`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee})});
+              const r=await api('/api/awa/jobs/${selectedJob.id}/apply-preview',{method:'POST',body:{userId:assignee}});
               const d=await r.json();
               if(d.success){setApplyPreview(d)}else{setOutput("Preview failed: "+(d.error||"Unknown"))}
             }catch(e){setOutput("Preview error: "+e.message)}
@@ -340,7 +304,7 @@ export default function JobsView({userId, setEditorDoc}){
               <button onClick={async()=>{
                 try{
                   const assignee=(selectedJob.assignees||[])[0]||"unmatched";
-                  const r=await fetch(`${ABABASE}/api/awa/export/combined/preview`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobId:selectedJob.id,format:"docx",userId:assignee,includeReferences:true})});
+                  const r=await api('/api/awa/export/combined/preview',{method:'POST',body:{jobId:selectedJob.id,format:"docx",userId:assignee,includeReferences:true}});
                   const d=await r.json();
                   if(d.success&&d.base64){const blob=new Blob([Uint8Array.from(atob(d.base64),c=>c.charCodeAt(0))],{type:d.contentType});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=d.filename||"application.docx";a.click();URL.revokeObjectURL(url)}
                 }catch(e){setOutput("DOCX error: "+e.message)}
@@ -392,7 +356,7 @@ export default function JobsView({userId, setEditorDoc}){
               try{
                 const assignee=(selectedJob.assignees||[])[0]||"unmatched";
                 const method=applyPreview.applicationType||"manual";
-                const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/apply`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,method})});
+                const r=await api('/api/awa/jobs/${selectedJob.id}/apply',{method:'POST',body:{userId:assignee,method}});
                 const d=await r.json();
                 if(d.success){
                   setSelectedJob(prev=>({...prev,status:"APPLIED",applied_at:new Date().toISOString()}));
@@ -414,7 +378,7 @@ export default function JobsView({userId, setEditorDoc}){
         <button onClick={async()=>{
           try{
             const assignee=(selectedJob.assignees||[])[0]||"unmatched";
-            const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:"DISMISSED"})});
+            const r=await updateStatus(api,selectedJob.id,"DISMISSED",assignee);
             const d=await r.json();
             if(d.success){
               setSelectedJob(prev=>({...prev,status:"DISMISSED"}));
@@ -447,7 +411,7 @@ export default function JobsView({userId, setEditorDoc}){
             }
             try{
               const assignee=(selectedJob.assignees||[])[0]||"unmatched";
-              const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:newStatus})});
+              const r=await api('/api/awa/jobs/${selectedJob.id}/status',{method:'POST',body:{userId:assignee,status:newStatus}});
               const d=await r.json();
               if(d.success){
                 setSelectedJob(prev=>({...prev,status:newStatus}));
@@ -510,7 +474,7 @@ export default function JobsView({userId, setEditorDoc}){
                   setInterviewChat(p=>({...p,notes:v,step:"done",messages:[...p.messages,{from:"you",text:v||"(none)"},{from:"aba",text:"All set. Saving..."}]}));
                   try{
                     const assignee=(selectedJob.assignees||[])[0]||"unmatched";
-                    await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:"INTERVIEW_SCHEDULED",interviewDate:interviewChat.date||null,interviewerName:interviewChat.name||null,notes:v||null})});
+                    await api('/api/awa/jobs/${selectedJob.id}/status',{method:'POST',body:{userId:assignee,status:"INTERVIEW_SCHEDULED",interviewDate:interviewChat.date||null,interviewerName:interviewChat.name||null,notes:v||null}});
                     setSelectedJob(prev=>({...prev,status:"INTERVIEW_SCHEDULED",interview_date:interviewChat.date,interviewer_name:interviewChat.name,interview_notes:v}));
                     setJobs(prev=>prev.map(j=>j.id===selectedJob.id?{...j,status:"INTERVIEW_SCHEDULED"}:j));
                   }catch(e2){console.error("[AWA] Interview save:",e2)}
@@ -520,7 +484,7 @@ export default function JobsView({userId, setEditorDoc}){
                 setInterviewChat(p=>({...p,notes:"",step:"done",messages:[...p.messages,{from:"you",text:"(skipped)"},{from:"aba",text:"All set. Saving..."}]}));
                 try{
                   const assignee=(selectedJob.assignees||[])[0]||"unmatched";
-                  await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:"INTERVIEW_SCHEDULED",interviewDate:interviewChat.date||null,interviewerName:interviewChat.name||null,notes:null})});
+                  await api('/api/awa/jobs/${selectedJob.id}/status',{method:'POST',body:{userId:assignee,status:"INTERVIEW_SCHEDULED",interviewDate:interviewChat.date||null,interviewerName:interviewChat.name||null,notes:null}});
                   setSelectedJob(prev=>({...prev,status:"INTERVIEW_SCHEDULED",interview_date:interviewChat.date,interviewer_name:interviewChat.name}));
                   setJobs(prev=>prev.map(j=>j.id===selectedJob.id?{...j,status:"INTERVIEW_SCHEDULED"}:j));
                 }catch(e2){console.error("[AWA] Interview save:",e2)}
@@ -547,7 +511,7 @@ export default function JobsView({userId, setEditorDoc}){
             <button onClick={async()=>{
               try{
                 const assignee=(selectedJob.assignees||[])[0]||"unmatched";
-                const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/status`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,status:"OFFER",offerSalary:offerForm.salary||null,offerDeadline:offerForm.deadline||null,offerDetails:offerForm.details||null})});
+                const r=await api('/api/awa/jobs/${selectedJob.id}/status',{method:'POST',body:{userId:assignee,status:"OFFER",offerSalary:offerForm.salary||null,offerDeadline:offerForm.deadline||null,offerDetails:offerForm.details||null}});
                 const d=await r.json();
                 if(d.success){
                   setSelectedJob(prev=>({...prev,status:"OFFER",offer_salary:offerForm.salary,offer_deadline:offerForm.deadline,offer_details:offerForm.details}));
@@ -586,7 +550,7 @@ export default function JobsView({userId, setEditorDoc}){
             setPrepLoading(true);setPrepData(null);
             try{
               const assignee=(selectedJob.assignees||[])[0]||"unmatched";
-              const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/interview-prep`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee})});
+              const r=await api('/api/awa/jobs/${selectedJob.id}/interview-prep',{method:'POST',body:{userId:assignee}});
               const d=await r.json();
               if(d.success)setPrepData({...d.prep, _jobTitle: selectedJob.job_title||selectedJob.title, _jobOrg: selectedJob.organization||selectedJob.company});
               else setOutput("Prep failed: "+(d.error||"Unknown"));
@@ -621,7 +585,7 @@ export default function JobsView({userId, setEditorDoc}){
               setMockLoading(true);
               try{
                 const assignee=(selectedJob.assignees||[])[0]||"unmatched";
-                const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/mock-question`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,previousQuestions:mockHistory})});
+                const r=await api('/api/awa/jobs/${selectedJob.id}/mock-question',{method:'POST',body:{userId:assignee,previousQuestions:mockHistory}});
                 const d=await r.json();
                 if(d.success)setMockQuestion(d);
                 else setOutput("Mock question failed: "+(d.error||"Unknown"));
@@ -647,7 +611,7 @@ export default function JobsView({userId, setEditorDoc}){
               setMockLoading(true);
               try{
                 const assignee=(selectedJob.assignees||[])[0]||"unmatched";
-                const r=await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/mock-evaluate`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:assignee,question:mockQuestion.question,answer:mockAnswer})});
+                const r=await api('/api/awa/jobs/${selectedJob.id}/mock-evaluate',{method:'POST',body:{userId:assignee,question:mockQuestion.question,answer:mockAnswer}});
                 const d=await r.json();
                 if(d.success){setMockEval(d);setMockHistory(prev=>[...prev,mockQuestion.question])}
                 else setOutput("Eval failed: "+(d.error||"Unknown"));
@@ -695,7 +659,7 @@ export default function JobsView({userId, setEditorDoc}){
           if(showRefs){setShowRefs(false);return}
           try{
             const assignee=(selectedJob.assignees||[])[0]||"unmatched";
-            const r=await fetch(`${ABABASE}/api/awa/references?userId=${assignee}`);
+            const r=await api(`/api/awa/references?userId=${assignee}`);
             const d=await r.json();
             if(d.success)setJobRefs(d.references||[]);
             setShowRefs(true);
@@ -719,9 +683,8 @@ export default function JobsView({userId, setEditorDoc}){
         <button onClick={async()=>{
           if(!confirm("Dismiss this job for everyone?"))return;
           try{
-            await fetch(`${ABABASE}/api/awa/jobs/${selectedJob.id}/dismiss`,{
-              method:"PATCH",headers:{"Content-Type":"application/json"},
-              body:JSON.stringify({userId:user?.email||"unknown",admin_dismiss:true,reason:"Dismissed from MyABA"})
+            await api(`/api/awa/jobs/${selectedJob.id}/dismiss`,{
+              method:"PATCH",body:{userId:user?.email||"unknown",admin_dismiss:true,reason:"Dismissed from MyABA"}
             });
             setJobs(prev=>prev.filter(j=>j.id!==selectedJob.id));
             setSelectedJob(null);setOutput(null);
