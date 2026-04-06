@@ -1,9 +1,14 @@
-// ⬡B:MACE.phase0:VIEW:gmgu_extract:20260405⬡
+// ⬡B:MACE.phase3:VIEW:gmgu_cip_migrated:20260406⬡
 // GMGUniversityView + QuizDeckCIP + DeckPanel + LessonSidebar
 // Extracted from MyABA.jsx lines 567-759. Zero logic changes.
 
 import { useState, useRef, useEffect } from "react";
 import { ABABASE } from "../utils/api.js";
+import {
+  VOL_META, TITLES, TOTAL_LESSONS, getNextLesson, lessonKey, lessonTitle,
+  fetchProgress, markLessonComplete, resetProgress as coreResetProgress,
+  parseSSELine, extractDeck, checkLessonComplete,
+} from "../utils/gmgu-core.js";
 import { ABAPresence } from '../ABAPresence.jsx';
 const ABAConsciousness = ABAPresence;
 
@@ -38,7 +43,7 @@ function LessonSidebar({ show, onClose, completedDays, onSelect, onReset, curren
   if (!show) return null;
   const completed = completedDays || [];
   const VOL_M = {v1:{name:"Fundraising Foundations",days:30},v2:{name:"The GMG Way",days:30},v3:{name:"CPP Model",days:15}};
-  const TITLES_S = {v1:["The Four Sources of Money","Why People Actually Give","The Donor Lifecycle","The Donor Pyramid","Quiz 1-4","Annual Giving Programs","Foundation Grants Reality","Corporate Partnerships","Earned Revenue Strategies","Quiz 6-9","Board Fundraising Responsibility","Grant Research Methods","Donor Retention Fundamentals","Fundraising Systems and Tools","Quiz 11-14","Grant Writing Basics","Major Donor Identification","Planned Giving Basics","Corporate Sponsorship Strategy","Quiz 16-19","Digital Fundraising","Storytelling for Fundraising","Capital Campaigns","Monthly Giving Programs","Quiz 21-24","Board Development","Prospect Research Deep Dive","Fundraising Metrics","Strategic Fundraising Planning","Volume 1 Capstone"],v2:["What Makes GMG Different","Both Sides of the Table","Brandon\'s Writing Standards","The 360 Assessment","Quiz 1-4","Data Science Development Planning","Prospect Precision System","Grant Catalyst Method","Implementation Engine","Quiz 6-9","Tic-Tac-Toe Framework Intro","Tic-Tac-Toe Implementation","Recipe Pitch Framework","Board Training GMG Style","Quiz 11-14","Foundation Pipeline Management","Major Donor Strategy","Corporate Small-Dollar Approach","Merchandise Programs","Quiz 16-19","Monthly Giving as Default","Membership Programs","Tax-Advantaged Giving","Event Strategy GMG Way","Quiz 21-24","CRM Optimization","AI in Fundraising","Building Your Tech Stack","Final Assessment Prep","Volume 2 Certification"],v3:["What Is CPP","Legal Structure","Money Flow","Capacity Planning","Quiz 1-4","Building Your Resume","Certifications","Online Presence","Crafting Your Pitch","Quiz 6-9","Client Interviews","Documentation Mastery","Folder Structure","Client Communication","CPP Final Assessment"]};
+  const TITLES_S = TITLES; // from gmgu-core.js
   const totalDone = completed.length;
   const totalAll = Object.values(VOL_M).reduce((s,v)=>s+v.days,0);
   return (<>
@@ -88,9 +93,10 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
   const audioQueue = useRef([]);
   const isPlaying = useRef(false);
 
-  const VOL = { v1:{t:"Foundations",f:"Fundraising Foundations",d:30}, v2:{t:"GMG Way",f:"The GMG Way",d:30}, v3:{t:"CPP",f:"Consultant Pipeline Program",d:15} };
-  const TITLES = { v1:["The Four Sources of Money","Why People Actually Give","The Donor Lifecycle","The Donor Pyramid","Quiz 1-4","Annual Giving Programs","Foundation Grants Reality","Corporate Partnerships","Earned Revenue Strategies","Quiz 6-9","Board Fundraising Responsibility","Grant Research Methods","Donor Retention Fundamentals","Fundraising Systems and Tools","Quiz 11-14","Grant Writing Basics","Major Donor Identification","Planned Giving Basics","Corporate Sponsorship Strategy","Quiz 16-19","Digital Fundraising","Storytelling for Fundraising","Capital Campaigns","Monthly Giving Programs","Quiz 21-24","Board Development","Prospect Research Deep Dive","Fundraising Metrics","Strategic Fundraising Planning","Volume 1 Capstone"], v2:["What Makes GMG Different","Both Sides of the Table","Brandon\'s Writing Standards","The 360 Assessment","Quiz 1-4","Data Science Development Planning","Prospect Precision System","Grant Catalyst Method","Implementation Engine","Quiz 6-9","Tic-Tac-Toe Framework Intro","Tic-Tac-Toe Implementation","Recipe Pitch Framework","Board Training GMG Style","Quiz 11-14","Foundation Pipeline Management","Major Donor Strategy","Corporate Small-Dollar Approach","Merchandise Programs","Quiz 16-19","Monthly Giving as Default","Membership Programs","Tax-Advantaged Giving","Event Strategy GMG Way","Quiz 21-24","CRM Optimization","AI in Fundraising","Building Your Tech Stack","Final Assessment Prep","Volume 2 Certification"], v3:["What Is CPP","Legal Structure","Money Flow","Capacity Planning","Quiz 1-4","Building Your Resume","Certifications","Online Presence","Crafting Your Pitch","Quiz 6-9","Client Interviews","Documentation Mastery","Folder Structure","Client Communication","CPP Final Assessment"] };
-  const totalLessons = Object.values(VOL).reduce((s,v)=>s+v.d,0);
+  // VOL_META imported from gmgu-core.js
+  const VOL = Object.fromEntries(Object.entries(VOL_META).map(([k,v])=>([k,{t:v.short,f:v.name,d:v.days}])));
+  // TITLES imported from gmgu-core.js
+  const totalLessons = TOTAL_LESSONS;
 
   useEffect(() => { if (userEmail) loadProfile(); }, [userEmail]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior:"smooth" }); }, [msgs, streaming]);
@@ -122,7 +128,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
       else { setProfile({ email:userEmail, name:userName, completedDays:[], xp:0 }); }
     } catch (e) { console.error("[GMG-U] Load:", e.message); setProfile({ completedDays:[], xp:0 }); }
   };
-  const getNext = () => { const done=profile?.completedDays||[]; for (const [v,info] of Object.entries(VOL)) { for (let d=1;d<=info.d;d++) { if (!done.includes(v+"-d"+d)) return {vol:v,day:d,title:(TITLES[v]||[])[d-1]||"Day "+d}; } } return null; };
+  const getNext = () => getNextLesson(profile?.completedDays);
   const selectLesson = (vol, day) => {
     const title = (TITLES[vol]||[])[day-1]||"Day "+day;
     setCurrentLesson({vol,day,title});

@@ -1,10 +1,22 @@
-// ⬡B:MACE.phase0:VIEW:ccwa_extract:20260405⬡
+// ⬡B:MACE.phase3:VIEW:ccwa_cip_migrated:20260406⬡
 // CCWAView — extracted from MyABA.jsx. Come Code With ABA (CCWA) dual-engine coding assistant.
 // Supports Production (Sonnet), Dev (Haiku/INCUABA), and Compare modes.
 
 import { useState } from "react";
 import { Code, Loader2, Send } from "lucide-react";
 import { ABABASE } from "../utils/api.js";
+import {
+  ENGINE_MODES, getChannel, sendToEngine, compareEngines,
+} from "../utils/ccwa-core.js";
+
+const api = async (path, opts = {}) => {
+  const res = await fetch(ABABASE + path, {
+    method: opts.method || "GET",
+    headers: opts.body ? { "Content-Type": "application/json" } : {},
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  return res.json();
+};
 
 export default function CCWAView({ userId }) {
   const [query, setQuery] = useState("");
@@ -41,7 +53,7 @@ export default function CCWAView({ userId }) {
   return (<div style={{flex:1,display:"flex",flexDirection:"column"}}>
     <div style={{flex:1,overflowY:"auto",padding:16}}>
       <div style={{display:"flex",gap:4,padding:"0 0 8px",borderBottom:"1px solid rgba(255,255,255,.04)",marginBottom:8}}>
-        {[{id:"prod",label:"Production",color:"#f59e0b"},{id:"dev",label:"Dev (Haiku)",color:"#22d3ee"},{id:"compare",label:"Compare",color:"#a78bfa"}].map(m=>
+        {ENGINE_MODES.map(m=>
           <button key={m.id} onClick={()=>setDevMode(m.id)} style={{flex:1,padding:"6px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:devMode===m.id?700:400,background:devMode===m.id?m.color+"20":"transparent",color:devMode===m.id?m.color:"rgba(255,255,255,.3)"}}>{m.label}</button>)}
       </div>
       {devMode==="dev"&&<div style={{padding:"4px 8px",borderRadius:6,background:"rgba(34,211,238,.08)",border:"1px solid rgba(34,211,238,.15)",marginBottom:8,fontSize:10,color:"rgba(34,211,238,.7)"}}>INCUABA: Running on Haiku. 10-20x cheaper. Same agents, cheaper model.</div>}
