@@ -132,8 +132,8 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
       const next = curriculum ? getNextBlockLesson(profile?.completedDays, curriculum) : null;
       const h = new Date().getHours();
       let msg = "Good "+(h<12?"morning":h<17?"afternoon":"evening")+", this is "+firstName+". I just opened GMG University.";
-        msg += ' My next lesson is Block ' + next.block + ' Day ' + next.day + ': "' + next.title + '". I have completed ' + (profile.completedDays||[]).length + ' of ' + (curriculum?.totalDays||'?') + ' lessons. Check my cohort_type and proceed accordingly.';
-      else { msg += " I have completed all "+totalLessons+" lessons!"; }
+      if (next) { msg += ' My next lesson is Block ' + next.block + ' Day ' + next.day + ': "' + next.title + '". I have completed ' + (profile.completedDays||[]).length + ' of ' + (curriculum?.totalDays||'?') + ' lessons. Check my cohort_type and proceed accordingly.'; setCurrentLesson(next); }
+      else { msg += ' I have completed all lessons!'; }
       streamFromAIR(msg, true);
     }
   }, [profile, initDone]);
