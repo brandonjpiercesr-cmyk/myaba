@@ -6,6 +6,7 @@ import { useState, useRef, useEffect } from "react";
 import { ABABASE } from "../utils/api.js";
 import {
   VOL_META, TITLES, TOTAL_LESSONS, getNextLesson, lessonKey, lessonTitle,
+  fetchCurriculum, blockLessonKey, getNextBlockLesson,
   fetchProgress, markLessonComplete, resetProgress as coreResetProgress,
   parseSSELine, extractDeck, checkLessonComplete,
 } from "../utils/gmgu-core.js";
@@ -39,27 +40,29 @@ function DeckPanel({ deck, onClose }) {
     </div>
   </div>);
 }
-function LessonSidebar({ show, onClose, completedDays, onSelect, onReset, currentLesson }) {
+// ⬡B:audra.gmg_university.restructure:FIX:cip_block_sidebar:20260407⬡
+function LessonSidebar({ show, onClose, completedDays, onSelectBlock, onReset, currentLesson, curriculum }) {
   if (!show) return null;
   const completed = completedDays || [];
-  const VOL_M = {v1:{name:"Fundraising Foundations",days:30},v2:{name:"The GMG Way",days:30},v3:{name:"CPP Model",days:15}};
-  const TITLES_S = TITLES; // from gmgu-core.js
+  const blocks = curriculum?.blocks || [];
+  const totalAll = blocks.reduce((s, b) => s + (b.days || []).length, 0);
   const totalDone = completed.length;
-  const totalAll = Object.values(VOL_M).reduce((s,v)=>s+v.days,0);
   return (<>
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:90}}/>
     <div style={{position:"fixed",top:0,left:0,bottom:0,width:280,maxWidth:"85vw",background:"rgba(15,15,20,.95)",backdropFilter:"blur(24px)",borderRight:"1px solid rgba(255,255,255,.08)",zIndex:91,display:"flex",flexDirection:"column"}}>
       <div style={{padding:"16px 14px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{color:"white",fontSize:15,fontWeight:600}}>Curriculum</span><button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,.4)",fontSize:22,cursor:"pointer"}}>×</button></div>
         <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8}}>
-          <div style={{flex:1,height:4,background:"rgba(255,255,255,.08)",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",background:"linear-gradient(90deg,#7c3aed,#a78bfa)",borderRadius:2,width:(totalDone/totalAll)*100+"%"}}/></div>
+          <div style={{flex:1,height:4,background:"rgba(255,255,255,.08)",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",background:"linear-gradient(90deg,#7c3aed,#a78bfa)",borderRadius:2,width:totalAll>0?(totalDone/totalAll*100)+"%":"0%"}}/></div>
           <span style={{color:"rgba(255,255,255,.4)",fontSize:11}}>{totalDone}/{totalAll}</span>
         </div>
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"6px 0"}}>
-        {Object.entries(VOL_M).map(([vol,meta])=>(<div key={vol}>
-          <div style={{padding:"10px 14px 4px",color:"#a78bfa",fontSize:10,fontWeight:600,letterSpacing:1.5,textTransform:"uppercase"}}>{meta.name}</div>
-          {(TITLES_S[vol]||[]).map((title,i)=>{const d=i+1;const k=vol+"-d"+d;const done=completed.includes(k);const cur=currentLesson?.vol===vol&&currentLesson?.day===d;return(<button key={k} onClick={()=>{onSelect(vol,d);onClose();}} style={{width:"100%",padding:"8px 14px",display:"flex",alignItems:"center",gap:8,background:cur?"rgba(124,58,237,.15)":"transparent",border:"none",cursor:"pointer",textAlign:"left",borderLeft:cur?"3px solid #7c3aed":"3px solid transparent"}}>
+        {blocks.map(block=>(<div key={block.block}>
+          <div style={{padding:"10px 14px 4px",color:block.block===0?"#fbbf24":"#a78bfa",fontSize:10,fontWeight:600,letterSpacing:1.5,textTransform:"uppercase"}}>
+            Block {block.block}{block.track&&block.track!=="UNASSIGNED"?" · "+block.track.replace(/_/g," "):""} — {block.name}
+          </div>
+          {(block.days||[]).map((title,i)=>{const d=i+1;const k="b"+block.block+"-d"+d;const done=completed.includes(k);const cur=currentLesson?.block===block.block&&currentLesson?.day===d;return(<button key={k} onClick={()=>{onSelectBlock(block.block,d,title,block.name);onClose();}} style={{width:"100%",padding:"8px 14px",display:"flex",alignItems:"center",gap:8,background:cur?"rgba(124,58,237,.15)":"transparent",border:"none",cursor:"pointer",textAlign:"left",borderLeft:cur?"3px solid #7c3aed":"3px solid transparent"}}>
             <span style={{width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:600,flexShrink:0,background:done?"rgba(16,185,129,.2)":"rgba(255,255,255,.06)",color:done?"#10b981":"rgba(255,255,255,.3)",border:"1px solid "+(done?"rgba(16,185,129,.3)":"rgba(255,255,255,.08)")}}>{done?"✓":d}</span>
             <span style={{color:done?"rgba(255,255,255,.5)":"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.3}}>{title}</span>
           </button>);})}
@@ -86,6 +89,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
   const [listening, setListening] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
   const [deckContent, setDeckContent] = useState(null);
+  const [curriculum, setCurriculum] = useState(null);
   const sentBufRef = useRef("");
   const audioRef = useRef();
   const endRef = useRef();
@@ -97,6 +101,19 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
   const VOL = Object.fromEntries(Object.entries(VOL_META).map(([k,v])=>([k,{t:v.short,f:v.name,d:v.days}])));
   // TITLES imported from gmgu-core.js
   const totalLessons = TOTAL_LESSONS;
+
+  // Load curriculum from backend
+  useEffect(() => {
+    if (!profile) return;
+    (async () => {
+      try {
+        const cohort = profile.cohort_type || 'FOUNDING_LINE';
+        const track = profile.gmg_track || 'UNASSIGNED';
+        const data = await fetchCurriculum(null, cohort, track);
+        if (data) setCurriculum(data);
+      } catch (e) { console.error('[GMG-U] Curriculum:', e.message); }
+    })();
+  }, [profile]);
 
   useEffect(() => { if (userEmail) loadProfile(); }, [userEmail]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior:"smooth" }); }, [msgs, streaming]);
@@ -112,10 +129,10 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
   useEffect(() => {
     if (profile && !initDone && !streaming) {
       setInitDone(true);
-      const next = getNext();
+      const next = curriculum ? getNextBlockLesson(profile?.completedDays, curriculum) : null;
       const h = new Date().getHours();
       let msg = "Good "+(h<12?"morning":h<17?"afternoon":"evening")+", this is "+firstName+". I just opened GMG University.";
-      if (next) { msg += " My next lesson is Day "+next.day+" of "+VOL[next.vol].f+": \""+next.title+"\". I have completed "+(profile.completedDays||[]).length+" of "+totalLessons+" lessons. Check my cohort_type and proceed accordingly."; setCurrentLesson(next); }
+        msg += ' My next lesson is Block ' + next.block + ' Day ' + next.day + ': "' + next.title + '". I have completed ' + (profile.completedDays||[]).length + ' of ' + (curriculum?.totalDays||'?') + ' lessons. Check my cohort_type and proceed accordingly.';
       else { msg += " I have completed all "+totalLessons+" lessons!"; }
       streamFromAIR(msg, true);
     }
@@ -129,15 +146,12 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
     } catch (e) { console.error("[GMG-U] Load:", e.message); setProfile({ completedDays:[], xp:0 }); }
   };
   const getNext = () => getNextLesson(profile?.completedDays);
-  const selectLesson = (vol, day) => {
-    const title = (TITLES[vol]||[])[day-1]||"Day "+day;
-    setCurrentLesson({vol,day,title});
+  const selectBlockLesson = (blockNum, dayNum, title, blockName) => {
+    setCurrentLesson({block:blockNum,day:dayNum,title,blockName});
     setMsgs([]);
     setInitDone(false);
-    // Let auto-init pick it up with the new currentLesson
     setTimeout(() => {
-      const msg = "I want to study Day "+day+" of "+VOL[vol].f+": \""+title+"\". Teach me.";
-      streamFromAIR(msg, true);
+      streamFromAIR(firstName + ' here. I want to do Block ' + blockNum + ' Day ' + dayNum + ': "' + title + '". Check my cohort_type and proceed accordingly.', true);
     }, 100);
   };
   const resetProgress = async () => {
@@ -202,7 +216,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
         {!input.trim()&&<button onClick={toggleMic} disabled={streaming} style={{width:36,height:36,borderRadius:"50%",border:"1px solid "+(listening?"transparent":"rgba(124,58,237,.2)"),background:listening?"#7c3aed":"rgba(124,58,237,.1)",color:listening?"white":"#a78bfa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,animation:listening?"micPulse 1.5s infinite":"none"}}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={16} height={16}><rect x={9} y={2} width={6} height={11} rx={3}/><path d="M5 11a7 7 0 0014 0"/><line x1={12} y1={18} x2={12} y2={22}/></svg></button>}
       </div>
     </div>
-    <LessonSidebar show={showSidebar} onClose={()=>setShowSidebar(false)} completedDays={profile?.completedDays} onSelect={selectLesson} onReset={resetProgress} currentLesson={currentLesson}/>
+    <LessonSidebar show={showSidebar} onClose={()=>setShowSidebar(false)} completedDays={profile?.completedDays} onSelectBlock={selectBlockLesson} curriculum={curriculum} onReset={resetProgress} currentLesson={currentLesson}/>
     <DeckPanel deck={deckContent} onClose={()=>setDeckContent(null)}/>
   </div>);
 }
