@@ -54,6 +54,38 @@ export function lessonTitle(vol, day) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// BLOCK-BASED CURRICULUM (April 7, 2026 restructure — supersedes V1/V2/V3)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Fetch block-structured curriculum from backend (single source of truth)
+export async function fetchCurriculum(api, cohortType, track) {
+  try {
+    const baseUrl = typeof api._baseUrl === 'string' ? api._baseUrl : 'https://abacia-services.onrender.com';
+    const r = await fetch(baseUrl + '/api/gmg-university/curriculum?cohort_type=' + encodeURIComponent(cohortType || 'FOUNDING_LINE') + '&track=' + encodeURIComponent(track || 'UNASSIGNED'));
+    if (r.ok) return await r.json();
+  } catch (err) { console.error('[GMG-U] Curriculum fetch:', err); }
+  return null;
+}
+
+// Build block-based lesson key (b1-d3 format)
+export function blockLessonKey(blockNum, day) {
+  return 'b' + blockNum + '-d' + day;
+}
+
+// Get next uncompleted lesson from block-based curriculum
+export function getNextBlockLesson(completedDays, curriculum) {
+  if (!curriculum?.blocks) return null;
+  const done = completedDays || [];
+  for (const block of curriculum.blocks) {
+    for (let i = 0; i < (block.days || []).length; i++) {
+      const key = blockLessonKey(block.block, i + 1);
+      if (!done.includes(key)) return { block: block.block, day: i + 1, title: block.days[i], blockName: block.name };
+    }
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // API FUNCTIONS (all take apiAdapter as first argument)
 // ═══════════════════════════════════════════════════════════════════════════
 
