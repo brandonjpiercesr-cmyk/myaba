@@ -180,9 +180,9 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
   const toggleMic=()=>{if(!recognitionRef.current)return;if(listening){recognitionRef.current.stop();setListening(false);if(input.trim())setTimeout(()=>handleSend(),200);}else{setInput("");setListening(true);recognitionRef.current.start();}};
   const markComplete = async () => {
     if (!currentLesson||!userEmail) return;
-    const k=currentLesson.vol+"-d"+currentLesson.day;
+    const k='b'+currentLesson.block+'-d'+currentLesson.day;
     if (profile?.completedDays?.includes(k)) return;
-    try { const r=await fetch(ABABASE+"/api/gmg-university/progress",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:userEmail,completedKey:k})}); if(r.ok){const u=await r.json();setProfile(p=>({...p,...u}));setCurrentLesson(getNext());} } catch(e){console.error("[GMG-U] Complete:",e.message);}
+    try { const r=await fetch(ABABASE+"/api/gmg-university/progress",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:userEmail,completedKey:k})}); if(r.ok){const u=await r.json();setProfile(p=>({...p,...u}));setCurrentLesson(curriculum ? getNextBlockLesson(u.completedDays, curriculum) : null);} } catch(e){console.error("[GMG-U] Complete:",e.message);}
   };
 
   if (!profile) return (<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}><ABAConsciousness size={40}/></div>);
@@ -193,7 +193,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
     <audio ref={audioRef}/>
     <div style={{padding:"8px 12px",display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid rgba(255,255,255,.06)",background:"rgba(10,10,15,.95)",flexShrink:0}}>
       <ABAConsciousness size={28}/>
-      <div style={{flex:1,minWidth:0}}><p style={{color:"white",fontSize:14,fontWeight:600,margin:0}}>ABA</p><p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentLesson?"Day "+currentLesson.day+" · "+currentLesson.title:totalDone+"/"+totalLessons+" lessons"}</p></div>
+      <div style={{flex:1,minWidth:0}}><p style={{color:"white",fontSize:14,fontWeight:600,margin:0}}>ABA</p><p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentLesson?"Day "+currentLesson.day+" · "+currentLesson.title:totalDone+"/"+(curriculum?.totalDays||"?")+" lessons"}</p></div>
       <button onClick={()=>setShowSidebar(true)} style={{background:"none",border:"none",color:"rgba(255,255,255,.4)",fontSize:18,cursor:"pointer",padding:"0 4px"}}>≡</button>
       <button onClick={()=>setVoice(!voice)} style={{background:voice?"rgba(124,58,237,.12)":"transparent",border:"1px solid "+(voice?"rgba(124,58,237,.25)":"rgba(255,255,255,.06)"),borderRadius:6,padding:"4px 8px",cursor:"pointer",color:voice?"#a78bfa":"rgba(255,255,255,.2)",fontSize:11}}>{voice?"\ud83d\udd0a":"\ud83d\udd07"}</button>
     </div>
