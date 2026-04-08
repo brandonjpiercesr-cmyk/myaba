@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { ABABASE } from "../utils/api.js";
 import { resolveHamId } from "../utils/ham.js";
+import MockInterviewVARA from "../components/MockInterviewVARA.jsx";
 import {
   TEAM, TEAM_COLORS, STAGE_COLORS, PERSONAL_EMAILS, PIPELINE_STAGES,
   cleanTitle, getDisplayName, getTeamColor,
