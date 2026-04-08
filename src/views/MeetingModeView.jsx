@@ -11,7 +11,7 @@ import {
   INTERROGATIVES, TIM_COOLDOWN, COOK_COOLDOWN, TIM_CUE_DURATION, TIM_CUE_MAX_AGE, TIM_CUE_MAX_VISIBLE,
   SPEAKER_MODES,
   formatTime, isQuestion, fetchTimCue as coreTimCue, fetchCookAnswer as coreCookAnswer,
-  saveMeetingToHAM,
+  saveMeetingToHAM, captureDualAudio, supportsSystemAudio,
 } from "../utils/mesa-core.js";
 
 const api = async (path, opts = {}) => {
@@ -46,6 +46,8 @@ export default function MeetingModeView({ userId }) {
   const [speakerMode, setSpeakerMode] = useState(SPEAKER_MODES.THEY_TALKING);
   // v3: Refine panel state
   const [showRefine, setShowRefine] = useState(false);
+  const [hasSystemAudio, setHasSystemAudio] = useState(false);
+  const dualAudioRef = useRef(null);
   const [refineLoading, setRefineLoading] = useState(false);
   const prepCtxRef = useRef('');
   const recRef = useRef(null);
@@ -176,8 +178,12 @@ export default function MeetingModeView({ userId }) {
   // ═══════════════════════════════════════════════════════════════════════
   const startMeeting = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
+      // v3: Dual audio — captures mic AND system audio (Zoom/Meet/FaceTime)
+      const dualAudio = await captureDualAudio();
+      dualAudioRef.current = dualAudio;
+      const stream = dualAudio.mixedStream;
+      streamRef.current = dualAudio.micStream; // for cleanup
+      setHasSystemAudio(!!dualAudio.systemStream);
       const wsProto = ABABASE.startsWith('https') ? 'wss' : 'ws';
       const wsHost = ABABASE.replace('https://', '').replace('http://', '');
       const ws = new WebSocket(`${wsProto}://${wsHost}/api/voice/stream`);
@@ -228,7 +234,9 @@ export default function MeetingModeView({ userId }) {
 
   const endMeeting = async () => {
     recRef.current?.stop();
-    streamRef.current?.getTracks().forEach(t => t.stop());
+    // v3: Clean up dual audio (mic + system + audio context)
+    if (dualAudioRef.current?.cleanup) dualAudioRef.current.cleanup();
+    else streamRef.current?.getTracks().forEach(t => t.stop());
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) wsRef.current.close();
     wsRef.current = null;
     setRunning(false);
@@ -357,6 +365,7 @@ export default function MeetingModeView({ userId }) {
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",borderBottom:"1px solid rgba(6,182,212,.08)"}}>
       <div style={{display:"flex",alignItems:"center",gap:12}}>
         {recording && <div style={{width:10,height:10,borderRadius:"50%",background:"#ef4444",animation:"mb 1.5s infinite",boxShadow:"0 0 12px rgba(239,68,68,.4)"}}/>}
+{hasSystemAudio && <span style={{fontSize:9,padding:"2px 6px",borderRadius:6,background:"rgba(16,185,129,.12)",color:"#34d399",fontWeight:600}}>DUAL AUDIO</span>}
         <span style={{fontFamily:"'SF Mono',monospace",fontSize:24,color:running?"#22d3ee":"rgba(255,255,255,.15)",fontWeight:200,letterSpacing:"2px"}}>{fmt(seconds)}</span>
       </div>
       {/* Speaker mode indicator */}
@@ -527,3 +536,4 @@ export default function MeetingModeView({ userId }) {
     </div>}
   </div>);
 }
+
