@@ -3,7 +3,7 @@
 // IRIS (Interview Readiness and Intelligence System) — rich mobile components.
 
 import { useState, useRef, useEffect } from "react";
-import { Mic, MicOff, Timer, Send, Loader2, ChevronRight, Target, Play, Square, FileText, Search, Award, CheckCircle, Sparkles } from "lucide-react";
+import { Mic, MicOff, Timer, Send, Loader2, ChevronRight, Target, Play, Square, FileText, Search, Award, CheckCircle, Sparkles, Users, User, Hand, RotateCcw } from "lucide-react";
 import { useConversation } from "@elevenlabs/react";
 import { ABABASE, reachTranscribe } from "../utils/api.js";
 import {
@@ -11,6 +11,9 @@ import {
   fetchTimCue as coreTimCue, cleanInterviewTitle,
   TIM_COOLDOWN, COOK_COOLDOWN, TIM_CUE_DURATION, TIM_CUE_MAX_AGE, TIM_CUE_MAX_VISIBLE,
 } from "../utils/iris-core.js";
+
+// v3: Speaker modes for control panel
+const SPEAKER_MODES = { THEY: 'they_talking', ME: 'i_talking', PAUSED: 'paused' };
 import {
   STARCoachMobile, CompanyResearchMobile, PostInterviewMobile,
   TIMQueueMobile, MockInterviewPanel,
@@ -142,6 +145,11 @@ export default function InterviewModeView({ userId }) {
   const [cookAnswers, setCookAnswers] = useState([]);
   const [activeCue, setActiveCue] = useState(null);
   const [cookStreaming, setCookStreaming] = useState(false);
+  // v3: Speaker mode for control panel
+  const [speakerMode_iv, setSpeakerMode_iv] = useState(SPEAKER_MODES.THEY);
+  const speakerModeRef_iv = useRef(SPEAKER_MODES.THEY);
+  useEffect(() => { speakerModeRef_iv.current = speakerMode_iv; }, [speakerMode_iv]);
+  const [showRefine_iv, setShowRefine_iv] = useState(false);
   const [recording, setRecording] = useState(false);
   const [mockQ, setMockQ] = useState(null);
   const [mockHistory, setMockHistory] = useState([]);
@@ -239,7 +247,7 @@ export default function InterviewModeView({ userId }) {
     try {
       const res = await fetch(`${ABABASE}/api/cook/answer`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: 'Interviewer said: "' + question + '" — Give a STAR-method answer. Always answer.', transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId, last_said_by_ham: lastSaidByHamRef_iv.current })
+        body: JSON.stringify({ question: 'Interviewer said: "' + question + '" — Give a STAR-method answer. Always answer.', transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId, last_said_by_ham: lastSaidByHamRef_iv.current, briefing_context: prepData ? JSON.stringify(prepData).substring(0, 3000) : '' })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -264,6 +272,9 @@ export default function InterviewModeView({ userId }) {
     const hamSpeaker = hamSpeakerRef_iv.current;
     const isHam = hamSpeaker !== null && speakerId === hamSpeaker;
     if (isHam || speakerId === null) lastSaidByHamRef_iv.current = text;
+    // v3: Gate TIM/COOK on speaker mode
+    const sMode = speakerModeRef_iv.current;
+    if (sMode === SPEAKER_MODES.PAUSED || sMode === SPEAKER_MODES.ME) return;
     const now = Date.now();
     if (now - lastTimFire_iv.current >= TIM_COOLDOWN) {
       lastTimFire_iv.current = now;
@@ -388,15 +399,27 @@ export default function InterviewModeView({ userId }) {
     if(audioCtxRef_iv.current){try{audioCtxRef_iv.current.close()}catch{}}
     analyserRef_iv.current=null; audioCtxRef_iv.current=null;
     setRunning(false); setRecording(false);
+    let meetingSummary = null;
     if (transcriptRef.current.length > 0) {
       try {
         const res = await fetch(`${ABABASE}/api/meeting/summary`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ transcript: transcriptRef.current.map(t=>`[${t.time}] ${t.text}`).join("\n"), duration: fmt(seconds), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, userId })
         });
-        if (res.ok) { const d = await res.json(); setSummary(d.summary || ""); }
+        if (res.ok) { const d = await res.json(); meetingSummary = d.summary || ""; setSummary(meetingSummary); }
       } catch {}
     }
+    // v3 Bug 5: Save interview session to HAM brain
+    try {
+      await fetch(ABABASE + '/api/air/process', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: 'Save this interview session. Job: ' + (selectedJob?.title || 'unknown') + ' at ' + (selectedJob?.organization || 'unknown') + '. Duration: ' + fmt(seconds) + '. Summary: ' + (meetingSummary || 'none') + '. Lines: ' + transcriptRef.current.length,
+          user_id: userId, channel: 'myaba', appScope: 'interview',
+          meetingLog: { type: 'interview', date: new Date().toISOString(), duration: fmt(seconds), summary: meetingSummary || '', job: { title: selectedJob?.title, org: selectedJob?.organization }, transcript: transcriptRef.current.slice(-100), cookAnswers: cookAnswers.map(a => ({ q: a.q, text: a.text, time: a.time })) }
+        })
+      });
+    } catch {}
   };
 
   const modeTab = (id, label, emoji) => <button onClick={()=>{ if(id==="mock"&&selectedJob) startMock(); else setMode(id); }} style={{
@@ -510,8 +533,25 @@ export default function InterviewModeView({ userId }) {
         {running && <button onClick={endInterview} style={{padding:"8px 14px",borderRadius:10,border:"1px solid rgba(239,68,68,.15)",background:"transparent",color:"#f87171",fontSize:11,fontWeight:600,cursor:"pointer"}}>End</button>}
       </div>
     </div>
-    <div style={{display:"flex",gap:3,padding:"6px 10px",borderBottom:"1px solid rgba(255,255,255,.03)"}}>
-    </div>
+    {/* v3: CONTROL PANEL — Speaker Mode */}
+    {running && <div style={{padding:"8px 10px",borderBottom:"1px solid rgba(255,255,255,.04)",background:"rgba(0,0,0,.3)",display:"flex",gap:6}}>
+      <button onClick={()=>setSpeakerMode_iv(SPEAKER_MODES.THEY)} style={{flex:1,padding:"10px 6px",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:speakerMode_iv===SPEAKER_MODES.THEY?"linear-gradient(135deg, rgba(16,185,129,.2), rgba(16,185,129,.06))":"rgba(255,255,255,.03)",border:speakerMode_iv===SPEAKER_MODES.THEY?"2px solid rgba(16,185,129,.35)":"1px solid rgba(255,255,255,.06)",transition:"all 0.2s ease"}}>
+        <Users size={16} color={speakerMode_iv===SPEAKER_MODES.THEY?"#34d399":"rgba(255,255,255,.25)"}/>
+        <span style={{fontSize:10,fontWeight:700,color:speakerMode_iv===SPEAKER_MODES.THEY?"#34d399":"rgba(255,255,255,.25)"}}>They're Talking</span>
+      </button>
+      <button onClick={()=>setSpeakerMode_iv(SPEAKER_MODES.ME)} style={{flex:1,padding:"10px 6px",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:speakerMode_iv===SPEAKER_MODES.ME?"linear-gradient(135deg, rgba(59,130,246,.2), rgba(59,130,246,.06))":"rgba(255,255,255,.03)",border:speakerMode_iv===SPEAKER_MODES.ME?"2px solid rgba(59,130,246,.35)":"1px solid rgba(255,255,255,.06)",transition:"all 0.2s ease"}}>
+        <User size={16} color={speakerMode_iv===SPEAKER_MODES.ME?"#60a5fa":"rgba(255,255,255,.25)"}/>
+        <span style={{fontSize:10,fontWeight:700,color:speakerMode_iv===SPEAKER_MODES.ME?"#60a5fa":"rgba(255,255,255,.25)"}}>I'm Talking</span>
+      </button>
+      <button onClick={()=>setSpeakerMode_iv(SPEAKER_MODES.PAUSED)} style={{flex:1,padding:"10px 6px",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:speakerMode_iv===SPEAKER_MODES.PAUSED?"linear-gradient(135deg, rgba(239,68,68,.2), rgba(239,68,68,.06))":"rgba(255,255,255,.03)",border:speakerMode_iv===SPEAKER_MODES.PAUSED?"2px solid rgba(239,68,68,.35)":"1px solid rgba(255,255,255,.06)",transition:"all 0.2s ease"}}>
+        <Hand size={16} color={speakerMode_iv===SPEAKER_MODES.PAUSED?"#f87171":"rgba(255,255,255,.25)"}/>
+        <span style={{fontSize:10,fontWeight:700,color:speakerMode_iv===SPEAKER_MODES.PAUSED?"#f87171":"rgba(255,255,255,.25)"}}>Pause</span>
+      </button>
+      <button onClick={endInterview} style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.15)"}}>
+        <Square size={16} color="#f87171"/>
+        <span style={{fontSize:10,fontWeight:700,color:"#f87171"}}>End</span>
+      </button>
+    </div>}
     <div style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
       {/* TRANSCRIPT */}
       <div style={{marginBottom:12}}>
@@ -560,4 +600,5 @@ export default function InterviewModeView({ userId }) {
     </div>
   </div>);
 }
+
 
