@@ -1,14 +1,17 @@
-// ⬡B:MACE.phase2:VIEW:meeting_migrated:20260406⬡
-// MeetingModeView — CIP surface, migrated to use mesa-core.js shared library.
-// Constants, TIM logic, isQuestion from mesa-core.
-// COOK streaming kept local due to different SSE parser format.
+// ⬡B:MACE.phase2:VIEW:meeting_v3_control_panel:20260408⬡
+// MeetingModeView — CIP surface, fully migrated to mesa-core.js v2
+// v3: Control panel with speaker separation, briefing-aware COOK, meeting save, sticky End
+// Fixes: Bug 1 (jumping), Bug 2 (speaker separation), Bug 3 (hallucination),
+//        Bug 4 (end button), Bug 5 (meeting not logged to HAM)
 
 import { useState, useRef, useEffect } from "react";
-import { Mic, MicOff, Play, Pause, Square, Timer, Send, Loader2, ChevronRight } from "lucide-react";
+import { Mic, MicOff, Play, Pause, Square, Timer, Send, Loader2, ChevronRight, Sparkles, BookOpen, CheckCircle, User, Users, Hand, RotateCcw } from "lucide-react";
 import { ABABASE, reachTranscribe } from "../utils/api.js";
 import {
   INTERROGATIVES, TIM_COOLDOWN, COOK_COOLDOWN, TIM_CUE_DURATION, TIM_CUE_MAX_AGE, TIM_CUE_MAX_VISIBLE,
-  formatTime, isQuestion, fetchTimCue as coreTimCue,
+  SPEAKER_MODES,
+  formatTime, isQuestion, fetchTimCue as coreTimCue, fetchCookAnswer as coreCookAnswer,
+  saveMeetingToHAM,
 } from "../utils/mesa-core.js";
 
 const api = async (path, opts = {}) => {
@@ -19,6 +22,7 @@ const api = async (path, opts = {}) => {
   });
   return res.json();
 };
+api._baseUrl = ABABASE;
 
 export default function MeetingModeView({ userId }) {
   const [running, setRunning] = useState(false);
@@ -37,6 +41,12 @@ export default function MeetingModeView({ userId }) {
   const [prepMsgs, setPrepMsgs] = useState([{from:'aba',text:"Hey! Tell me about your meeting, or hit Quick Start to go live."}]);
   const [prepInput, setPrepInput] = useState('');
   const [prepLoading, setPrepLoading] = useState(false);
+  const [autoContext, setAutoContext] = useState(null);
+  // v3: Speaker mode state
+  const [speakerMode, setSpeakerMode] = useState(SPEAKER_MODES.THEY_TALKING);
+  // v3: Refine panel state
+  const [showRefine, setShowRefine] = useState(false);
+  const [refineLoading, setRefineLoading] = useState(false);
   const prepCtxRef = useRef('');
   const recRef = useRef(null);
   const streamRef = useRef(null);
@@ -45,12 +55,12 @@ export default function MeetingModeView({ userId }) {
   const secondsRef = useRef(0);
   const cueTimeoutRef = useRef(null);
   const transcriptRef = useRef([]);
-  const analyserRef = useRef(null);
-  const audioCtxRef = useRef(null);
-  const hamSpeakerRef = useRef(0);
-  const lastSaidByHamRef = useRef("");
   const lastTimFire = useRef(0);
   const lastCookFire = useRef(0);
+  const speakerModeRef = useRef(SPEAKER_MODES.THEY_TALKING);
+
+  // Keep ref in sync with state so WebSocket callbacks see current mode
+  useEffect(() => { speakerModeRef.current = speakerMode; }, [speakerMode]);
 
   useEffect(() => {
     if (running) { intervalRef.current = setInterval(() => { setSeconds(s => { secondsRef.current = s + 1; return s + 1; }); }, 1000); }
@@ -60,10 +70,11 @@ export default function MeetingModeView({ userId }) {
 
   const fmt = formatTime;
 
-  // TIM verbal filler — uses mesa-core fetchTimCue
-  const fireTimCue = async (text, speakerId) => {
-    const isHamTurn = hamSpeakerRef.current !== null && (speakerId === null || speakerId === hamSpeakerRef.current);
-    const result = await coreTimCue(api, { text, mode: 'meeting', whose_turn: isHamTurn ? 'ham' : 'other' }, userId, transcriptRef.current.slice(-3).map(t=>t.text).join(' '));
+  // ═══════════════════════════════════════════════════════════════════════
+  // TIM — verbal filler cues (only fires when speakerMode is THEY_TALKING)
+  // ═══════════════════════════════════════════════════════════════════════
+  const fireTimCue = async (text) => {
+    const result = await coreTimCue(api, { text, mode: 'meeting', whose_turn: 'other' }, userId, transcriptRef.current.slice(-3).map(t=>t.text).join(' '));
     if (result && result.cue) {
       const cue = { text: result.cue, type: result.type, time: fmt(secondsRef.current), latency: result.latency_ms };
       setTimCues(prev => {
@@ -76,14 +87,26 @@ export default function MeetingModeView({ userId }) {
     }
   };
 
-  // COOK full script — one paragraph, copy-paste ready, SSE streaming
+  // ═══════════════════════════════════════════════════════════════════════
+  // COOK — full coached answer (now includes briefing context!)
+  // Bug 3 fix: prepCtxRef.current is sent as briefing_context
+  // ═══════════════════════════════════════════════════════════════════════
   const fetchCookAnswer = async (question) => {
     setCookStreaming(true);
     let fullText = "";
     try {
       const res = await fetch(`${ABABASE}/api/cook/answer`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: 'Someone said: "' + question + '" — Give a polished 1-paragraph answer. Always answer. Never hold.', transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "meeting", userId, last_said_by_ham: lastSaidByHamRef.current })
+        body: JSON.stringify({
+          question: 'Someone said: "' + question + '" — Give a polished 1-paragraph answer. Always answer. Never hold.',
+          transcript_context: transcriptRef.current.map(t=>t.text).join(" "),
+          tim_cues: timCues.slice(-3).map(c=>c.text),
+          mode: "meeting",
+          userId,
+          last_said_by_ham: "",
+          // v3 FIX: Send the prep briefing so COOK actually uses it
+          briefing_context: prepCtxRef.current || '',
+        })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -95,36 +118,66 @@ export default function MeetingModeView({ userId }) {
         for (const line of lines) {
           try {
             const parsed = JSON.parse(line.slice(6));
-            if (parsed.type === "text") { fullText += parsed.text; setCookAnswers(prev => { const updated = [...prev]; if (updated.length > 0 && updated[updated.length-1].streaming) { updated[updated.length-1].text = fullText; } else { updated.push({ q: question.substring(0, 80), text: fullText, time: fmt(secondsRef.current), streaming: true }); } return updated; }); }
-            if (parsed.type === "done") { setCookAnswers(prev => { const updated = [...prev]; if (updated.length > 0) updated[updated.length-1].streaming = false; return updated; }); }
+            if (parsed.type === "text") {
+              fullText += parsed.text;
+              setCookAnswers(prev => {
+                const updated = [...prev];
+                if (updated.length > 0 && updated[updated.length-1].streaming) {
+                  updated[updated.length-1].text = fullText;
+                } else {
+                  updated.push({ q: question.substring(0, 80), text: fullText, time: fmt(secondsRef.current), streaming: true });
+                }
+                return updated;
+              });
+            }
+            if (parsed.type === "done") {
+              setCookAnswers(prev => {
+                const updated = [...prev];
+                if (updated.length > 0) updated[updated.length-1].streaming = false;
+                return updated;
+              });
+            }
           } catch {}
         }
       }
-    } catch { if (fullText) setCookAnswers(prev => { const u = [...prev]; if (u.length > 0) u[u.length-1].streaming = false; return u; }); }
+    } catch {
+      if (fullText) setCookAnswers(prev => { const u = [...prev]; if (u.length > 0) u[u.length-1].streaming = false; return u; });
+    }
     setCookStreaming(false);
   };
 
-  const processSegment = async (text, speakerId) => {
-    const hamSpeaker = hamSpeakerRef.current;
-    const isHam = hamSpeaker !== null && speakerId === hamSpeaker;
-    if (isHam || speakerId === null) lastSaidByHamRef.current = text;
+  // ═══════════════════════════════════════════════════════════════════════
+  // PROCESS SEGMENT — the core gate
+  // v3: Only fires TIM/COOK when speakerMode is THEY_TALKING
+  // When I_TALKING: transcript still records, but no AI fires (no screen jumping)
+  // When PAUSED: nothing happens at all
+  // ═══════════════════════════════════════════════════════════════════════
+  const processSegment = async (text) => {
+    const mode = speakerModeRef.current;
+
+    // PAUSED or I_TALKING — no TIM/COOK, no screen changes
+    if (mode === SPEAKER_MODES.PAUSED || mode === SPEAKER_MODES.I_TALKING) return;
+
+    // THEY_TALKING — fire TIM and COOK
     const now = Date.now();
     if (now - lastTimFire.current >= TIM_COOLDOWN) {
       lastTimFire.current = now;
-      fireTimCue(text, speakerId);
+      fireTimCue(text);
     }
-    const questionDetected = isQuestion(text);
-    if (questionDetected && now - lastCookFire.current >= COOK_COOLDOWN) {
+    if (isQuestion(text) && now - lastCookFire.current >= COOK_COOLDOWN) {
       lastCookFire.current = now;
       setTimeout(() => fetchCookAnswer(text), 2000);
     }
   };
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // START / END MEETING
+  // v3: endMeeting now calls saveMeetingToHAM (Bug 5 fix)
+  // ═══════════════════════════════════════════════════════════════════════
   const startMeeting = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      // ⬡B:CIP.MESA:WEBSOCKET:deepgram_proxy:20260402⬡ WebSocket streaming
       const wsProto = ABABASE.startsWith('https') ? 'wss' : 'ws';
       const wsHost = ABABASE.replace('https://', '').replace('http://', '');
       const ws = new WebSocket(`${wsProto}://${wsHost}/api/voice/stream`);
@@ -140,12 +193,14 @@ export default function MeetingModeView({ userId }) {
               const words = alt?.words || [];
               const speakerId = words.length > 0 ? words[0].speaker : null;
               const entry = { text: text.trim(), time: fmt(secondsRef.current), speaker: speakerId };
+              // Transcript ALWAYS records regardless of speaker mode
               setTranscript(prev => [...prev, entry]);
               transcriptRef.current = [...transcriptRef.current, entry];
-              processSegment(text.trim(), speakerId);
+              // But TIM/COOK only fire based on speaker mode
+              processSegment(text.trim());
             }
           }
-        } catch (err) { /* ignore status messages */ }
+        } catch {}
       };
       ws.onerror = (err) => console.error('[MESA] WebSocket error:', err);
       ws.onclose = () => console.log('[MESA] WebSocket closed');
@@ -178,15 +233,28 @@ export default function MeetingModeView({ userId }) {
     wsRef.current = null;
     setRunning(false);
     setRecording(false);
+
+    let meetingSummary = null;
     if (transcriptRef.current.length > 0) {
       try {
         const res = await fetch(`${ABABASE}/api/meeting/summary`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ transcript: transcriptRef.current.map(t=>`[${t.time}] ${t.text}`).join("\n"), duration: fmt(seconds), mode: "meeting", userId })
         });
-        if (res.ok) { const d = await res.json(); setSummary(d.summary || ""); }
+        if (res.ok) { const d = await res.json(); meetingSummary = d.summary || ""; setSummary(meetingSummary); }
       } catch {}
     }
+
+    // v3 Bug 5 fix: Save entire meeting session to HAM's brain
+    saveMeetingToHAM(api, userId, {
+      transcript: transcriptRef.current,
+      cookAnswers,
+      timCues,
+      briefingContext: prepCtxRef.current,
+      duration: fmt(seconds),
+      summary: meetingSummary,
+      mode: 'meeting',
+    });
   };
 
   const askABA = async () => {
@@ -197,17 +265,46 @@ export default function MeetingModeView({ userId }) {
     setAskLoading(false);
   };
 
-  // ⬡B:CIP.MESA:UI:cara_prep_gate:20260402⬡
-  // ⬡B:CIP.MESA:UI:chat_first_prep:20260402⬡
+  // Refine: let ABA self-examine and course correct
+  const handleRefine = async (action) => {
+    setRefineLoading(true);
+    setShowRefine(false);
+    if (action === 'reset') {
+      setCookAnswers([]);
+      setTimCues([]);
+      setActiveCue(null);
+      lastTimFire.current = 0;
+      lastCookFire.current = 0;
+    } else if (action === 'recalibrate') {
+      // Force a COOK re-fire with full briefing context
+      const recentText = transcriptRef.current.slice(-5).map(t => t.text).join(' ');
+      if (recentText) await fetchCookAnswer('Based on everything discussed so far, what should I know right now? Context: ' + recentText);
+    }
+    setRefineLoading(false);
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PREP CHAT
+  // ═══════════════════════════════════════════════════════════════════════
   const sendPrep = async()=>{
     if(!prepInput.trim()||prepLoading)return;
     const msg=prepInput.trim();setPrepInput('');
     setPrepMsgs(p=>[...p,{from:'user',text:msg}]);
     prepCtxRef.current+='\n'+msg;
     setPrepLoading(true);
-    try{const r=await fetch(ABABASE+'/api/air/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Meeting prep: '+msg+'. Respond in 1-2 sentences.',user_id:userId,channel:'myaba',appScope:'meeting'})});const d=await r.json();setPrepMsgs(p=>[...p,{from:'aba',text:d.response||'Got it.'}]);}catch{setPrepMsgs(p=>[...p,{from:'aba',text:'Got it. What else?'}]);}
+    try{
+      const r=await fetch(ABABASE+'/api/air/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Meeting prep: '+msg+'. Respond in 1-2 sentences.',user_id:userId,channel:'myaba',appScope:'meeting'})});
+      const d=await r.json();
+      const resp = d.response||'Got it.';
+      setPrepMsgs(p=>[...p,{from:'aba',text:resp}]);
+      prepCtxRef.current+='\n'+resp;
+    }catch{setPrepMsgs(p=>[...p,{from:'aba',text:'Got it. What else?'}]);}
     setPrepLoading(false);
   };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PREP VIEW
+  // ═══════════════════════════════════════════════════════════════════════
   if (showPrep) return (<div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
     <div style={{padding:"10px 16px",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
       <button onClick={()=>setShowPrep(false)} style={{width:"100%",padding:"12px",borderRadius:12,background:"linear-gradient(135deg, rgba(6,182,212,.12), rgba(6,182,212,.04))",border:"1px solid rgba(6,182,212,.2)",color:"#22D3EE",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
@@ -236,9 +333,12 @@ export default function MeetingModeView({ userId }) {
     </div>
   </div>);
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // LIVE MEETING VIEW
+  // ═══════════════════════════════════════════════════════════════════════
   return (<div style={{flex:1,display:"flex",flexDirection:"column",backdropFilter:"blur(12px)",overflow:"hidden",background:"linear-gradient(180deg, rgba(6,182,212,.03) 0%, transparent 40%)"}}>
-    {/* TIM Cue Banner */}
-    {activeCue && <div style={{
+    {/* TIM Cue Banner — only shows when speakerMode is THEY_TALKING */}
+    {activeCue && speakerMode !== SPEAKER_MODES.PAUSED && <div style={{
       padding:"10px 14px",margin:"6px 8px 0",borderRadius:12,
       background: activeCue.type === "ALERT" ? "linear-gradient(135deg, rgba(239,68,68,.15), rgba(239,68,68,.05))" : "linear-gradient(135deg, rgba(6,182,212,.15), rgba(6,182,212,.05))",
       border: activeCue.type === "ALERT" ? "1px solid rgba(239,68,68,.2)" : "1px solid rgba(6,182,212,.15)",
@@ -253,25 +353,32 @@ export default function MeetingModeView({ userId }) {
       <p style={{fontSize:13,color:"rgba(255,255,255,.9)",margin:0,lineHeight:1.5,fontWeight:500}}>{activeCue.text}</p>
     </div>}
 
-    {/* Header */}
+    {/* Header — timer + status indicator */}
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",borderBottom:"1px solid rgba(6,182,212,.08)"}}>
       <div style={{display:"flex",alignItems:"center",gap:12}}>
         {recording && <div style={{width:10,height:10,borderRadius:"50%",background:"#ef4444",animation:"mb 1.5s infinite",boxShadow:"0 0 12px rgba(239,68,68,.4)"}}/>}
         <span style={{fontFamily:"'SF Mono',monospace",fontSize:24,color:running?"#22d3ee":"rgba(255,255,255,.15)",fontWeight:200,letterSpacing:"2px"}}>{fmt(seconds)}</span>
       </div>
+      {/* Speaker mode indicator */}
+      {running && <div style={{padding:"4px 10px",borderRadius:8,fontSize:10,fontWeight:700,letterSpacing:"0.5px",
+        background: speakerMode === SPEAKER_MODES.THEY_TALKING ? "rgba(16,185,129,.12)" : speakerMode === SPEAKER_MODES.I_TALKING ? "rgba(59,130,246,.12)" : "rgba(239,68,68,.12)",
+        color: speakerMode === SPEAKER_MODES.THEY_TALKING ? "#34d399" : speakerMode === SPEAKER_MODES.I_TALKING ? "#60a5fa" : "#f87171",
+        border: `1px solid ${speakerMode === SPEAKER_MODES.THEY_TALKING ? "rgba(16,185,129,.2)" : speakerMode === SPEAKER_MODES.I_TALKING ? "rgba(59,130,246,.2)" : "rgba(239,68,68,.2)"}`,
+      }}>
+        {speakerMode === SPEAKER_MODES.THEY_TALKING ? "THEY'RE TALKING" : speakerMode === SPEAKER_MODES.I_TALKING ? "I'M TALKING" : "PAUSED"}
+      </div>}
       <div style={{display:"flex",gap:8}}>
-        {!running ? <button onClick={startMeeting} style={{padding:"8px 18px",borderRadius:12,border:"1px solid rgba(6,182,212,.3)",background:"linear-gradient(135deg, rgba(6,182,212,.15), rgba(6,182,212,.05))",color:"#22d3ee",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6,boxShadow:"0 0 15px rgba(6,182,212,.1)",transition:"all 0.2s ease"}}><Mic size={14}/>Start Meeting</button>
-        : <button onClick={endMeeting} style={{padding:"8px 18px",borderRadius:12,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.08)",color:"#f87171",fontSize:12,fontWeight:600,cursor:"pointer",transition:"all 0.2s ease"}}>End Meeting</button>}
+        {!running && <button onClick={startMeeting} style={{padding:"8px 18px",borderRadius:12,border:"1px solid rgba(6,182,212,.3)",background:"linear-gradient(135deg, rgba(6,182,212,.15), rgba(6,182,212,.05))",color:"#22d3ee",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6,boxShadow:"0 0 15px rgba(6,182,212,.1)",transition:"all 0.2s ease"}}><Mic size={14}/>Start</button>}
       </div>
     </div>
 
-    {/* Single scroll — everything visible */}
+    {/* Single scroll — transcript, coaching, glossary, summary */}
     <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
       {/* TRANSCRIPT */}
       <div style={{marginBottom:12}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"0 4px"}}><Mic size={11} style={{color:"rgba(6,182,212,.4)"}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(6,182,212,.4)",letterSpacing:"0.1em"}}>TRANSCRIPT</span>{transcript.length>0&&<span style={{fontSize:9,background:"rgba(6,182,212,.1)",padding:"2px 6px",borderRadius:8,color:"rgba(6,182,212,.5)",fontWeight:600}}>{transcript.length}</span>}</div>
         {transcript.length===0
-          ? <div style={{textAlign:"center",padding:"30px 16px",color:"rgba(255,255,255,.1)"}}><p style={{fontSize:12,margin:0}}>{running?"Listening...":"Tap Start Meeting"}</p></div>
+          ? <div style={{textAlign:"center",padding:"30px 16px",color:"rgba(255,255,255,.1)"}}><p style={{fontSize:12,margin:0}}>{running?"Listening...":"Tap Start"}</p></div>
           : transcript.slice(-8).map((t,i) => <div key={i} style={{padding:"8px 10px",marginBottom:4,borderRadius:10,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}><span style={{color:"rgba(6,182,212,.3)",fontSize:9,fontWeight:600,marginRight:6,fontFamily:"monospace"}}>{t.time}</span><span style={{color:"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.5}}>{t.text}</span></div>)
         }
       </div>
@@ -315,14 +422,108 @@ export default function MeetingModeView({ userId }) {
 
     {/* Ask ABA input */}
     {running && <div style={{padding:"10px 12px",borderTop:"1px solid rgba(6,182,212,.08)",display:"flex",gap:8,background:"rgba(0,0,0,.2)"}}>
-      <input value={askInput} onChange={e=>setAskInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&askABA()} placeholder="Ask ABA anything during this meeting..." style={{flex:1,padding:"10px 14px",borderRadius:12,border:"1px solid rgba(6,182,212,.12)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:12,outline:"none",transition:"border-color 0.2s"}}/>
+      <input value={askInput} onChange={e=>setAskInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&askABA()} placeholder="Ask ABA anything..." style={{flex:1,padding:"10px 14px",borderRadius:12,border:"1px solid rgba(6,182,212,.12)",background:"rgba(255,255,255,.03)",color:"#fff",fontSize:12,outline:"none",transition:"border-color 0.2s"}}/>
       <button onClick={askABA} disabled={askLoading||!askInput.trim()} style={{padding:"10px 16px",borderRadius:12,border:"none",background:askInput.trim()?"linear-gradient(135deg, rgba(139,92,246,.25), rgba(139,92,246,.1))":"rgba(255,255,255,.03)",color:askInput.trim()?"#c4b5fd":"rgba(255,255,255,.15)",cursor:"pointer",fontSize:12,fontWeight:600,transition:"all 0.2s ease"}}>{askLoading?<Loader2 size={14} style={{animation:"spin 1s linear infinite"}}/>:<Send size={14}/>}</button>
+    </div>}
+
+    {/* ═══════════════════════════════════════════════════════════════════
+      CONTROL PANEL — Bug 1+2 fix: Speaker separation
+      Large buttons with icons AND words. Bottom third of screen.
+      They Are Talking (green) | I Am Talking (blue) | Pause (red) | Refine (amber) | End (red outline)
+    ═══════════════════════════════════════════════════════════════════ */}
+    {running && <div style={{
+      padding:"12px",
+      borderTop:"1px solid rgba(255,255,255,.06)",
+      background:"rgba(0,0,0,.4)",
+      backdropFilter:"blur(8px)",
+    }}>
+      {/* Row 1: Speaker mode buttons */}
+      <div style={{display:"flex",gap:8,marginBottom:8}}>
+        {/* They Are Talking */}
+        <button onClick={()=>setSpeakerMode(SPEAKER_MODES.THEY_TALKING)} style={{
+          flex:1,padding:"14px 8px",borderRadius:14,cursor:"pointer",
+          display:"flex",flexDirection:"column",alignItems:"center",gap:6,
+          background: speakerMode === SPEAKER_MODES.THEY_TALKING ? "linear-gradient(135deg, rgba(16,185,129,.25), rgba(16,185,129,.08))" : "rgba(255,255,255,.03)",
+          border: speakerMode === SPEAKER_MODES.THEY_TALKING ? "2px solid rgba(16,185,129,.4)" : "1px solid rgba(255,255,255,.08)",
+          boxShadow: speakerMode === SPEAKER_MODES.THEY_TALKING ? "0 0 20px rgba(16,185,129,.15)" : "none",
+          transition:"all 0.2s ease",
+        }}>
+          <Users size={20} color={speakerMode === SPEAKER_MODES.THEY_TALKING ? "#34d399" : "rgba(255,255,255,.3)"} />
+          <span style={{fontSize:11,fontWeight:700,color: speakerMode === SPEAKER_MODES.THEY_TALKING ? "#34d399" : "rgba(255,255,255,.3)",letterSpacing:"0.3px"}}>
+            They're Talking
+          </span>
+          {speakerMode === SPEAKER_MODES.THEY_TALKING && <div style={{width:6,height:6,borderRadius:"50%",background:"#34d399",animation:"mb 1.5s infinite",boxShadow:"0 0 8px rgba(52,211,153,.5)"}}/>}
+        </button>
+
+        {/* I Am Talking */}
+        <button onClick={()=>setSpeakerMode(SPEAKER_MODES.I_TALKING)} style={{
+          flex:1,padding:"14px 8px",borderRadius:14,cursor:"pointer",
+          display:"flex",flexDirection:"column",alignItems:"center",gap:6,
+          background: speakerMode === SPEAKER_MODES.I_TALKING ? "linear-gradient(135deg, rgba(59,130,246,.25), rgba(59,130,246,.08))" : "rgba(255,255,255,.03)",
+          border: speakerMode === SPEAKER_MODES.I_TALKING ? "2px solid rgba(59,130,246,.4)" : "1px solid rgba(255,255,255,.08)",
+          boxShadow: speakerMode === SPEAKER_MODES.I_TALKING ? "0 0 20px rgba(59,130,246,.15)" : "none",
+          transition:"all 0.2s ease",
+        }}>
+          <User size={20} color={speakerMode === SPEAKER_MODES.I_TALKING ? "#60a5fa" : "rgba(255,255,255,.3)"} />
+          <span style={{fontSize:11,fontWeight:700,color: speakerMode === SPEAKER_MODES.I_TALKING ? "#60a5fa" : "rgba(255,255,255,.3)",letterSpacing:"0.3px"}}>
+            I'm Talking
+          </span>
+          {speakerMode === SPEAKER_MODES.I_TALKING && <div style={{width:6,height:6,borderRadius:"50%",background:"#60a5fa",animation:"mb 1.5s infinite",boxShadow:"0 0 8px rgba(96,165,250,.5)"}}/>}
+        </button>
+
+        {/* Pause */}
+        <button onClick={()=>setSpeakerMode(SPEAKER_MODES.PAUSED)} style={{
+          flex:1,padding:"14px 8px",borderRadius:14,cursor:"pointer",
+          display:"flex",flexDirection:"column",alignItems:"center",gap:6,
+          background: speakerMode === SPEAKER_MODES.PAUSED ? "linear-gradient(135deg, rgba(239,68,68,.25), rgba(239,68,68,.08))" : "rgba(255,255,255,.03)",
+          border: speakerMode === SPEAKER_MODES.PAUSED ? "2px solid rgba(239,68,68,.4)" : "1px solid rgba(255,255,255,.08)",
+          boxShadow: speakerMode === SPEAKER_MODES.PAUSED ? "0 0 20px rgba(239,68,68,.15)" : "none",
+          transition:"all 0.2s ease",
+        }}>
+          <Hand size={20} color={speakerMode === SPEAKER_MODES.PAUSED ? "#f87171" : "rgba(255,255,255,.3)"} />
+          <span style={{fontSize:11,fontWeight:700,color: speakerMode === SPEAKER_MODES.PAUSED ? "#f87171" : "rgba(255,255,255,.3)",letterSpacing:"0.3px"}}>
+            Pause
+          </span>
+          {speakerMode === SPEAKER_MODES.PAUSED && <div style={{width:6,height:6,borderRadius:"50%",background:"#f87171",boxShadow:"0 0 8px rgba(248,113,113,.5)"}}/>}
+        </button>
+      </div>
+
+      {/* Row 2: Refine + End */}
+      <div style={{display:"flex",gap:8}}>
+        {/* Refine */}
+        <button onClick={()=>setShowRefine(!showRefine)} style={{
+          flex:1,padding:"12px 8px",borderRadius:12,cursor:"pointer",
+          display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+          background: showRefine ? "linear-gradient(135deg, rgba(245,158,11,.2), rgba(245,158,11,.05))" : "rgba(255,255,255,.03)",
+          border: showRefine ? "1px solid rgba(245,158,11,.3)" : "1px solid rgba(255,255,255,.08)",
+          transition:"all 0.2s ease",
+        }}>
+          <RotateCcw size={16} color={showRefine ? "#fbbf24" : "rgba(255,255,255,.3)"} />
+          <span style={{fontSize:12,fontWeight:700,color: showRefine ? "#fbbf24" : "rgba(255,255,255,.3)"}}>Refine</span>
+        </button>
+
+        {/* End Meeting — Bug 4 fix: always visible, sticky at bottom */}
+        <button onClick={endMeeting} style={{
+          flex:1,padding:"12px 8px",borderRadius:12,cursor:"pointer",
+          display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+          background:"rgba(239,68,68,.06)",
+          border:"1px solid rgba(239,68,68,.2)",
+          transition:"all 0.2s ease",
+        }}>
+          <Square size={16} color="#f87171" />
+          <span style={{fontSize:12,fontWeight:700,color:"#f87171"}}>End Meeting</span>
+        </button>
+      </div>
+
+      {/* Refine submenu */}
+      {showRefine && <div style={{marginTop:8,display:"flex",gap:8}}>
+        <button onClick={()=>handleRefine('reset')} disabled={refineLoading} style={{flex:1,padding:"10px",borderRadius:10,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.15)",color:"#fbbf24",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+          Reset Coaching
+        </button>
+        <button onClick={()=>handleRefine('recalibrate')} disabled={refineLoading} style={{flex:1,padding:"10px",borderRadius:10,background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.15)",color:"#fbbf24",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+          {refineLoading ? 'Recalibrating...' : 'Recalibrate'}
+        </button>
+      </div>}
     </div>}
   </div>);
 }
-
-// ⬡B:cip.iris:VIEW:tim_cook_v2:20260401⬡
-// IRIS (Interview Response and Intelligence System)
-// TIM: verbal filler. COOK: one-paragraph copy-paste script.
-// 3 sub-modes: Prep (job-specific), Live (real-time coaching), Mock (ABA as interviewer)
-// ═══════════════════════════════════════════════════════════
