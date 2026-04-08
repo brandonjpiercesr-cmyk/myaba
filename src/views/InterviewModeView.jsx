@@ -11,6 +11,7 @@ import {
   fetchTimCue as coreTimCue, cleanInterviewTitle,
   TIM_COOLDOWN, COOK_COOLDOWN, TIM_CUE_DURATION, TIM_CUE_MAX_AGE, TIM_CUE_MAX_VISIBLE,
 } from "../utils/iris-core.js";
+import { captureDualAudio } from "../utils/mesa-core.js";
 
 // v3: Speaker modes for control panel
 const SPEAKER_MODES = { THEY: 'they_talking', ME: 'i_talking', PAUSED: 'paused' };
@@ -171,6 +172,7 @@ export default function InterviewModeView({ userId }) {
   const lastSaidByHamRef_iv = useRef("");
   const lastTimFire_iv = useRef(0);
   const lastCookFire_iv = useRef(0);
+  const dualAudioRef_iv = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -342,8 +344,11 @@ export default function InterviewModeView({ userId }) {
   const toggleRecord = async () => {
     if (recording) { recRef.current?.stop(); streamRef.current?.getTracks().forEach(t=>t.stop()); if(wsRef.current&&wsRef.current.readyState===WebSocket.OPEN)wsRef.current.close(); wsRef.current=null; setRecording(false); return; }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
+      // v4: Dual audio — captures mic AND system audio (Zoom/Meet/FaceTime)
+      const dualAudio = await captureDualAudio();
+      dualAudioRef_iv.current = dualAudio;
+      const stream = dualAudio.mixedStream;
+      streamRef.current = dualAudio.micStream;
       // ⬡B:CIP.IRIS:WEBSOCKET:deepgram_proxy:20260402⬡ WebSocket streaming
       const wsProto = ABABASE.startsWith('https') ? 'wss' : 'ws';
       const wsHost = ABABASE.replace('https://', '').replace('http://', '');
@@ -600,5 +605,6 @@ export default function InterviewModeView({ userId }) {
     </div>
   </div>);
 }
+
 
 
