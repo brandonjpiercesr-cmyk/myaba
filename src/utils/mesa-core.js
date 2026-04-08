@@ -1,7 +1,8 @@
-// ⬡B:MACE.phase2:CORE:mesa_core:20260406⬡
+// ⬡B:MACE.phase2:CORE:mesa_core_v2:20260408⬡
 // Meeting Support Application (MESA) Shared Core Library
 // Source of truth for all MESA surfaces: CIP MeetingModeView, CIB MeetingModeApp, MESA standalone
 // Also provides TIM/COOK functions used by IRIS (Interview Readiness and Intelligence System)
+// v2: Speaker mode control panel, briefing-aware COOK, meeting logging to HAM
 
 import { useState, useRef, useEffect, useCallback } from "react";
 
@@ -30,6 +31,13 @@ export const TIM_CUE_MAX_VISIBLE = 5;
 
 // Panel options for coaching sidebar
 export const PANEL_OPTIONS = ['transcript', 'coaching', 'glossary'];
+
+// Speaker modes for control panel
+export const SPEAKER_MODES = {
+  THEY_TALKING: 'they_talking',   // Other party speaking — TIM + COOK active
+  I_TALKING: 'i_talking',         // HAM speaking — transcript only, no TIM/COOK
+  PAUSED: 'paused',               // All processing paused — screen freezes
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // UTILITY FUNCTIONS
@@ -77,7 +85,7 @@ export async function fetchTimCue(api, segment, userId, context) {
         userId,
         context: context || 'live meeting',
         mode: segment.mode || 'meeting',
-        whose_turn: segment.whose_turn || 'unknown',
+        whose_turn: segment.whose_turn || 'other',
       }
     });
     return result.cue ? result : null;
@@ -88,10 +96,11 @@ export async function fetchTimCue(api, segment, userId, context) {
 }
 
 // Fetch COOK answer via SSE streaming
-// Returns the full answer text via onChunk callback, final text on complete
+// v2: Now accepts briefingContext — the prep document / briefing the HAM loaded before the meeting.
+// This is the fix for Bug 3 (hallucination despite correct briefing loaded).
+// COOK was never receiving the briefing content — only transcript and TIM cues.
 export async function fetchCookAnswer(api, question, userId, context, onChunk) {
   try {
-    // COOK uses raw fetch for SSE streaming — adapter provides base URL
     const baseUrl = typeof api._baseUrl === 'string' ? api._baseUrl : 'https://abacia-services.onrender.com';
     const res = await fetch(baseUrl + '/api/cook/answer', {
       method: 'POST',
@@ -103,6 +112,8 @@ export async function fetchCookAnswer(api, question, userId, context, onChunk) {
         transcript_context: context?.recentTranscript || '',
         tim_cues: context?.recentCues || [],
         last_said_by_ham: context?.lastSaidByHam || '',
+        // v2: briefing context — this is the prep document content the HAM loaded
+        briefing_context: context?.briefingContext || '',
       })
     });
 
@@ -147,7 +158,48 @@ export async function generateSummary(api, transcript, userId) {
   }
 }
 
-// Save transcript to brain
+// ═══════════════════════════════════════════════════════════════════════════
+// MEETING SAVE TO HAM (Bug 5 fix)
+// Saves the full meeting session — transcript, coached answers, briefing,
+// duration, summary — to the HAM's brain in Supabase so they can find it later.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function saveMeetingToHAM(api, userId, meetingData) {
+  const { transcript, cookAnswers, timCues, briefingContext, duration, summary, mode } = meetingData;
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+  try {
+    const result = await api('/api/air/process', {
+      method: 'POST',
+      body: {
+        message: `Save this ${mode || 'meeting'} session to my brain. Date: ${now.toLocaleDateString()}. Duration: ${duration}. Summary: ${summary || 'No summary generated.'}. Transcript lines: ${(transcript || []).length}. Coached answers: ${(cookAnswers || []).length}. Briefing was ${briefingContext ? 'loaded' : 'not loaded'}.`,
+        user_id: userId,
+        channel: 'myaba',
+        appScope: mode || 'meeting',
+        meetingLog: {
+          type: mode || 'meeting',
+          date: now.toISOString(),
+          duration,
+          summary: summary || '',
+          transcript: (transcript || []).slice(-100),
+          cookAnswers: (cookAnswers || []).map(a => ({ q: a.question || a.q, text: a.answer || a.text, time: a.time })),
+          timCues: (timCues || []).map(c => ({ text: c.text, type: c.type, time: c.time })),
+          briefingLoaded: !!briefingContext,
+          briefingPreview: briefingContext ? briefingContext.substring(0, 500) : null,
+        }
+      }
+    });
+    console.log('[MESA] Meeting saved to HAM brain');
+    return result;
+  } catch (err) {
+    console.error('[MESA] Failed to save meeting to HAM:', err);
+    return null;
+  }
+}
+
+// Save transcript to brain (legacy — kept for backward compat)
 export async function saveTranscript(api, transcript, userId, metadata) {
   try {
     return await api('/api/air/process', {
@@ -167,8 +219,8 @@ export async function saveTranscript(api, transcript, userId, metadata) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PROCESS SEGMENT — The core orchestrator for TIM and COOK
-// Decides when to fire TIM (8s cooldown) and COOK (15s cooldown on questions)
-// Used by MESA and IRIS surfaces
+// v2: Now respects speaker mode. Only fires TIM/COOK when mode is 'they_talking'.
+// When 'i_talking', only records transcript. When 'paused', does nothing.
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function createSegmentProcessor(api, userId, context) {
@@ -176,14 +228,26 @@ export function createSegmentProcessor(api, userId, context) {
   const lastCookFire = { current: 0 };
 
   return {
-    // Process a transcript segment — fires TIM and/or COOK as appropriate
-    process: async (text, speakerId, callbacks) => {
+    process: async (text, speakerId, callbacks, speakerMode) => {
+      // PAUSED: do nothing at all — screen should not move
+      if (speakerMode === SPEAKER_MODES.PAUSED) return;
+
+      // I_TALKING: record transcript only, no TIM/COOK fires
+      // This prevents the screen from jumping while the HAM is reading coached answers
+      if (speakerMode === SPEAKER_MODES.I_TALKING) return;
+
+      // THEY_TALKING or no mode set: fire TIM and COOK normally
       const now = Date.now();
 
       // TIM: fire every 8 seconds
       if (now - lastTimFire.current >= TIM_COOLDOWN) {
         lastTimFire.current = now;
-        const result = await fetchTimCue(api, { text, mode: context?.mode || 'meeting', whose_turn: speakerId === context?.hamSpeaker ? 'ham' : 'other' }, userId, context?.contextString);
+        const result = await fetchTimCue(
+          api,
+          { text, mode: context?.mode || 'meeting', whose_turn: 'other' },
+          userId,
+          context?.contextString
+        );
         if (result?.cue) {
           callbacks?.onTimCue?.({
             text: result.cue,
@@ -203,7 +267,13 @@ export function createSegmentProcessor(api, userId, context) {
 
         const fullAnswer = await fetchCookAnswer(
           api, text, userId,
-          { ...context, recentTranscript: callbacks?.getRecentTranscript?.() || '', recentCues: callbacks?.getRecentCues?.() || [], lastSaidByHam: callbacks?.getLastSaidByHam?.() || '' },
+          {
+            ...context,
+            recentTranscript: callbacks?.getRecentTranscript?.() || '',
+            recentCues: callbacks?.getRecentCues?.() || [],
+            lastSaidByHam: callbacks?.getLastSaidByHam?.() || '',
+            briefingContext: context?.briefingContext || '',
+          },
           (accumulated, chunk) => callbacks?.onCookChunk?.(answerId, accumulated)
         );
 
@@ -211,7 +281,6 @@ export function createSegmentProcessor(api, userId, context) {
       }
     },
 
-    // Reset cooldowns
     reset: () => {
       lastTimFire.current = 0;
       lastCookFire.current = 0;
@@ -223,7 +292,29 @@ export function createSegmentProcessor(api, userId, context) {
 // REACT HOOKS
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Speaker mode hook — manages the control panel state
+// Returns the current mode + toggle functions for each button
+export function useSpeakerMode() {
+  const [speakerMode, setSpeakerMode] = useState(SPEAKER_MODES.THEY_TALKING);
+
+  const setTheyTalking = useCallback(() => setSpeakerMode(SPEAKER_MODES.THEY_TALKING), []);
+  const setITalking = useCallback(() => setSpeakerMode(SPEAKER_MODES.I_TALKING), []);
+  const setPaused = useCallback(() => setSpeakerMode(SPEAKER_MODES.PAUSED), []);
+
+  return {
+    speakerMode,
+    setSpeakerMode,
+    setTheyTalking,
+    setITalking,
+    setPaused,
+    isTheyTalking: speakerMode === SPEAKER_MODES.THEY_TALKING,
+    isITalking: speakerMode === SPEAKER_MODES.I_TALKING,
+    isPaused: speakerMode === SPEAKER_MODES.PAUSED,
+  };
+}
+
 // TIM + COOK state management hook
+// v2: accepts speakerMode to gate processing, briefingContext to pass to COOK
 export function useTimCook(api, userId) {
   const [timCues, setTimCues] = useState([]);
   const [currentTimCue, setCurrentTimCue] = useState(null);
@@ -239,7 +330,7 @@ export function useTimCook(api, userId) {
     return processorRef.current;
   }, [api, userId]);
 
-  const processSegment = useCallback(async (text, speakerId, context) => {
+  const processSegment = useCallback(async (text, speakerId, context, speakerMode) => {
     const processor = getProcessor(context);
     await processor.process(text, speakerId, {
       getTime: context?.getTime,
@@ -263,7 +354,7 @@ export function useTimCook(api, userId) {
         setCookAnswers(prev => prev.map(a => a.id === id ? { ...a, answer: fullAnswer || 'Connection issue.', streaming: false } : a));
         setCookStreaming(false);
       },
-    });
+    }, speakerMode);
   }, [getProcessor, timCues]);
 
   return { timCues, currentTimCue, cookAnswers, cookStreaming, processSegment, setTimCues, setCookAnswers };
@@ -274,7 +365,7 @@ export function useMeetingPrep(api, userId) {
   const [prepInput, setPrepInput] = useState('');
   const [prepMessages, setPrepMessages] = useState([]);
   const [prepLoading, setPrepLoading] = useState(false);
-  const [prepContext, setPrepContext] = useState(null);
+  const [prepContext, setPrepContext] = useState('');
 
   const sendPrep = useCallback(async (message) => {
     if (!message.trim()) return;
@@ -288,15 +379,16 @@ export function useMeetingPrep(api, userId) {
       });
       const response = result.response || result.message || '';
       setPrepMessages(prev => [...prev, { role: 'aba', text: response }]);
-      // Extract prep context if ABA provides structured data
-      if (result.context) setPrepContext(result.context);
+      // Accumulate prep context for COOK to use during the meeting
+      setPrepContext(prev => prev + '\n' + message + '\n' + response);
+      if (result.context) setPrepContext(prev => prev + '\n' + JSON.stringify(result.context));
     } catch {
       setPrepMessages(prev => [...prev, { role: 'aba', text: 'Could not reach ABA.' }]);
     }
     setPrepLoading(false);
   }, [api, userId]);
 
-  return { prepInput, setPrepInput, prepMessages, prepLoading, sendPrep, prepContext };
+  return { prepInput, setPrepInput, prepMessages, prepLoading, sendPrep, prepContext, setPrepContext };
 }
 
 // Glossary hook — collect terms during meeting
