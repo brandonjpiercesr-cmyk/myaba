@@ -288,6 +288,99 @@ export function createSegmentProcessor(api, userId, context) {
   };
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DUAL AUDIO CAPTURE — Mic + System Audio (Zoom, Meet, FaceTime, etc.)
+// getUserMedia only captures the microphone. To hear the OTHER person on a
+// call, we need getDisplayMedia with systemAudio: 'include', then mix both
+// streams via Web Audio API. Works on Chrome/Edge desktop. Safari/Firefox
+// do not support system audio capture.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Check if the browser supports system audio capture
+export function supportsSystemAudio() {
+  return typeof navigator?.mediaDevices?.getDisplayMedia === 'function'
+    && /Chrome|Edg/.test(navigator.userAgent);
+}
+
+// Capture both microphone AND system audio, mix them into one stream
+// Returns: { mixedStream, micStream, systemStream, audioContext, cleanup }
+// The mixedStream should be sent to Deepgram for transcription
+export async function captureDualAudio() {
+  const result = { mixedStream: null, micStream: null, systemStream: null, audioContext: null, cleanup: null };
+
+  // 1. Capture microphone (always works)
+  result.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+  // 2. Try to capture system audio via getDisplayMedia
+  // This requires user to share a screen/tab and check "Share audio"
+  let systemAudioTrack = null;
+  try {
+    if (supportsSystemAudio()) {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,  // required by spec, we discard it
+        audio: { systemAudio: 'include' },
+        preferCurrentTab: false,
+      });
+      result.systemStream = displayStream;
+
+      // Extract audio track from display stream (if user shared audio)
+      const audioTracks = displayStream.getAudioTracks();
+      if (audioTracks.length > 0) {
+        systemAudioTrack = audioTracks[0];
+        console.log('[MESA] System audio captured — other party will be heard');
+      } else {
+        console.log('[MESA] No system audio — user may not have checked Share Audio');
+      }
+
+      // Stop the video track (we only need audio)
+      displayStream.getVideoTracks().forEach(t => t.stop());
+    }
+  } catch (err) {
+    // User denied screen share or browser doesn't support — fall back to mic only
+    console.log('[MESA] System audio not available, mic only:', err.message);
+  }
+
+  // 3. Mix streams via Web Audio API
+  const audioContext = new AudioContext();
+  result.audioContext = audioContext;
+  const destination = audioContext.createMediaStreamDestination();
+
+  // Add mic
+  const micSource = audioContext.createMediaStreamSource(result.micStream);
+  micSource.connect(destination);
+
+  // Add system audio if available
+  if (systemAudioTrack) {
+    const systemMediaStream = new MediaStream([systemAudioTrack]);
+    const systemSource = audioContext.createMediaStreamSource(systemMediaStream);
+    systemSource.connect(destination);
+  }
+
+  result.mixedStream = destination.stream;
+
+  // Cleanup function
+  result.cleanup = () => {
+    result.micStream?.getTracks().forEach(t => t.stop());
+    result.systemStream?.getTracks().forEach(t => t.stop());
+    try { audioContext.close(); } catch {}
+  };
+
+  return result;
+}
+
+// Simplified version: just get mic if system audio isn't needed or available
+export async function captureMicOnly() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  return {
+    mixedStream: stream,
+    micStream: stream,
+    systemStream: null,
+    audioContext: null,
+    cleanup: () => stream.getTracks().forEach(t => t.stop()),
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // REACT HOOKS
 // ═══════════════════════════════════════════════════════════════════════════
@@ -404,3 +497,4 @@ export function useGlossary() {
 
   return { glossary, addTerm, setGlossary };
 }
+
