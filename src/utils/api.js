@@ -574,34 +574,47 @@ export function safeParseGreeting(response) {
 }
 
 
-// ⬡B:FEATURE:chat_export:20260409⬡ Export chat to downloadable format
-export function exportChat(messages, title, format = "md") {
-  const timestamp = new Date().toLocaleString("en-US", { dateStyle: "full", timeStyle: "short" });
-  let output = "";
-  
-  if (format === "md") {
-    output = `# ${title}\n\n*Exported ${timestamp}*\n\n---\n\n`;
+// ⬡B:FEATURE:chat_export:20260409⬡ Export chat to downloadable format (PDF, DOCX, MD)
+export async function exportChat(messages, title, format = "md") {
+  try {
+    // Use backend for PDF and DOCX generation
+    if (format === "pdf" || format === "docx") {
+      const res = await fetch(ABABASE + "/api/chat/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages, title, format })
+      });
+      if (!res.ok) throw new Error("Export failed: " + res.status);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${title.replace(/[^a-zA-Z0-9 ]/g, "").replace(/\s+/g, "_")}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return;
+    }
+    
+    // Client-side for markdown (fast, no network needed)
+    const timestamp = new Date().toLocaleString("en-US", { dateStyle: "full", timeStyle: "short" });
+    let output = `# ${title}\n\n*Exported ${timestamp}*\n\n---\n\n`;
     messages.forEach(m => {
       const role = m.role === "user" ? "**You**" : "**ABA**";
       const text = m.content || m.text || "";
       output += `${role}:\n${text}\n\n---\n\n`;
     });
-  } else if (format === "txt") {
-    output = `${title}\nExported ${timestamp}\n${"=".repeat(50)}\n\n`;
-    messages.forEach(m => {
-      const role = m.role === "user" ? "YOU" : "ABA";
-      const text = m.content || m.text || "";
-      output += `[${role}]\n${text}\n\n`;
-    });
+    const blob = new Blob([output], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title.replace(/[^a-zA-Z0-9 ]/g, "").replace(/\s+/g, "_")}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error("[EXPORT] Error:", e);
   }
-  
-  const blob = new Blob([output], { type: format === "md" ? "text/markdown" : "text/plain" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${title.replace(/[^a-zA-Z0-9 ]/g, "").replace(/\s+/g, "_")}.${format}`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
