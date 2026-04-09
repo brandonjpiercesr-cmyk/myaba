@@ -8,7 +8,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -27,7 +27,7 @@ export const googleProvider = new GoogleAuthProvider();
 export const db = getFirestore(app);
 
 export async function signInGoogle() {
-  return signInWithPopup(auth, googleProvider);
+  return signInWithRedirect(auth, googleProvider);
 }
 
 export async function signOutUser() {
