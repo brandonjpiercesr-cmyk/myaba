@@ -670,6 +670,15 @@ export default function InterviewModeView({ userId }) {
       </div>
     </div>
     <div style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
+      {/* Brain Search */}
+      <div style={{marginBottom:10,display:"flex",gap:4}}>
+        <input type="text" placeholder="Search brain..." value={glossarySearch} onChange={e=>setGlossarySearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&searchBrain(glossarySearch)} style={{flex:1,padding:"6px 10px",borderRadius:8,fontSize:11,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",color:"#e2e8f0",outline:"none"}} />
+        <button onClick={()=>searchBrain(glossarySearch)} style={{padding:"6px 12px",borderRadius:8,fontSize:10,background:"rgba(34,211,238,.08)",border:"1px solid rgba(34,211,238,.15)",color:"#22d3ee",cursor:"pointer"}}>{brainSearching?"...":"Search"}</button>
+      </div>
+      {brainResults.length>0&&<div style={{marginBottom:10,padding:8,borderRadius:8,background:"rgba(34,211,238,.04)",border:"1px solid rgba(34,211,238,.1)"}}>
+        <div style={{fontSize:9,fontWeight:700,color:"rgba(34,211,238,.5)",marginBottom:4}}>BRAIN RESULTS</div>
+        {brainResults.map((r,i)=><div key={i} style={{marginBottom:4,fontSize:11,color:"rgba(255,255,255,.7)",lineHeight:1.4}}>{typeof r.content==="string"?r.content.substring(0,150):JSON.stringify(r.content).substring(0,150)}...</div>)}
+      </div>
       {/* TRANSCRIPT */}
       <div style={{marginBottom:12}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"0 4px"}}><Mic size={11} style={{color:amber(.4)}}/><span style={{fontSize:10,fontWeight:700,color:amber(.4),letterSpacing:"0.1em"}}>TRANSCRIPT</span>{transcript.length>0&&<span style={{fontSize:9,background:amber(.1),padding:"2px 6px",borderRadius:8,color:amber(.5),fontWeight:600}}>{transcript.length}</span>}</div>
