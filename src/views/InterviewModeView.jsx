@@ -319,7 +319,7 @@ export default function InterviewModeView({ userId }) {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ transcript: transcriptRef.current.map(t=>`[${t.time}] ${t.text}`).join("\n"), duration: fmt(seconds), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, userId })
         });
-        if (res.ok) { const d = await res.json(); meetingSummary = d.summary || ""; setSummary(meetingSummary); }
+        if (res.ok) { const d = await res.json(); meetingSummary = typeof d.summary === 'string' ? d.summary : (d.summary?.text || d.response || ''); setSummary(meetingSummary); }
       } catch {}
     }
     // v3 Bug 5: Save interview session to HAM brain

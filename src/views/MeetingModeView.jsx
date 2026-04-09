@@ -249,7 +249,7 @@ export default function MeetingModeView({ userId }) {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ transcript: transcriptRef.current.map(t=>`[${t.time}] ${t.text}`).join("\n"), duration: fmt(seconds), mode: "meeting", userId })
         });
-        if (res.ok) { const d = await res.json(); meetingSummary = d.summary || ""; setSummary(meetingSummary); }
+        if (res.ok) { const d = await res.json(); meetingSummary = typeof d.summary === 'string' ? d.summary : (d.summary?.text || d.response || ''); setSummary(meetingSummary); }
       } catch {}
     }
 
