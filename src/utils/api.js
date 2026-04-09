@@ -419,14 +419,41 @@ export async function reachPresence(userId) {
 export async function airNameChat(messages, userId) {
   try {
     const firstUserMsg = messages.find(m => m.role === "user");
+    const firstAbaMsg = messages.find(m => m.role === "assistant");
     if (!firstUserMsg) return null;
     
+    // ⬡B:FIX:wrap_agent_naming:20260409⬡ Call AIR to generate a real chat name
+    // instead of dumb 6-word truncation. Falls back to local naming if AIR fails.
+    try {
+      const snippet = (firstUserMsg.content || "").substring(0, 200);
+      const abaSnippet = (firstAbaMsg?.content || firstAbaMsg?.text || "").substring(0, 200);
+      const res = await fetch(ABABASE + "/api/air/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `Name this conversation in 3-6 words. User said: "${snippet}" ABA replied: "${abaSnippet}". Return ONLY the short title, nothing else. No quotes.`,
+          user_id: userId,
+          channel: "wrap",
+          skipTools: true
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const name = (data.response || "").replace(/^["']|["']$/g, "").trim();
+        if (name && name.length > 2 && name.length < 60) {
+          console.log("[WRAP] AIR named chat:", name);
+          return name;
+        }
+      }
+    } catch (e) { console.warn("[WRAP] AIR naming failed, using local fallback:", e.message); }
+    
+    // Local fallback: first 6 words
     const words = firstUserMsg.content.trim().split(/\s+/).slice(0, 6).join(" ");
     const localName = words.length > 35 ? words.substring(0, 35) + "..." : words;
-    console.log("[CHAT] Named chat:", localName);
+    console.log("[WRAP] Local named chat:", localName);
     return localName;
   } catch (e) { 
-    console.error("[CHAT] Name error:", e);
+    console.error("[WRAP] Name error:", e);
     return null; 
   }
 }
@@ -542,4 +569,37 @@ export function safeParseGreeting(response) {
     return { title: parsed.greeting || parsed.title || "", subtitle: parsed.context || parsed.subtitle || "" };
   }
   return { title: String(response), subtitle: "" };
+}
+
+
+// ⬡B:FEATURE:chat_export:20260409⬡ Export chat to downloadable format
+export function exportChat(messages, title, format = "md") {
+  const timestamp = new Date().toLocaleString("en-US", { dateStyle: "full", timeStyle: "short" });
+  let output = "";
+  
+  if (format === "md") {
+    output = `# ${title}\n\n*Exported ${timestamp}*\n\n---\n\n`;
+    messages.forEach(m => {
+      const role = m.role === "user" ? "**You**" : "**ABA**";
+      const text = m.content || m.text || "";
+      output += `${role}:\n${text}\n\n---\n\n`;
+    });
+  } else if (format === "txt") {
+    output = `${title}\nExported ${timestamp}\n${"=".repeat(50)}\n\n`;
+    messages.forEach(m => {
+      const role = m.role === "user" ? "YOU" : "ABA";
+      const text = m.content || m.text || "";
+      output += `[${role}]\n${text}\n\n`;
+    });
+  }
+  
+  const blob = new Blob([output], { type: format === "md" ? "text/markdown" : "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${title.replace(/[^a-zA-Z0-9 ]/g, "").replace(/\s+/g, "_")}.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
