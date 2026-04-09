@@ -2274,6 +2274,10 @@ function MyABAInner(){
       onToolStart:(tool)=>{
         setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:m.content+(m.content?"\n":"")+"_Checking "+tool+"..._"}:m));
       },
+      onAttachment:(att)=>{
+        // ⬡B:MACE.file_delivery:UI:attachment_in_bubble:20260409⬡
+        setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,attachments:[...(m.attachments||[]),{name:att.filename,type:att.contentType,size:att.sizeKB?att.sizeKB*1024:0,url:att.url}]}:m));
+      },
       onDone:(data)=>{
         const finalText=data.fullResponse||data.response||"";
         setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:finalText||m.content,streaming:false}:m));
