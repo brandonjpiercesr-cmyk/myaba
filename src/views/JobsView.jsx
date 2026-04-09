@@ -273,7 +273,7 @@ export default function JobsView({userId, setEditorDoc}){
         {selectedJob.status!=="APPLIED"&&selectedJob.status!=="INTERVIEW_SCHEDULED"&&selectedJob.status!=="OFFER"&&selectedJob.status!=="ACCEPTED"&&selectedJob.status!=="DISMISSED"&&(
         <div style={{marginBottom:8}}>
           {!applyPreview?(
-          <button disabled={applyLoading} onClick={async()=>{
+          <><button disabled={applyLoading} onClick={async()=>{
             setApplyLoading(true);
             try{
               const assignee=(selectedJob.assignees||[])[0]||"unmatched";
@@ -291,7 +291,7 @@ export default function JobsView({userId, setEditorDoc}){
             fetchJobs();
           }} style={{width:'100%',padding:'10px 8px',borderRadius:10,border:'1px solid rgba(163,230,53,.2)',cursor:'pointer',background:'rgba(163,230,53,.08)',color:'rgba(163,230,53,.8)',fontSize:12,fontWeight:500,display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginTop:6}}>
             Already Applied (Mark Status)
-          </button>
+          </button></>
           ):(
           <div style={{padding:12,borderRadius:10,background:"rgba(16,185,129,.06)",border:"1px solid rgba(16,185,129,.15)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
