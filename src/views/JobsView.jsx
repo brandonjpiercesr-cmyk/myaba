@@ -6,7 +6,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Briefcase, Building, MapPin, ExternalLink, Download, ChevronDown, ChevronRight,
-  Edit2, Loader2, Send, Search, FileText, RefreshCw, X, Users, Eye, Copy, Star
+  Edit2, Loader2, Send, Search, FileText, RefreshCw, X, Users, Eye, Copy, Star, Trash2
 } from "lucide-react";
 import { ABABASE } from "../utils/api.js";
 import { resolveHamId } from "../utils/ham.js";
