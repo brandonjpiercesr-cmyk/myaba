@@ -659,7 +659,33 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
   const filteredApps = appSearch ? apps.filter(a => a.name.toLowerCase().includes(appSearch.toLowerCase()) || (a.id||"").toLowerCase().includes(appSearch.toLowerCase())) : apps;
   // Show max 8 on homescreen, rest in drawer
   const homeApps = apps.slice(0, 8);
-  const recommended = apps.filter(a => ["chat","jobs","briefing","email"].includes(a.id)).slice(0,4);
+  const [recommendedIds, setRecommendedIds] = useState(["chat","jobs","briefing","email"]);
+  useEffect(() => {
+    // ⬡B:FEATURE:air_app_recommendations:20260409⬡ Ask AIR for personalized app recommendations
+    (async () => {
+      try {
+        const res = await fetch(ABABASE + "/api/air/process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: "Based on what you know about this HAM, which 4 apps from their app list would be most useful to them right now? Return ONLY a JSON array of app IDs, nothing else. Example: [\"chat\",\"jobs\",\"briefing\",\"email\"]",
+            user_id: userId,
+            channel: "recommend",
+            skipTools: true
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const raw = (data.response || "").trim();
+          try {
+            const parsed = JSON.parse(raw.match(/\[.*\]/s)?.[0] || "[]");
+            if (Array.isArray(parsed) && parsed.length > 0) setRecommendedIds(parsed);
+          } catch {}
+        }
+      } catch {}
+    })();
+  }, [userId]);
+  const recommended = apps.filter(a => recommendedIds.includes(a.id)).slice(0,4);
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 4px" }}>
@@ -668,6 +694,25 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
         <div style={{ fontSize: 56, fontWeight: 100, color: "rgba(255,255,255,.9)", letterSpacing: -2, lineHeight: 1, fontFamily: "'SF Pro Display',-apple-system,sans-serif" }}>{timeStr}</div>
         <div style={{ fontSize: 13, color: "rgba(255,255,255,.35)", marginTop: 6, fontWeight: 400, letterSpacing: .5 }}>{dateStr}</div>
       </div>
+
+      {/* ⬡B:FEATURE:recommended_apps:20260409⬡ Recommended for you */}
+      {!appSearch && recommended.length > 0 && <div style={{ padding: "0 12px 8px" }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,.3)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Recommended for you</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+          {recommended.map((app) => {
+            const IC = ICON_MAP[app.icon] || Sparkles;
+            const ac = APP_COLORS[app.id] || "#a78bfa";
+            return (
+              <button key={"rec-"+app.id} onClick={() => onAppSelect(app)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 4px", borderRadius: 16, border: "1px solid " + ac + "22", background: ac + "08", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: "linear-gradient(135deg, " + ac + "33, " + ac + "15)", border: "1px solid " + ac + "44", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <IC size={20} color={ac} strokeWidth={1.8} />
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 500, color: "rgba(255,255,255,.55)", textAlign: "center", lineHeight: 1.2, maxWidth: 68, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{app.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>}
 
       {/* ⬡B:FEATURE:smart_app_search:20260409⬡ Search bar */}
       <div style={{ padding: "0 12px 8px", position: "relative" }}>
@@ -1753,7 +1798,7 @@ function MyABAInner(){
   const[voiceMode,setVoiceMode]=useState(()=>{try{return localStorage.getItem("myaba_voiceMode")||"chat"}catch{return "chat"}});
   const[settingsLoaded,setSettingsLoaded]=useState(false);
   
-  const[settingsOpen,setSettingsOpen]=useState(false);const[sidebarOpen,setSidebarOpen]=useState(false);
+  const[settingsOpen,setSettingsOpen]=useState(false);const[sidebarOpen,setSidebarOpen]=useState(false);const[exportMenu,setExportMenu]=useState(false);
   const[mainTab,setMainTab]=useState("home"); // ⬡B:phase3:CIP_LAUNCHER:home_default:20260323⬡
   const[appScope,setAppScope]=useState(null); // Current app agent scope for AIR calls
   const[briefingData,setBriefingData]=useState(null);
@@ -2097,13 +2142,14 @@ function MyABAInner(){
     reachPresence(userId).then(d=>{if(d.items)setProactiveItems(d.items)});
   },[user]);
 
+  // ⬡B:WRAP.migration:FIX:rename_new_chat_convos:20260409⬡
+  // Rename active conversation if still "New Chat"
   useEffect(()=>{
     if(!activeConv||activeConv.autoNamed||!user)return;
     if(activeConv.messages.length>=2){
       airNameChat(activeConv.messages,user.email||user.uid).then(name=>{
         if(name){
           setConvos(p=>p.map(c=>c.id===activeId?{...c,title:name,autoNamed:true}:c));
-          // Sync title to backend
           if(activeId&&!String(activeId).startsWith('conv-')){
             fetch(`${ABABASE}/api/conversations/${activeId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:name})}).catch(()=>{});
           }
@@ -2111,6 +2157,25 @@ function MyABAInner(){
       });
     }
   },[messages.length,activeId]);
+
+  // ⬡B:WRAP.migration:FIX:bulk_rename_on_load:20260409⬡
+  // One-time migration: rename all "New Chat" conversations with messages
+  useEffect(()=>{
+    if(!user||!convos.length)return;
+    const unnamed=convos.filter(c=>c.title==="New Chat"&&!c.autoNamed&&c.messages&&c.messages.length>=2);
+    if(!unnamed.length)return;
+    console.log("[WRAP] Migrating",unnamed.length,"unnamed conversations");
+    unnamed.slice(0,5).forEach(c=>{
+      airNameChat(c.messages,user.email||user.uid).then(name=>{
+        if(name){
+          setConvos(p=>p.map(x=>x.id===c.id?{...x,title:name,autoNamed:true}:x));
+          if(c.id&&!String(c.id).startsWith('conv-')){
+            fetch(`${ABABASE}/api/conversations/${c.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:name})}).catch(()=>{});
+          }
+        }
+      });
+    });
+  },[convos.length,user]);
 
   // ⬡B:MYABA:FIX:remove_duplicate_save:20260321⬡
   // REMOVED: saveConversation useEffect that ran on every messages.length change.
@@ -2479,10 +2544,17 @@ function MyABAInner(){
         <div style={{display:"flex",gap:4}}>
           {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:lastABAResponse?"rgba(34,197,94,.1)":"rgba(255,255,255,.04)",color:lastABAResponse?"rgba(34,197,94,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}><Activity size={14}/></button>}
           <button onClick={()=>setVoiceOut(!voiceOut)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:voiceOut?"rgba(139,92,246,.1)":"rgba(255,255,255,.04)",color:voiceOut?"rgba(139,92,246,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={13}/>:<VolumeX size={13}/>}</button>
-          {mainTab==="chat"&&activeConv&&activeConv.messages.length>0&&<button onClick={()=>{
-            const title = activeConv.title || "ABA Chat";
-            exportChat(activeConv.messages, title, "md");
-          }} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}} title="Export chat"><Download size={13}/></button>}
+          {mainTab==="chat"&&activeConv&&activeConv.messages.length>0&&<div style={{position:"relative"}}>
+            <button onClick={()=>setExportMenu(!exportMenu)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:exportMenu?"rgba(139,92,246,.15)":"rgba(255,255,255,.04)",color:exportMenu?"rgba(139,92,246,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}} title="Export chat"><Download size={13}/></button>
+            {exportMenu&&<div style={{position:"absolute",top:36,right:0,background:"rgba(20,16,32,.97)",border:"1px solid rgba(139,92,246,.2)",borderRadius:12,padding:4,minWidth:120,zIndex:50,boxShadow:"0 8px 24px rgba(0,0,0,.5)",backdropFilter:"blur(12px)"}}>
+              {[["pdf","PDF"],["docx","Word"],["md","Markdown"]].map(([fmt,label])=>(
+                <button key={fmt} onClick={()=>{setExportMenu(false);exportChat(activeConv.messages,activeConv.title||"ABA Chat",fmt)}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"10px 12px",border:"none",background:"transparent",color:"rgba(255,255,255,.75)",cursor:"pointer",borderRadius:8,fontSize:12,fontWeight:500,textAlign:"left"}}
+                  onMouseEnter={e=>e.target.style.background="rgba(139,92,246,.1)"}
+                  onMouseLeave={e=>e.target.style.background="transparent"}
+                ><FileText size={12} style={{color:"rgba(139,92,246,.6)",flexShrink:0}}/>{label}</button>
+              ))}
+            </div>}
+          </div>}
           <button onClick={()=>setSettingsOpen(true)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}><Settings size={13}/></button>
         </div>
       </div>}
