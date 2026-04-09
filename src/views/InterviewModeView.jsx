@@ -14,7 +14,7 @@ import {
 import { captureDualAudio } from "../utils/mesa-core.js";
 
 // v3: Speaker modes for control panel
-const SPEAKER_MODES = { THEY: 'they_talking', ME: 'i_talking', PAUSED: 'paused' };
+const SPEAKER_MODES = { THEY: 'they_talking', ME: 'i_talking', TEAM: 'my_team', PAUSED: 'paused' };
 import {
   STARCoachMobile, CompanyResearchMobile, PostInterviewMobile,
   TIMQueueMobile, MockInterviewPanel,
@@ -303,6 +303,43 @@ export default function InterviewModeView({ userId }) {
     } catch { alert("Microphone access denied"); }
   };
 
+  const needAnswerNow = async () => {
+    const segs = transcriptRef.current;
+    if (segs.length === 0) return;
+    const last60 = segs.slice(-20).map(s => s.text).join(' ');
+    try {
+      const res = await fetch(apiBase + '/api/cook/answer', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: 'Give me something to say right now',
+          user_id: user?.email || 'unknown', mode: 'interview',
+          transcript_context: last60.substring(0, 2000),
+          briefing_context: prepData ? JSON.stringify(prepData).substring(0, 3000) : '',
+          last_said_by_ham: ''
+        })
+      });
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let answer = '';
+        setCookAnswers(prev => [...prev, { time: fmt(secondsRef.current), question: 'Immediate', answer: '', streaming: true }]);
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          for (const line of dec.decode(value, { stream: true }).split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const d = JSON.parse(line.slice(6));
+              if (d.text) { answer += d.text; setCookAnswers(prev => { const u=[...prev]; u[u.length-1]={...u[u.length-1],answer,streaming:true}; return u; }); }
+              if (d.type==='done') setCookAnswers(prev => { const u=[...prev]; u[u.length-1]={...u[u.length-1],answer,streaming:false}; return u; });
+            } catch {}
+          }
+        }
+      }
+    } catch (e) { console.error('[CIP IRIS] Answer now error:', e); }
+  };
+  const [showRefineMenu, setShowRefineMenu] = useState(false);
+
   const endInterview = async () => {
     recRef.current?.stop();
     streamRef.current?.getTracks().forEach(t => t.stop());
@@ -350,6 +387,43 @@ export default function InterviewModeView({ userId }) {
     <div style={{flex:1,overflowY:"auto",padding:12}}>
       {!selectedJob?<p style={{color:"rgba(255,255,255,.4)",textAlign:"center",padding:40}}>Select a job first to research the company.</p>
       :<CompanyResearchMobile job={selectedJob} api={api} userId={userId}/>}
+
+    {/* ⬡B:MACE.iris:UI:bottom_control_panel_cip:20260409⬡ */}
+    {running && <div style={{flexShrink:0,padding:"8px 10px",borderTop:"1px solid rgba(255,255,255,.06)",background:"rgba(0,0,0,.4)"}}>
+      <div style={{display:"flex",gap:4,marginBottom:6}}>
+        {[
+          {mode:SPEAKER_MODES.THEY,bg:"16,185,129",hex:"#34d399",icon:<Users size={14}/>,label:"Just Listen"},
+          {mode:SPEAKER_MODES.ME,bg:"59,130,246",hex:"#60a5fa",icon:<User size={14}/>,label:"My Turn"},
+          {mode:SPEAKER_MODES.TEAM,bg:"168,85,247",hex:"#a78bfa",icon:<Users size={14}/>,label:"My Team"},
+          {mode:SPEAKER_MODES.PAUSED,bg:"239,68,68",hex:"#f87171",icon:<Hand size={14}/>,label:"Pause"},
+        ].map(b=>(
+          <button key={b.mode} onClick={()=>setSpeakerMode_iv(b.mode)} style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:speakerMode_iv===b.mode?`rgba(${b.bg},.18)`:"rgba(255,255,255,.03)",border:speakerMode_iv===b.mode?`2px solid rgba(${b.bg},.35)`:"1px solid rgba(255,255,255,.06)",transition:"all 0.2s"}}>
+            {React.cloneElement(b.icon,{color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"})}
+            <span style={{fontSize:9,fontWeight:700,color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"}}>{b.label}</span>
+          </button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        <button onClick={needAnswerNow} style={{flex:2,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"linear-gradient(135deg, rgba(251,191,36,.12), rgba(245,158,11,.06))",border:"1px solid rgba(251,191,36,.25)"}}>
+          <Zap size={13} color="#fbbf24"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#fbbf24"}}>Answer Now</span>
+        </button>
+        <div style={{position:"relative",flex:1}}>
+          <button onClick={()=>setShowRefineMenu(!showRefineMenu)} style={{width:"100%",padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.15)"}}>
+            <RotateCcw size={13} color="rgba(245,158,11,.5)"/>
+            <span style={{fontSize:11,fontWeight:700,color:"rgba(245,158,11,.5)"}}>Refine</span>
+          </button>
+          {showRefineMenu&&<div style={{position:"absolute",bottom:"100%",left:0,right:0,marginBottom:4,background:"rgba(15,23,42,.98)",border:"1px solid rgba(245,158,11,.2)",borderRadius:8,overflow:"hidden",zIndex:50}}>
+            <button onClick={()=>{setCookAnswers([]);setTimCues([]);setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",borderBottom:"1px solid rgba(255,255,255,.05)",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Reset Coaching</button>
+            <button onClick={()=>{setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Recalibrate</button>
+          </div>}
+        </div>
+        <button onClick={endInterview} style={{flex:1,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.15)"}}>
+          <Square size={13} color="#f87171"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#f87171"}}>End</span>
+        </button>
+      </div>
+    </div>}
     </div>
   </div>);
   // ═══════ PRACTICE MODE (STAR Coach) ═══════
@@ -363,6 +437,43 @@ export default function InterviewModeView({ userId }) {
         <p style={{color:"rgba(255,255,255,.3)",fontSize:10,fontWeight:600,marginBottom:4}}>CUSTOM QUESTION:</p>
         <input value={starQuestion} onChange={e=>setStarQuestion(e.target.value)} placeholder="Type a custom interview question..." style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.03)",color:"white",fontSize:12,boxSizing:"border-box"}}/>
       </div>
+
+    {/* ⬡B:MACE.iris:UI:bottom_control_panel_cip:20260409⬡ */}
+    {running && <div style={{flexShrink:0,padding:"8px 10px",borderTop:"1px solid rgba(255,255,255,.06)",background:"rgba(0,0,0,.4)"}}>
+      <div style={{display:"flex",gap:4,marginBottom:6}}>
+        {[
+          {mode:SPEAKER_MODES.THEY,bg:"16,185,129",hex:"#34d399",icon:<Users size={14}/>,label:"Just Listen"},
+          {mode:SPEAKER_MODES.ME,bg:"59,130,246",hex:"#60a5fa",icon:<User size={14}/>,label:"My Turn"},
+          {mode:SPEAKER_MODES.TEAM,bg:"168,85,247",hex:"#a78bfa",icon:<Users size={14}/>,label:"My Team"},
+          {mode:SPEAKER_MODES.PAUSED,bg:"239,68,68",hex:"#f87171",icon:<Hand size={14}/>,label:"Pause"},
+        ].map(b=>(
+          <button key={b.mode} onClick={()=>setSpeakerMode_iv(b.mode)} style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:speakerMode_iv===b.mode?`rgba(${b.bg},.18)`:"rgba(255,255,255,.03)",border:speakerMode_iv===b.mode?`2px solid rgba(${b.bg},.35)`:"1px solid rgba(255,255,255,.06)",transition:"all 0.2s"}}>
+            {React.cloneElement(b.icon,{color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"})}
+            <span style={{fontSize:9,fontWeight:700,color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"}}>{b.label}</span>
+          </button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        <button onClick={needAnswerNow} style={{flex:2,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"linear-gradient(135deg, rgba(251,191,36,.12), rgba(245,158,11,.06))",border:"1px solid rgba(251,191,36,.25)"}}>
+          <Zap size={13} color="#fbbf24"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#fbbf24"}}>Answer Now</span>
+        </button>
+        <div style={{position:"relative",flex:1}}>
+          <button onClick={()=>setShowRefineMenu(!showRefineMenu)} style={{width:"100%",padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.15)"}}>
+            <RotateCcw size={13} color="rgba(245,158,11,.5)"/>
+            <span style={{fontSize:11,fontWeight:700,color:"rgba(245,158,11,.5)"}}>Refine</span>
+          </button>
+          {showRefineMenu&&<div style={{position:"absolute",bottom:"100%",left:0,right:0,marginBottom:4,background:"rgba(15,23,42,.98)",border:"1px solid rgba(245,158,11,.2)",borderRadius:8,overflow:"hidden",zIndex:50}}>
+            <button onClick={()=>{setCookAnswers([]);setTimCues([]);setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",borderBottom:"1px solid rgba(255,255,255,.05)",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Reset Coaching</button>
+            <button onClick={()=>{setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Recalibrate</button>
+          </div>}
+        </div>
+        <button onClick={endInterview} style={{flex:1,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.15)"}}>
+          <Square size={13} color="#f87171"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#f87171"}}>End</span>
+        </button>
+      </div>
+    </div>}
     </div>
   </div>);
   // ═══════ PREP MODE ═══════
@@ -403,6 +514,43 @@ export default function InterviewModeView({ userId }) {
         : prepData ? <div style={{fontSize:12.5,color:"rgba(255,255,255,.75)",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{typeof prepData === "string" ? prepData : JSON.stringify(prepData, null, 2)}</div>
         : null}
       </>)}
+
+    {/* ⬡B:MACE.iris:UI:bottom_control_panel_cip:20260409⬡ */}
+    {running && <div style={{flexShrink:0,padding:"8px 10px",borderTop:"1px solid rgba(255,255,255,.06)",background:"rgba(0,0,0,.4)"}}>
+      <div style={{display:"flex",gap:4,marginBottom:6}}>
+        {[
+          {mode:SPEAKER_MODES.THEY,bg:"16,185,129",hex:"#34d399",icon:<Users size={14}/>,label:"Just Listen"},
+          {mode:SPEAKER_MODES.ME,bg:"59,130,246",hex:"#60a5fa",icon:<User size={14}/>,label:"My Turn"},
+          {mode:SPEAKER_MODES.TEAM,bg:"168,85,247",hex:"#a78bfa",icon:<Users size={14}/>,label:"My Team"},
+          {mode:SPEAKER_MODES.PAUSED,bg:"239,68,68",hex:"#f87171",icon:<Hand size={14}/>,label:"Pause"},
+        ].map(b=>(
+          <button key={b.mode} onClick={()=>setSpeakerMode_iv(b.mode)} style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:speakerMode_iv===b.mode?`rgba(${b.bg},.18)`:"rgba(255,255,255,.03)",border:speakerMode_iv===b.mode?`2px solid rgba(${b.bg},.35)`:"1px solid rgba(255,255,255,.06)",transition:"all 0.2s"}}>
+            {React.cloneElement(b.icon,{color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"})}
+            <span style={{fontSize:9,fontWeight:700,color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"}}>{b.label}</span>
+          </button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        <button onClick={needAnswerNow} style={{flex:2,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"linear-gradient(135deg, rgba(251,191,36,.12), rgba(245,158,11,.06))",border:"1px solid rgba(251,191,36,.25)"}}>
+          <Zap size={13} color="#fbbf24"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#fbbf24"}}>Answer Now</span>
+        </button>
+        <div style={{position:"relative",flex:1}}>
+          <button onClick={()=>setShowRefineMenu(!showRefineMenu)} style={{width:"100%",padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.15)"}}>
+            <RotateCcw size={13} color="rgba(245,158,11,.5)"/>
+            <span style={{fontSize:11,fontWeight:700,color:"rgba(245,158,11,.5)"}}>Refine</span>
+          </button>
+          {showRefineMenu&&<div style={{position:"absolute",bottom:"100%",left:0,right:0,marginBottom:4,background:"rgba(15,23,42,.98)",border:"1px solid rgba(245,158,11,.2)",borderRadius:8,overflow:"hidden",zIndex:50}}>
+            <button onClick={()=>{setCookAnswers([]);setTimCues([]);setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",borderBottom:"1px solid rgba(255,255,255,.05)",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Reset Coaching</button>
+            <button onClick={()=>{setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Recalibrate</button>
+          </div>}
+        </div>
+        <button onClick={endInterview} style={{flex:1,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.15)"}}>
+          <Square size={13} color="#f87171"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#f87171"}}>End</span>
+        </button>
+      </div>
+    </div>}
     </div>
   </div>);
 
@@ -417,6 +565,43 @@ export default function InterviewModeView({ userId }) {
       {selectedJob && varaInterview===null && <button onClick={()=>setVaraInterview(selectedJob)} style={{width:"100%",marginTop:10,padding:"10px",borderRadius:10,border:"1px solid rgba(34,211,238,.2)",background:"rgba(34,211,238,.06)",color:"#22d3ee",fontSize:12,fontWeight:600,cursor:"pointer"}}>
         Voice Mock (VARA)
       </button>}
+
+    {/* ⬡B:MACE.iris:UI:bottom_control_panel_cip:20260409⬡ */}
+    {running && <div style={{flexShrink:0,padding:"8px 10px",borderTop:"1px solid rgba(255,255,255,.06)",background:"rgba(0,0,0,.4)"}}>
+      <div style={{display:"flex",gap:4,marginBottom:6}}>
+        {[
+          {mode:SPEAKER_MODES.THEY,bg:"16,185,129",hex:"#34d399",icon:<Users size={14}/>,label:"Just Listen"},
+          {mode:SPEAKER_MODES.ME,bg:"59,130,246",hex:"#60a5fa",icon:<User size={14}/>,label:"My Turn"},
+          {mode:SPEAKER_MODES.TEAM,bg:"168,85,247",hex:"#a78bfa",icon:<Users size={14}/>,label:"My Team"},
+          {mode:SPEAKER_MODES.PAUSED,bg:"239,68,68",hex:"#f87171",icon:<Hand size={14}/>,label:"Pause"},
+        ].map(b=>(
+          <button key={b.mode} onClick={()=>setSpeakerMode_iv(b.mode)} style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:speakerMode_iv===b.mode?`rgba(${b.bg},.18)`:"rgba(255,255,255,.03)",border:speakerMode_iv===b.mode?`2px solid rgba(${b.bg},.35)`:"1px solid rgba(255,255,255,.06)",transition:"all 0.2s"}}>
+            {React.cloneElement(b.icon,{color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"})}
+            <span style={{fontSize:9,fontWeight:700,color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"}}>{b.label}</span>
+          </button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        <button onClick={needAnswerNow} style={{flex:2,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"linear-gradient(135deg, rgba(251,191,36,.12), rgba(245,158,11,.06))",border:"1px solid rgba(251,191,36,.25)"}}>
+          <Zap size={13} color="#fbbf24"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#fbbf24"}}>Answer Now</span>
+        </button>
+        <div style={{position:"relative",flex:1}}>
+          <button onClick={()=>setShowRefineMenu(!showRefineMenu)} style={{width:"100%",padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.15)"}}>
+            <RotateCcw size={13} color="rgba(245,158,11,.5)"/>
+            <span style={{fontSize:11,fontWeight:700,color:"rgba(245,158,11,.5)"}}>Refine</span>
+          </button>
+          {showRefineMenu&&<div style={{position:"absolute",bottom:"100%",left:0,right:0,marginBottom:4,background:"rgba(15,23,42,.98)",border:"1px solid rgba(245,158,11,.2)",borderRadius:8,overflow:"hidden",zIndex:50}}>
+            <button onClick={()=>{setCookAnswers([]);setTimCues([]);setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",borderBottom:"1px solid rgba(255,255,255,.05)",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Reset Coaching</button>
+            <button onClick={()=>{setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Recalibrate</button>
+          </div>}
+        </div>
+        <button onClick={endInterview} style={{flex:1,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.15)"}}>
+          <Square size={13} color="#f87171"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#f87171"}}>End</span>
+        </button>
+      </div>
+    </div>}
     </div>
   </div>);
 
@@ -443,28 +628,9 @@ export default function InterviewModeView({ userId }) {
       </div>
       <div style={{display:"flex",gap:6}}>
         <button onClick={toggleRecord} style={{padding:"8px 14px",borderRadius:10,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:recording?"rgba(239,68,68,.12)":`linear-gradient(135deg, ${amber(.15)}, ${amber(.05)})`,color:recording?"#fca5a5":"#fbbf24",display:"flex",alignItems:"center",gap:5}}>{recording?<><MicOff size={12}/>Stop</>:<><Mic size={12}/>Record</>}</button>
-        {running && <button onClick={endInterview} style={{padding:"8px 14px",borderRadius:10,border:"1px solid rgba(239,68,68,.15)",background:"transparent",color:"#f87171",fontSize:11,fontWeight:600,cursor:"pointer"}}>End</button>}
+        
       </div>
     </div>
-    {/* v3: CONTROL PANEL — Speaker Mode */}
-    {running && <div style={{padding:"8px 10px",borderBottom:"1px solid rgba(255,255,255,.04)",background:"rgba(0,0,0,.3)",display:"flex",gap:6}}>
-      <button onClick={()=>setSpeakerMode_iv(SPEAKER_MODES.THEY)} style={{flex:1,padding:"10px 6px",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:speakerMode_iv===SPEAKER_MODES.THEY?"linear-gradient(135deg, rgba(16,185,129,.2), rgba(16,185,129,.06))":"rgba(255,255,255,.03)",border:speakerMode_iv===SPEAKER_MODES.THEY?"2px solid rgba(16,185,129,.35)":"1px solid rgba(255,255,255,.06)",transition:"all 0.2s ease"}}>
-        <Users size={16} color={speakerMode_iv===SPEAKER_MODES.THEY?"#34d399":"rgba(255,255,255,.25)"}/>
-        <span style={{fontSize:10,fontWeight:700,color:speakerMode_iv===SPEAKER_MODES.THEY?"#34d399":"rgba(255,255,255,.25)"}}>Just Listen</span>
-      </button>
-      <button onClick={()=>setSpeakerMode_iv(SPEAKER_MODES.ME)} style={{flex:1,padding:"10px 6px",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:speakerMode_iv===SPEAKER_MODES.ME?"linear-gradient(135deg, rgba(59,130,246,.2), rgba(59,130,246,.06))":"rgba(255,255,255,.03)",border:speakerMode_iv===SPEAKER_MODES.ME?"2px solid rgba(59,130,246,.35)":"1px solid rgba(255,255,255,.06)",transition:"all 0.2s ease"}}>
-        <User size={16} color={speakerMode_iv===SPEAKER_MODES.ME?"#60a5fa":"rgba(255,255,255,.25)"}/>
-        <span style={{fontSize:10,fontWeight:700,color:speakerMode_iv===SPEAKER_MODES.ME?"#60a5fa":"rgba(255,255,255,.25)"}}>My Turn</span>
-      </button>
-      <button onClick={()=>setSpeakerMode_iv(SPEAKER_MODES.PAUSED)} style={{flex:1,padding:"10px 6px",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:speakerMode_iv===SPEAKER_MODES.PAUSED?"linear-gradient(135deg, rgba(239,68,68,.2), rgba(239,68,68,.06))":"rgba(255,255,255,.03)",border:speakerMode_iv===SPEAKER_MODES.PAUSED?"2px solid rgba(239,68,68,.35)":"1px solid rgba(255,255,255,.06)",transition:"all 0.2s ease"}}>
-        <Hand size={16} color={speakerMode_iv===SPEAKER_MODES.PAUSED?"#f87171":"rgba(255,255,255,.25)"}/>
-        <span style={{fontSize:10,fontWeight:700,color:speakerMode_iv===SPEAKER_MODES.PAUSED?"#f87171":"rgba(255,255,255,.25)"}}>Pause</span>
-      </button>
-      <button onClick={endInterview} style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.15)"}}>
-        <Square size={16} color="#f87171"/>
-        <span style={{fontSize:10,fontWeight:700,color:"#f87171"}}>End</span>
-      </button>
-    </div>}
     <div style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
       {/* TRANSCRIPT */}
       <div style={{marginBottom:12}}>
@@ -510,6 +676,43 @@ export default function InterviewModeView({ userId }) {
 
       {/* POST-INTERVIEW ACTIONS — thank you email, recap notes, follow-up tasks */}
       {summary && selectedJob && <div style={{marginTop:10}}><PostInterviewMobile job={selectedJob} api={api} userId={userId}/></div>}
+
+    {/* ⬡B:MACE.iris:UI:bottom_control_panel_cip:20260409⬡ */}
+    {running && <div style={{flexShrink:0,padding:"8px 10px",borderTop:"1px solid rgba(255,255,255,.06)",background:"rgba(0,0,0,.4)"}}>
+      <div style={{display:"flex",gap:4,marginBottom:6}}>
+        {[
+          {mode:SPEAKER_MODES.THEY,bg:"16,185,129",hex:"#34d399",icon:<Users size={14}/>,label:"Just Listen"},
+          {mode:SPEAKER_MODES.ME,bg:"59,130,246",hex:"#60a5fa",icon:<User size={14}/>,label:"My Turn"},
+          {mode:SPEAKER_MODES.TEAM,bg:"168,85,247",hex:"#a78bfa",icon:<Users size={14}/>,label:"My Team"},
+          {mode:SPEAKER_MODES.PAUSED,bg:"239,68,68",hex:"#f87171",icon:<Hand size={14}/>,label:"Pause"},
+        ].map(b=>(
+          <button key={b.mode} onClick={()=>setSpeakerMode_iv(b.mode)} style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:speakerMode_iv===b.mode?`rgba(${b.bg},.18)`:"rgba(255,255,255,.03)",border:speakerMode_iv===b.mode?`2px solid rgba(${b.bg},.35)`:"1px solid rgba(255,255,255,.06)",transition:"all 0.2s"}}>
+            {React.cloneElement(b.icon,{color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"})}
+            <span style={{fontSize:9,fontWeight:700,color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"}}>{b.label}</span>
+          </button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        <button onClick={needAnswerNow} style={{flex:2,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"linear-gradient(135deg, rgba(251,191,36,.12), rgba(245,158,11,.06))",border:"1px solid rgba(251,191,36,.25)"}}>
+          <Zap size={13} color="#fbbf24"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#fbbf24"}}>Answer Now</span>
+        </button>
+        <div style={{position:"relative",flex:1}}>
+          <button onClick={()=>setShowRefineMenu(!showRefineMenu)} style={{width:"100%",padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.15)"}}>
+            <RotateCcw size={13} color="rgba(245,158,11,.5)"/>
+            <span style={{fontSize:11,fontWeight:700,color:"rgba(245,158,11,.5)"}}>Refine</span>
+          </button>
+          {showRefineMenu&&<div style={{position:"absolute",bottom:"100%",left:0,right:0,marginBottom:4,background:"rgba(15,23,42,.98)",border:"1px solid rgba(245,158,11,.2)",borderRadius:8,overflow:"hidden",zIndex:50}}>
+            <button onClick={()=>{setCookAnswers([]);setTimCues([]);setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",borderBottom:"1px solid rgba(255,255,255,.05)",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Reset Coaching</button>
+            <button onClick={()=>{setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Recalibrate</button>
+          </div>}
+        </div>
+        <button onClick={endInterview} style={{flex:1,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.15)"}}>
+          <Square size={13} color="#f87171"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#f87171"}}>End</span>
+        </button>
+      </div>
+    </div>}
     </div>
   </div>);
 }
