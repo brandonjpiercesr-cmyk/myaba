@@ -285,6 +285,13 @@ export default function JobsView({userId, setEditorDoc}){
           }} style={{width:"100%",padding:"12px 8px",borderRadius:10,border:"none",cursor:"pointer",background:"linear-gradient(135deg,rgba(16,185,129,.3),rgba(59,130,246,.3))",color:"#34D399",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:applyLoading?.6:1}}>
             <Send size={16}/>{applyLoading?"Preparing...":"Apply to This Job"}
           </button>
+          <button onClick={async()=>{
+            const assignee=(selectedJob.assignees||[])[0]||'unmatched';
+            await updateStatus(api,selectedJob.id,'APPLIED',userId,{notes:'Manually marked as applied (applied outside ABA)'});
+            fetchJobs();
+          }} style={{width:'100%',padding:'10px 8px',borderRadius:10,border:'1px solid rgba(163,230,53,.2)',cursor:'pointer',background:'rgba(163,230,53,.08)',color:'rgba(163,230,53,.8)',fontSize:12,fontWeight:500,display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginTop:6}}>
+            Already Applied (Mark Status)
+          </button>
           ):(
           <div style={{padding:12,borderRadius:10,background:"rgba(16,185,129,.06)",border:"1px solid rgba(16,185,129,.15)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
