@@ -35,6 +35,21 @@ export default function MeetingModeView({ userId }) {
   const [askInput, setAskInput] = useState("");
   const [askLoading, setAskLoading] = useState(false);
   const [summary, setSummary] = useState(null);
+
+  const [glossarySearch, setGlossarySearch] = useState('');
+  const [brainResults, setBrainResults] = useState([]);
+  const [brainSearching, setBrainSearching] = useState(false);
+  const searchBrain = async (q) => {
+    if (!q.trim()) return; setBrainSearching(true);
+    try {
+      const r = await fetch('https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/rpc/exec_sql', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDUzMjgyMSwiZXhwIjoyMDg2MTA4ODIxfQ.G55zXnfanoUxRAoaYz-tD9FDJ53xHH-pRgDrKss_Iqo' },
+        body: JSON.stringify({ query: "SELECT source, content FROM aba_memory WHERE content ILIKE '%" + q.replace(/'/g, "''") + "%' ORDER BY importance DESC NULLS LAST LIMIT 5" })
+      });
+      if (r.ok) { setBrainResults(await r.json()); }
+    } catch {} setBrainSearching(false);
+  };
+
   const [activeCue, setActiveCue] = useState(null);
   const [cookStreaming, setCookStreaming] = useState(false);
   const [showPrep, setShowPrep] = useState(true);
