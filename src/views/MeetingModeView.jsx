@@ -67,7 +67,48 @@ export default function MeetingModeView({ userId }) {
   useEffect(() => {
     if (running) { intervalRef.current = setInterval(() => { setSeconds(s => { secondsRef.current = s + 1; return s + 1; }); }, 1000); }
     else clearInterval(intervalRef.current);
-    return () => clearInterval(intervalRef.current);
+  
+  const needAnswerNow = async () => {
+    const segs = transcriptRef.current;
+    if (segs.length === 0) return;
+    const last60 = segs.slice(-20).map(s => s.text).join(' ');
+    setCookStreaming(true);
+    try {
+      const res = await api('/api/cook/answer', {
+        method: 'POST', body: JSON.stringify({
+          question: 'Give me something to say right now based on this conversation',
+          user_id: user?.email || 'unknown', mode: 'meeting',
+          transcript_context: last60.substring(0, 2000),
+          briefing_context: prepCtxRef.current ? JSON.stringify(prepCtxRef.current).substring(0, 3000) : '',
+          last_said_by_ham: lastSaidByHamRef.current || ''
+        })
+      });
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let answer = '';
+        const ts = formatTime(secondsRef.current);
+        setCookAnswers(prev => [...prev, { time: ts, question: 'Immediate answer', answer: '', streaming: true }]);
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = dec.decode(value, { stream: true });
+          for (const line of chunk.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const d = JSON.parse(line.slice(6));
+              if (d.text) { answer += d.text; setCookAnswers(prev => { const u = [...prev]; u[u.length - 1] = { ...u[u.length - 1], answer, streaming: true }; return u; }); }
+              if (d.type === 'done') setCookAnswers(prev => { const u = [...prev]; u[u.length - 1] = { ...u[u.length - 1], answer, streaming: false }; return u; });
+            } catch {}
+          }
+        }
+      }
+    } catch (e) { console.error('[CIP MESA] Need answer error:', e); }
+    setCookStreaming(false);
+  };
+  const [showRefineMenu, setShowRefineMenu] = useState(false);
+
+  return () => clearInterval(intervalRef.current);
   }, [running]);
 
   const fmt = formatTime;
@@ -374,7 +415,7 @@ export default function MeetingModeView({ userId }) {
         color: speakerMode === SPEAKER_MODES.THEY_TALKING ? "#34d399" : speakerMode === SPEAKER_MODES.I_TALKING ? "#60a5fa" : "#f87171",
         border: `1px solid ${speakerMode === SPEAKER_MODES.THEY_TALKING ? "rgba(16,185,129,.2)" : speakerMode === SPEAKER_MODES.I_TALKING ? "rgba(59,130,246,.2)" : "rgba(239,68,68,.2)"}`,
       }}>
-        {speakerMode === SPEAKER_MODES.THEY_TALKING ? "THEY'RE TALKING" : speakerMode === SPEAKER_MODES.I_TALKING ? "I'M TALKING" : "PAUSED"}
+        {speakerMode === SPEAKER_MODES.THEY_TALKING ? "JUST LISTEN" : speakerMode === SPEAKER_MODES.I_TALKING ? "MY TURN" : "PAUSED"}
       </div>}
       <div style={{display:"flex",gap:8}}>
         {!running && <button onClick={startMeeting} style={{padding:"8px 18px",borderRadius:12,border:"1px solid rgba(6,182,212,.3)",background:"linear-gradient(135deg, rgba(6,182,212,.15), rgba(6,182,212,.05))",color:"#22d3ee",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6,boxShadow:"0 0 15px rgba(6,182,212,.1)",transition:"all 0.2s ease"}}><Mic size={14}/>Start</button>}
@@ -459,7 +500,7 @@ export default function MeetingModeView({ userId }) {
         }}>
           <Users size={20} color={speakerMode === SPEAKER_MODES.THEY_TALKING ? "#34d399" : "rgba(255,255,255,.3)"} />
           <span style={{fontSize:11,fontWeight:700,color: speakerMode === SPEAKER_MODES.THEY_TALKING ? "#34d399" : "rgba(255,255,255,.3)",letterSpacing:"0.3px"}}>
-            They're Talking
+            Just Listen
           </span>
           {speakerMode === SPEAKER_MODES.THEY_TALKING && <div style={{width:6,height:6,borderRadius:"50%",background:"#34d399",animation:"mb 1.5s infinite",boxShadow:"0 0 8px rgba(52,211,153,.5)"}}/>}
         </button>
@@ -475,7 +516,7 @@ export default function MeetingModeView({ userId }) {
         }}>
           <User size={20} color={speakerMode === SPEAKER_MODES.I_TALKING ? "#60a5fa" : "rgba(255,255,255,.3)"} />
           <span style={{fontSize:11,fontWeight:700,color: speakerMode === SPEAKER_MODES.I_TALKING ? "#60a5fa" : "rgba(255,255,255,.3)",letterSpacing:"0.3px"}}>
-            I'm Talking
+            My Turn
           </span>
           {speakerMode === SPEAKER_MODES.I_TALKING && <div style={{width:6,height:6,borderRadius:"50%",background:"#60a5fa",animation:"mb 1.5s infinite",boxShadow:"0 0 8px rgba(96,165,250,.5)"}}/>}
         </button>
