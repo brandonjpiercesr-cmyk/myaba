@@ -450,11 +450,11 @@ export default function InterviewModeView({ userId }) {
     {running && <div style={{padding:"8px 10px",borderBottom:"1px solid rgba(255,255,255,.04)",background:"rgba(0,0,0,.3)",display:"flex",gap:6}}>
       <button onClick={()=>setSpeakerMode_iv(SPEAKER_MODES.THEY)} style={{flex:1,padding:"10px 6px",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:speakerMode_iv===SPEAKER_MODES.THEY?"linear-gradient(135deg, rgba(16,185,129,.2), rgba(16,185,129,.06))":"rgba(255,255,255,.03)",border:speakerMode_iv===SPEAKER_MODES.THEY?"2px solid rgba(16,185,129,.35)":"1px solid rgba(255,255,255,.06)",transition:"all 0.2s ease"}}>
         <Users size={16} color={speakerMode_iv===SPEAKER_MODES.THEY?"#34d399":"rgba(255,255,255,.25)"}/>
-        <span style={{fontSize:10,fontWeight:700,color:speakerMode_iv===SPEAKER_MODES.THEY?"#34d399":"rgba(255,255,255,.25)"}}>They're Talking</span>
+        <span style={{fontSize:10,fontWeight:700,color:speakerMode_iv===SPEAKER_MODES.THEY?"#34d399":"rgba(255,255,255,.25)"}}>Just Listen</span>
       </button>
       <button onClick={()=>setSpeakerMode_iv(SPEAKER_MODES.ME)} style={{flex:1,padding:"10px 6px",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:speakerMode_iv===SPEAKER_MODES.ME?"linear-gradient(135deg, rgba(59,130,246,.2), rgba(59,130,246,.06))":"rgba(255,255,255,.03)",border:speakerMode_iv===SPEAKER_MODES.ME?"2px solid rgba(59,130,246,.35)":"1px solid rgba(255,255,255,.06)",transition:"all 0.2s ease"}}>
         <User size={16} color={speakerMode_iv===SPEAKER_MODES.ME?"#60a5fa":"rgba(255,255,255,.25)"}/>
-        <span style={{fontSize:10,fontWeight:700,color:speakerMode_iv===SPEAKER_MODES.ME?"#60a5fa":"rgba(255,255,255,.25)"}}>I'm Talking</span>
+        <span style={{fontSize:10,fontWeight:700,color:speakerMode_iv===SPEAKER_MODES.ME?"#60a5fa":"rgba(255,255,255,.25)"}}>My Turn</span>
       </button>
       <button onClick={()=>setSpeakerMode_iv(SPEAKER_MODES.PAUSED)} style={{flex:1,padding:"10px 6px",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:speakerMode_iv===SPEAKER_MODES.PAUSED?"linear-gradient(135deg, rgba(239,68,68,.2), rgba(239,68,68,.06))":"rgba(255,255,255,.03)",border:speakerMode_iv===SPEAKER_MODES.PAUSED?"2px solid rgba(239,68,68,.35)":"1px solid rgba(255,255,255,.06)",transition:"all 0.2s ease"}}>
         <Hand size={16} color={speakerMode_iv===SPEAKER_MODES.PAUSED?"#f87171":"rgba(255,255,255,.25)"}/>
