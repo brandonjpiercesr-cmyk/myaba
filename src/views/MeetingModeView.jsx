@@ -273,6 +273,29 @@ export default function MeetingModeView({ userId }) {
     } catch { alert("Microphone access denied"); }
   };
 
+
+  // Save transcript
+  const buildTranscriptMarkdown = () => {
+    const lines = ['# Meeting Transcript', '', '**Date:** ' + new Date().toLocaleDateString(), '**Duration:** ' + formatTime(secondsRef.current)];
+    lines.push('', '---', '', '## Transcript', '');
+    transcriptRef.current.forEach(t => { lines.push('[' + t.time + '] ' + (t.speaker ? '**' + t.speaker + ':** ' : '') + t.text); lines.push(''); });
+    if (cookAnswers.length > 0) {
+      lines.push('---', '', '## Coached Answers', '');
+      cookAnswers.forEach(a => { lines.push('**[' + a.time + ']** ' + (a.question || '')); lines.push(a.answer); lines.push(''); });
+    }
+    if (summary) lines.push('---', '', '## Summary', '', summary);
+    return lines.join('\n');
+  };
+  const downloadTranscript = (format) => {
+    const md = buildTranscriptMarkdown();
+    if (format === 'copy') { navigator.clipboard.writeText(md).catch(() => {}); return; }
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'meeting-' + new Date().toISOString().slice(0,10) + '.md'; a.click();
+  };
+  const [speakers, setSpeakers] = useState(['Me', 'Unknown']);
+  const [editingSpeaker, setEditingSpeaker] = useState(null);
+
   const endMeeting = async () => {
     recRef.current?.stop();
     // v3: Clean up dual audio (mic + system + audio context)
@@ -466,7 +489,11 @@ export default function MeetingModeView({ userId }) {
       {summary && <div style={{padding:14,borderRadius:12,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.12)"}}>
         <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}><CheckCircle size={12} color="#34d399"/><span style={{fontSize:10,fontWeight:700,color:"#34d399",letterSpacing:"0.5px"}}>SUMMARY</span></div>
         <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:0,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{summary}</p>
-        <button onClick={()=>navigator.clipboard.writeText(summary||"")} style={{marginTop:6,padding:"5px 10px",borderRadius:6,border:"1px solid rgba(52,211,153,.2)",background:"rgba(52,211,153,.06)",color:"rgba(52,211,153,.6)",fontSize:10,cursor:"pointer"}}>Copy</button>
+        <div style={{display:'flex',gap:4,marginTop:8,flexWrap:'wrap'}}>
+          <button onClick={()=>navigator.clipboard.writeText(summary||"")} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(52,211,153,.2)",background:"rgba(52,211,153,.06)",color:"rgba(52,211,153,.6)",fontSize:10,cursor:"pointer"}}>Copy Summary</button>
+          <button onClick={()=>downloadTranscript('md')} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(34,211,238,.2)",background:"rgba(34,211,238,.06)",color:"rgba(34,211,238,.6)",fontSize:10,cursor:"pointer"}}>Save .md</button>
+          <button onClick={()=>downloadTranscript('copy')} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(168,85,247,.2)",background:"rgba(168,85,247,.06)",color:"rgba(168,85,247,.6)",fontSize:10,cursor:"pointer"}}>Copy Full</button>
+        </div>
       </div>}
     </div>
 

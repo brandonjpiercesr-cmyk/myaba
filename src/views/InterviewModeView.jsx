@@ -340,6 +340,26 @@ export default function InterviewModeView({ userId }) {
   };
   const [showRefineMenu, setShowRefineMenu] = useState(false);
 
+
+  const buildTranscriptMarkdown = () => {
+    const lines = ['# Interview Transcript', '', '**Date:** ' + new Date().toLocaleDateString()];
+    lines.push('', '---', '', '## Transcript', '');
+    transcriptRef.current.forEach(t => { lines.push('[' + t.time + '] ' + (t.speaker ? '**' + t.speaker + ':** ' : '') + t.text + ''); });
+    if (cookAnswers.length > 0) {
+      lines.push('', '---', '', '## Coached Answers', '');
+      cookAnswers.forEach(a => { lines.push('**[' + a.time + ']** ' + (a.question || '')); lines.push(a.answer + ''); });
+    }
+    if (summary) lines.push('', '---', '', '## Summary', '', summary);
+    return lines.join('\n');
+  };
+  const downloadTranscript = (fmt) => {
+    const md = buildTranscriptMarkdown();
+    if (fmt === 'copy') { navigator.clipboard.writeText(md).catch(() => {}); return; }
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'interview-' + new Date().toISOString().slice(0,10) + '.md'; a.click();
+  };
+
   const endInterview = async () => {
     recRef.current?.stop();
     streamRef.current?.getTracks().forEach(t => t.stop());
