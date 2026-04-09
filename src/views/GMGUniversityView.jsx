@@ -136,7 +136,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
       const next = getNextBlockLesson(profile?.completedDays, curriculum);
       const h = new Date().getHours();
       let msg = "Good "+(h<12?"morning":h<17?"afternoon":"evening")+", this is "+firstName+". I just opened GMG University.";
-      if (next) { msg += ' My next lesson is Block ' + next.block + ' Day ' + next.day + ': "' + next.title + '". I have completed ' + (profile.completedDays||[]).length + ' of ' + (curriculum?.totalDays||'?') + ' lessons. Check my cohort_type and proceed accordingly.'; setCurrentLesson(next); }
+      if (next) { msg += ' My next lesson is Block ' + next.block + ' Day ' + next.day + ': "' + next.title + '". I have completed ' + (profile.completedDays||[]).length + ' of ' + (curriculum?.totalDays||'?') + ' lessons. Proceed with my lesson.'; setCurrentLesson(next); }
       else { msg += ' I have completed all ' + (curriculum?.totalDays||'?') + ' lessons.'; }
       streamFromAIR(msg, true);
     }
@@ -155,7 +155,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
     setMsgs([]);
     setInitDone(false);
     setTimeout(() => {
-      streamFromAIR(firstName + ' here. I want to do Block ' + blockNum + ' Day ' + dayNum + ': "' + title + '". Check my cohort_type and proceed accordingly.', true);
+      streamFromAIR(firstName + ' here. I want to do Block ' + blockNum + ' Day ' + dayNum + ': "' + title + '". Proceed with my lesson.', true);
     }, 100);
   };
   const resetProgress = async () => {
