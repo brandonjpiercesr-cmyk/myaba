@@ -126,17 +126,21 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SR) { const rec = new SR(); rec.continuous=false; rec.interimResults=true; rec.lang="en-US"; rec.onresult=e=>{setInput(Array.from(e.results).map(r=>r[0].transcript).join(""));if(e.results[0].isFinal)setListening(false);}; rec.onend=()=>setListening(false); rec.onerror=()=>setListening(false); recognitionRef.current=rec; }
   }, []);
+  // ⬡B:GMGU.curriculum:FIX:wait_for_curriculum_before_init:20260408⬡
+  // Previously, auto-init fired when profile loaded but BEFORE curriculum fetched.
+  // curriculum was null, getNextBlockLesson returned null, ABA thought all lessons done.
+  // Fix: wait for curriculum to be non-null before running auto-init.
   useEffect(() => {
-    if (profile && !initDone && !streaming) {
+    if (profile && curriculum && !initDone && !streaming) {
       setInitDone(true);
-      const next = curriculum ? getNextBlockLesson(profile?.completedDays, curriculum) : null;
+      const next = getNextBlockLesson(profile?.completedDays, curriculum);
       const h = new Date().getHours();
       let msg = "Good "+(h<12?"morning":h<17?"afternoon":"evening")+", this is "+firstName+". I just opened GMG University.";
       if (next) { msg += ' My next lesson is Block ' + next.block + ' Day ' + next.day + ': "' + next.title + '". I have completed ' + (profile.completedDays||[]).length + ' of ' + (curriculum?.totalDays||'?') + ' lessons. Check my cohort_type and proceed accordingly.'; setCurrentLesson(next); }
-      else { msg += ' I have completed all lessons!'; }
+      else { msg += ' I have completed all ' + (curriculum?.totalDays||'?') + ' lessons.'; }
       streamFromAIR(msg, true);
     }
-  }, [profile, initDone]);
+  }, [profile, curriculum, initDone]);
 
   const loadProfile = async () => {
     try {
