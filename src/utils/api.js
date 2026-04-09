@@ -87,7 +87,7 @@ export async function airRequest(type, payload = {}, userId = "unknown", maxRetr
 // ⬡B:roadmap.tier3:STREAMING:airRequestStream:20260323⬡
 // SSE streaming variant of airRequest. Streams text chunks via onChunk callback.
 // Returns the full response when done. Used by sendMessage for real-time chat.
-export async function airRequestStream({ message, userId, channel, conversationId, conversationHistory, images, appScope, onChunk, onToolStart, onDone, onError }) {
+export async function airRequestStream({ message, userId, channel, conversationId, conversationHistory, images, appScope, onChunk, onToolStart, onAttachment, onDone, onError }) {
   if (!isOnline()) {
     onError?.("You are offline");
     return { response: null, offline: true };
@@ -138,6 +138,8 @@ export async function airRequestStream({ message, userId, channel, conversationI
             onChunk?.(null, data.text, "filler");
           } else if (data.type === "filler_end") {
             onChunk?.(null, null, "filler_end");
+          } else if (data.type === "attachment") {
+            onAttachment?.(data);
           } else if (data.type === "tool_start") {
             onToolStart?.(data.tool);
           } else if (data.type === "done") {
