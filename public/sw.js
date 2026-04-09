@@ -1,7 +1,8 @@
-// ⬡B:myaba.pwa:SW:v2.16.2:20260315⬡
+// ⬡B:myaba.pwa:SW:v2.17.0:20260408⬡
 // MyABA Service Worker - Offline support + Background sync
+// ⬡B:GMGU.build:FIX:sw_cache_bust:20260408⬡ Bumped to invalidate stale index.html cache
 
-const CACHE_NAME = 'myaba-v7-real-logo';
+const CACHE_NAME = 'myaba-v8-gmgu-fix';
 const ABABASE_URL = 'https://abacia-services.onrender.com';
 
 // Assets to cache for offline
