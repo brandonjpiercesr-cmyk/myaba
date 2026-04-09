@@ -462,12 +462,31 @@ export default function MeetingModeView({ userId }) {
 
     {/* Single scroll — transcript, coaching, glossary, summary */}
     <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+      {/* Brain Search */}
+      <div style={{marginBottom:10,display:"flex",gap:4}}>
+        <input type="text" placeholder="Search brain..." value={glossarySearch} onChange={e=>setGlossarySearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&searchBrain(glossarySearch)} style={{flex:1,padding:"6px 10px",borderRadius:8,fontSize:11,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",color:"#e2e8f0",outline:"none"}} />
+        <button onClick={()=>searchBrain(glossarySearch)} style={{padding:"6px 12px",borderRadius:8,fontSize:10,background:"rgba(34,211,238,.08)",border:"1px solid rgba(34,211,238,.15)",color:"#22d3ee",cursor:"pointer"}}>{brainSearching?"...":"Search"}</button>
+      </div>
+      {brainResults.length>0&&<div style={{marginBottom:10,padding:8,borderRadius:8,background:"rgba(34,211,238,.04)",border:"1px solid rgba(34,211,238,.1)"}}>
+        <div style={{fontSize:9,fontWeight:700,color:"rgba(34,211,238,.5)",marginBottom:4}}>BRAIN RESULTS</div>
+        {brainResults.map((r,i)=><div key={i} style={{marginBottom:4,fontSize:11,color:"rgba(255,255,255,.7)",lineHeight:1.4}}>{typeof r.content==="string"?r.content.substring(0,150):JSON.stringify(r.content).substring(0,150)}...</div>)}
+      </div>}
       {/* TRANSCRIPT */}
       <div style={{marginBottom:12}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"0 4px"}}><Mic size={11} style={{color:"rgba(6,182,212,.4)"}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(6,182,212,.4)",letterSpacing:"0.1em"}}>TRANSCRIPT</span>{transcript.length>0&&<span style={{fontSize:9,background:"rgba(6,182,212,.1)",padding:"2px 6px",borderRadius:8,color:"rgba(6,182,212,.5)",fontWeight:600}}>{transcript.length}</span>}</div>
         {transcript.length===0
           ? <div style={{textAlign:"center",padding:"30px 16px",color:"rgba(255,255,255,.1)"}}><p style={{fontSize:12,margin:0}}>{running?"Listening...":"Tap Start"}</p></div>
-          : transcript.slice(-8).map((t,i) => <div key={i} style={{padding:"8px 10px",marginBottom:4,borderRadius:10,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}><span style={{color:"rgba(6,182,212,.3)",fontSize:9,fontWeight:600,marginRight:6,fontFamily:"monospace"}}>{t.time}</span><span style={{color:"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.5}}>{t.text}</span></div>)
+          : transcript.slice(-8).map((t,i) => <div key={i} style={{padding:"8px 10px",marginBottom:4,borderRadius:10,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                <span style={{color:"rgba(6,182,212,.3)",fontSize:9,fontWeight:600,fontFamily:"monospace"}}>{t.time}</span>
+                <button onClick={()=>setEditingSpeaker(editingSpeaker===i?null:i)} style={{padding:"1px 6px",borderRadius:4,fontSize:9,fontWeight:600,cursor:"pointer",background:t.speaker==="Me"?"rgba(59,130,246,.15)":"rgba(255,255,255,.06)",color:t.speaker==="Me"?"#60a5fa":"rgba(255,255,255,.35)",border:"1px solid rgba(255,255,255,.08)"}}>{t.speaker||"?"}</button>
+              </div>
+              {editingSpeaker===i&&<div style={{display:"flex",gap:4,marginBottom:4,flexWrap:"wrap"}}>
+                {speakers.map(s=><button key={s} onClick={()=>{setTranscript(prev=>prev.map((seg,j)=>j===i?{...seg,speaker:s}:seg));transcriptRef.current=transcriptRef.current.map((seg,j)=>j===i?{...seg,speaker:s}:seg);setEditingSpeaker(null);}} style={{padding:"2px 8px",borderRadius:4,fontSize:9,cursor:"pointer",background:"rgba(34,211,238,.08)",border:"1px solid rgba(34,211,238,.15)",color:"#22d3ee"}}>{s}</button>)}
+                <input type="text" placeholder="New" onKeyDown={e=>{if(e.key==="Enter"&&e.target.value.trim()){const n=e.target.value.trim();if(!speakers.includes(n))setSpeakers(p=>[...p,n]);setTranscript(p=>p.map((seg,j)=>j===i?{...seg,speaker:n}:seg));transcriptRef.current=transcriptRef.current.map((seg,j)=>j===i?{...seg,speaker:n}:seg);setEditingSpeaker(null);}}} style={{padding:"2px 6px",borderRadius:4,fontSize:9,width:60,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",color:"#e2e8f0",outline:"none"}} />
+              </div>}
+              <span style={{color:"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.5}}>{t.text}</span>
+            </div>)
         }
       </div>
 
