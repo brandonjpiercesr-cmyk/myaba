@@ -1453,7 +1453,7 @@ function Login({onLogin}){
     }).catch(()=>{});
   },[]);
 
-  const go=async()=>{setLoading(true);setError(null);try{const result=await signInGoogle();onLogin(result.user)}catch(e){setError(e.message)}finally{setLoading(false)}};
+  const go=async()=>{setLoading(true);setError(null);try{const result=await signInGoogle();if(result&&result.user)onLogin(result.user)}catch(e){setError(e.message)}finally{setLoading(false)}};
 
   return(<div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#08080d",fontFamily:"'SF Pro Display',-apple-system,sans-serif",overflow:"auto"}}>
     <div style={{position:"absolute",inset:0,backgroundImage:`url(${BG.pinkSmoke.u})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.3) saturate(.6)",animation:"kenBurns 30s ease-in-out infinite"}}/>
