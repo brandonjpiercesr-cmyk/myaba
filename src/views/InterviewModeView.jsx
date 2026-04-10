@@ -77,12 +77,14 @@ export default function InterviewModeView({ userId }) {
   const searchBrain = async (q) => {
     if (!q.trim()) return; setBrainSearching(true);
     try {
-      const r = await fetch('https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/rpc/exec_sql', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDUzMjgyMSwiZXhwIjoyMDg2MTA4ODIxfQ.G55zXnfanoUxRAoaYz-tD9FDJ53xHH-pRgDrKss_Iqo' },
-        body: JSON.stringify({ query: "SELECT source, content FROM aba_memory WHERE content ILIKE '%" + q.replace(/'/g, "''") + "%' ORDER BY importance DESC NULLS LAST LIMIT 5" })
+      const r = await fetch(ABABASE + '/api/meeting/brain-search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q })
       });
-      if (r.ok) { setBrainResults(await r.json()); }
-    } catch {} setBrainSearching(false);
+      if (r.ok) { const d = await r.json(); setBrainResults(d.results || []); }
+    } catch (e) { console.error('Brain search:', e); }
+    setBrainSearching(false);
+  };
   };
 
   const recRef = useRef(null);
