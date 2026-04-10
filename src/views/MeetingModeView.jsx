@@ -50,7 +50,6 @@ export default function MeetingModeView({ userId }) {
     } catch (e) { console.error('Brain search:', e); }
     setBrainSearching(false);
   };
-  };
 
   const [activeCue, setActiveCue] = useState(null);
   const [cookStreaming, setCookStreaming] = useState(false);
