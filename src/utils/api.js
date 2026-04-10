@@ -87,7 +87,7 @@ export async function airRequest(type, payload = {}, userId = "unknown", maxRetr
 // ⬡B:roadmap.tier3:STREAMING:airRequestStream:20260323⬡
 // SSE streaming variant of airRequest. Streams text chunks via onChunk callback.
 // Returns the full response when done. Used by sendMessage for real-time chat.
-export async function airRequestStream({ message, userId, channel, conversationId, conversationHistory, images, appScope, onChunk, onToolStart, onDone, onError }) {
+export async function airRequestStream({ message, userId, channel, conversationId, conversationHistory, images, appScope, onChunk, onToolStart, onAttachment, onDone, onError }) {
   if (!isOnline()) {
     onError?.("You are offline");
     return { response: null, offline: true };
@@ -138,6 +138,8 @@ export async function airRequestStream({ message, userId, channel, conversationI
             onChunk?.(null, data.text, "filler");
           } else if (data.type === "filler_end") {
             onChunk?.(null, null, "filler_end");
+          } else if (data.type === "attachment") {
+            onAttachment?.(data);
           } else if (data.type === "tool_start") {
             onToolStart?.(data.tool);
           } else if (data.type === "done") {
@@ -419,14 +421,41 @@ export async function reachPresence(userId) {
 export async function airNameChat(messages, userId) {
   try {
     const firstUserMsg = messages.find(m => m.role === "user");
+    const firstAbaMsg = messages.find(m => m.role === "assistant");
     if (!firstUserMsg) return null;
     
+    // ⬡B:FIX:wrap_agent_naming:20260409⬡ Call AIR to generate a real chat name
+    // instead of dumb 6-word truncation. Falls back to local naming if AIR fails.
+    try {
+      const snippet = (firstUserMsg.content || "").substring(0, 200);
+      const abaSnippet = (firstAbaMsg?.content || firstAbaMsg?.text || "").substring(0, 200);
+      const res = await fetch(ABABASE + "/api/air/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `Name this conversation in 3-6 words. User said: "${snippet}" ABA replied: "${abaSnippet}". Return ONLY the short title, nothing else. No quotes.`,
+          user_id: userId,
+          channel: "wrap",
+          skipTools: true
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const name = (data.response || "").replace(/^["']|["']$/g, "").trim();
+        if (name && name.length > 2 && name.length < 60) {
+          console.log("[WRAP] AIR named chat:", name);
+          return name;
+        }
+      }
+    } catch (e) { console.warn("[WRAP] AIR naming failed, using local fallback:", e.message); }
+    
+    // Local fallback: first 6 words
     const words = firstUserMsg.content.trim().split(/\s+/).slice(0, 6).join(" ");
     const localName = words.length > 35 ? words.substring(0, 35) + "..." : words;
-    console.log("[CHAT] Named chat:", localName);
+    console.log("[WRAP] Local named chat:", localName);
     return localName;
   } catch (e) { 
-    console.error("[CHAT] Name error:", e);
+    console.error("[WRAP] Name error:", e);
     return null; 
   }
 }
@@ -542,4 +571,50 @@ export function safeParseGreeting(response) {
     return { title: parsed.greeting || parsed.title || "", subtitle: parsed.context || parsed.subtitle || "" };
   }
   return { title: String(response), subtitle: "" };
+}
+
+
+// ⬡B:FEATURE:chat_export:20260409⬡ Export chat to downloadable format (PDF, DOCX, MD)
+export async function exportChat(messages, title, format = "md") {
+  try {
+    // Use backend for PDF and DOCX generation
+    if (format === "pdf" || format === "docx") {
+      const res = await fetch(ABABASE + "/api/chat/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages, title, format })
+      });
+      if (!res.ok) throw new Error("Export failed: " + res.status);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${title.replace(/[^a-zA-Z0-9 ]/g, "").replace(/\s+/g, "_")}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return;
+    }
+    
+    // Client-side for markdown (fast, no network needed)
+    const timestamp = new Date().toLocaleString("en-US", { dateStyle: "full", timeStyle: "short" });
+    let output = `# ${title}\n\n*Exported ${timestamp}*\n\n---\n\n`;
+    messages.forEach(m => {
+      const role = m.role === "user" ? "**You**" : "**ABA**";
+      const text = m.content || m.text || "";
+      output += `${role}:\n${text}\n\n---\n\n`;
+    });
+    const blob = new Blob([output], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title.replace(/[^a-zA-Z0-9 ]/g, "").replace(/\s+/g, "_")}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error("[EXPORT] Error:", e);
+  }
 }
