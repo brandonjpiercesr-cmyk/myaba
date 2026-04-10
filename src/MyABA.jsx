@@ -52,7 +52,7 @@ import { ABAPresence } from './ABAPresence.jsx';
 
 // ⬡B:MACE.phase0:IMPORTS:shared_utils_and_views:20260405⬡
 // Shared utils — extracted from this file
-import { ABABASE, airRequest, airRequestStream, isOnline, airShareChat, airLoadProjects, airCreateProject, airLoadConversations, airCreateConversation, airAddMessage, airUpdateConversation, airDeleteConversation, airLoadSettings, airSaveSettings, airAddProjectFile, IMAGE_TYPES, fileToBase64, uploadAttachment, uploadAttachmentsBatch, reachTranscribe, reachSynthesize, reachPresence, airNameChat, getDawnGreeting, subscribeToPush, unsubscribeFromPush, safeParseGreeting, exportChat } from "./utils/api.js";
+import { ABABASE, airRequest, airRequestStream, isOnline, airShareChat, airLoadProjects, airCreateProject, airLoadConversations, airCreateConversation, airAddMessage, airUpdateConversation, airDeleteConversation, airLoadSettings, airSaveSettings, airAddProjectFile, IMAGE_TYPES, fileToBase64, uploadAttachment, uploadAttachmentsBatch, reachTranscribe, reachSynthesize, reachPresence, airNameChat, getDawnGreeting, subscribeToPush, unsubscribeFromPush, safeParseGreeting, exportChat, fetchBriefing } from "./utils/api.js";
 import { resolveHamId, isHAM, HAM_EMAIL_MAP, HAM_TEAM } from "./utils/ham.js";
 import { ICON_MAP } from "./utils/icons.js";
 import { renderMd, renderInline } from "./utils/markdown.jsx";
@@ -646,34 +646,17 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
   const [appSearch, setAppSearch] = useState("");
   const filteredApps = appSearch ? apps.filter(a => a.name.toLowerCase().includes(appSearch.toLowerCase()) || (a.id||"").toLowerCase().includes(appSearch.toLowerCase())) : apps;
   // Show max 8 on homescreen, rest in drawer
-  const homeApps = apps.slice(0, 8);
-  const [recommendedIds, setRecommendedIds] = useState(["chat","jobs","briefing","email"]);
-  useEffect(() => {
-    // ⬡B:FEATURE:air_app_recommendations:20260409⬡ Ask AIR for personalized app recommendations
-    (async () => {
-      try {
-        const res = await fetch(ABABASE + "/api/air/process", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: "Based on what you know about this HAM, which 4 apps from their app list would be most useful to them right now? Return ONLY a JSON array of app IDs, nothing else. Example: [\"chat\",\"jobs\",\"briefing\",\"email\"]",
-            user_id: userId,
-            channel: "recommend",
-            skipTools: true
-          })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const raw = (data.response || "").trim();
-          try {
-            const parsed = JSON.parse(raw.match(/\[.*\]/s)?.[0] || "[]");
-            if (Array.isArray(parsed) && parsed.length > 0) setRecommendedIds(parsed);
-          } catch {}
-        }
-      } catch {}
-    })();
-  }, [userId]);
-  const recommended = apps.filter(a => recommendedIds.includes(a.id)).slice(0,4);
+  // ⬡B:WRAP.fix:LOCAL:usage_based_recommendations:20260410⬡
+  // Zero API calls. Tracks app usage in localStorage, recommends most-used.
+  const [recommendedIds] = useState(() => {
+    try {
+      const usage = JSON.parse(localStorage.getItem("myaba_app_usage") || "{}");
+      const sorted = Object.entries(usage).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+      return sorted.length >= 4 ? sorted.slice(0, 4) : ["chat", "jobs", "briefing", "email"];
+    } catch { return ["chat", "jobs", "briefing", "email"]; }
+  });
+  const recommended = apps.filter(a => recommendedIds.includes(a.id)).slice(0, 4);
+  const homeApps = apps.filter(a => !recommendedIds.includes(a.id)).slice(0, 8);
   if (loading) return (
     <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{width:32,height:32,borderRadius:"50%",border:"2px solid rgba(139,92,246,.3)",borderTopColor:"rgba(139,92,246,.8)",animation:"spin 1s linear infinite"}}/>
@@ -2164,7 +2147,7 @@ function MyABAInner(){
     if(!user||!convos.length)return;
     const unnamed=convos.filter(c=>c.title==="New Chat"&&!c.autoNamed&&c.messages&&c.messages.length>=2);
     if(!unnamed.length)return;
-    console.log("[WRAP] Migrating",unnamed.length,"unnamed conversations");
+    // [WRAP] migration runs silently
     unnamed.slice(0,5).forEach(c=>{
       airNameChat(c.messages,user.email||user.uid).then(name=>{
         if(name){
@@ -2545,7 +2528,7 @@ function MyABAInner(){
           {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:lastABAResponse?"rgba(34,197,94,.1)":"rgba(255,255,255,.04)",color:lastABAResponse?"rgba(34,197,94,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}><Activity size={14}/></button>}
           <button onClick={()=>setVoiceOut(!voiceOut)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:voiceOut?"rgba(139,92,246,.1)":"rgba(255,255,255,.04)",color:voiceOut?"rgba(139,92,246,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={13}/>:<VolumeX size={13}/>}</button>
           {mainTab==="chat"&&activeConv&&activeConv.messages.length>0&&<div style={{position:"relative"}}>
-            <button onClick={()=>setExportMenu(!exportMenu)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:exportMenu?"rgba(139,92,246,.15)":"rgba(255,255,255,.04)",color:exportMenu?"rgba(139,92,246,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}} title="Export chat"><Download size={13}/></button>
+            <button onClick={()=>setExportMenu(!exportMenu)} style={{padding:"0 10px",height:32,borderRadius:10,border:"none",cursor:"pointer",background:exportMenu?"rgba(139,92,246,.15)":"rgba(255,255,255,.06)",color:exportMenu?"rgba(139,92,246,.7)":"rgba(255,255,255,.4)",display:"flex",alignItems:"center",justifyContent:"center",gap:4,fontSize:11,fontWeight:500}} title="Save chat"><Download size={13}/>Save</button>
             {exportMenu&&<div style={{position:"absolute",top:36,right:0,background:"rgba(20,16,32,.97)",border:"1px solid rgba(139,92,246,.2)",borderRadius:12,padding:4,minWidth:120,zIndex:50,boxShadow:"0 8px 24px rgba(0,0,0,.5)",backdropFilter:"blur(12px)"}}>
               {[["pdf","PDF"],["docx","Word"],["md","Markdown"]].map(([fmt,label])=>(
                 <button key={fmt} onClick={()=>{setExportMenu(false);exportChat(activeConv.messages,activeConv.title||"ABA Chat",fmt)}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"10px 12px",border:"none",background:"transparent",color:"rgba(255,255,255,.75)",cursor:"pointer",borderRadius:8,fontSize:12,fontWeight:500,textAlign:"left"}}
@@ -2571,6 +2554,8 @@ function MyABAInner(){
               if(voiceMode==="talk")setVoiceMode("chat");
               setSnapOpen(false);setClipboardOpen(false);
             }
+            // ⬡B:WRAP.fix:LOCAL:track_app_usage:20260410⬡
+            try { const u = JSON.parse(localStorage.getItem("myaba_app_usage") || "{}"); u[app.id] = (u[app.id] || 0) + 1; localStorage.setItem("myaba_app_usage", JSON.stringify(u)); } catch {}
             if(app.id==="chat"){setMainTab("chat")}
             else if(app.id==="briefing"){setMainTab("briefing");if(!briefingData&&!briefingLoading){setBriefingLoading(true);fetchBriefing(user?.email||user?.uid||"unknown").then(d=>{setBriefingData(d);setBriefingLoading(false)})}}
             else if(app.id==="jobs"){setMainTab("jobs")}
