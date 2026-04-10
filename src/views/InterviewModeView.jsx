@@ -85,7 +85,6 @@ export default function InterviewModeView({ userId }) {
     } catch (e) { console.error('Brain search:', e); }
     setBrainSearching(false);
   };
-  };
 
   const recRef = useRef(null);
   const streamRef = useRef(null);
