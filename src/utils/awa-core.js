@@ -82,7 +82,6 @@ export const ACTION_BUTTONS = [
   { id: 'view-posting', label: 'View Posting', color: 'slate' },
   { id: 'combined', label: 'Download PDF', color: 'purple' },
   { id: 'combined-docx', label: 'Download DOCX', color: 'indigo' },
-  { id: 'mark-applied', label: 'Mark Applied', color: 'lime' },
   { id: 'dismiss', label: 'Dismiss', color: 'red' },
   { id: 'mock', label: 'Mock Interview', color: 'cyan' },
 ];
@@ -162,10 +161,6 @@ export async function runAction(api, action, job, userId) {
 
     case 'interview-prep':
       return await api(`/api/awa/jobs/${job.id}/interview-prep`, { method: 'POST', body: { userId: assignee } });
-
-    case 'mark-applied':
-      await updateStatus(api, job.id, 'APPLIED', userId, { notes: 'Manually marked as applied (applied outside ABA)' });
-      return { success: true, message: 'Marked as applied' };
 
     case 'apply':
       return await api(`/api/awa/jobs/${job.id}/apply`, { method: 'POST', body: { userId: assignee } });
