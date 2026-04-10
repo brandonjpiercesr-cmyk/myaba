@@ -642,18 +642,6 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
     crm: "#fb923c", ccwa: "#a78bfa", aoa: "#64748b"
   };
 
-  if (loading) return (
-    <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{width:32,height:32,borderRadius:"50%",border:"2px solid rgba(139,92,246,.3)",borderTopColor:"rgba(139,92,246,.8)",animation:"spin 1s linear infinite"}}/>
-    </div>
-  );
-  
-  const now = new Date();
-  const hour = now.getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-  const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  const dateStr = now.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
-
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [appSearch, setAppSearch] = useState("");
   const filteredApps = appSearch ? apps.filter(a => a.name.toLowerCase().includes(appSearch.toLowerCase()) || (a.id||"").toLowerCase().includes(appSearch.toLowerCase())) : apps;
@@ -686,6 +674,18 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
     })();
   }, [userId]);
   const recommended = apps.filter(a => recommendedIds.includes(a.id)).slice(0,4);
+  if (loading) return (
+    <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{width:32,height:32,borderRadius:"50%",border:"2px solid rgba(139,92,246,.3)",borderTopColor:"rgba(139,92,246,.8)",animation:"spin 1s linear infinite"}}/>
+    </div>
+  );
+  
+  const now = new Date();
+  const hour = now.getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const dateStr = now.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 4px" }}>
