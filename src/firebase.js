@@ -1,18 +1,14 @@
-// ⬡B:myaba.firebase:CONFIG:auth:v1.3.0:20260409⬡
-// MyABA v1.3.0 — Firebase for AUTH ONLY
+// ⬡B:myaba.firebase:CONFIG:auth:v1.4.0:20260410⬡
+// MyABA v1.4.0 — Firebase for AUTH ONLY
 // ════════════════════════════════════════════════════════════════════════════
-// ARCHITECTURE:
-//   - Firebase = AUTH (Google sign-in only)
-//   - Conversations = AIR → Supabase (see MyABA.jsx)
-//   - DO NOT add Firestore conversation functions here
-// FIX v1.3.0: PWA sign-in loop — use signInWithPopup in standalone mode
-//   signInWithRedirect navigates away, but PWA standalone windows can't
-//   receive the redirect back, causing an infinite login loop.
+// FIX v1.4.0: Use signInWithPopup ALWAYS. signInWithRedirect fails on iOS
+//   Safari due to ITP (Intelligent Tracking Prevention) blocking cross-origin
+//   cookies. Popup auth stays same-origin and works everywhere.
 // ════════════════════════════════════════════════════════════════════════════
 
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithRedirect, signInWithPopup, getRedirectResult, signOut } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAD5sW9y0RriF8HsyS7twfd0bjgA2dGsQw",
@@ -29,19 +25,8 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 export const db = getFirestore(app);
 
-// Detect if running as installed PWA (standalone mode)
-function isPWA() {
-  return window.matchMedia('(display-mode: standalone)').matches
-    || window.navigator.standalone === true;
-}
-
 export async function signInGoogle() {
-  if (isPWA()) {
-    // Popup stays within PWA context — no redirect loop
-    return signInWithPopup(auth, googleProvider);
-  }
-  // Browser tab mode — redirect works fine
-  return signInWithRedirect(auth, googleProvider);
+  return signInWithPopup(auth, googleProvider);
 }
 
 export async function signOutUser() {
@@ -50,6 +35,4 @@ export async function signOutUser() {
 
 // ════════════════════════════════════════════════════════════════════════════
 // NOTE: All conversation persistence routes through AIR → Supabase
-// Functions: airSaveConversation, airLoadConversations, airDeleteConversation
-// Location: MyABA.jsx
 // ════════════════════════════════════════════════════════════════════════════
