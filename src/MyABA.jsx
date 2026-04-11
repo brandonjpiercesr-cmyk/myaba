@@ -708,18 +708,48 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
         />
       </div>
 
-      {/* ⬡B:FEATURE:app_frame_grid:20260409⬡ App grid — frame layout (2x4 square) */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(4, 1fr)",
-        gap: 10,
-        padding: "4px 12px",
-        alignContent: "start"
-      }}
+      {/* ⬡B:FEATURE:app_frame_grid:20260411⬡ Frame layout — apps form border, ABA orb in center */}
+      {appSearch ? <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, padding: "4px 12px", alignContent: "start" }}>
+        {filteredApps.map((app, idx) => {
+          const IconComponent = ICON_MAP[app.icon] || Sparkles;
+          const accent = APP_COLORS[app.id] || "#a78bfa";
+          return (
+            <button key={app.id} onClick={() => onAppSelect(app)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 4px", borderRadius: 16, border: "none", background: "transparent", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${accent}22, ${accent}11)`, border: `1px solid ${accent}33`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <IconComponent size={24} color={accent} strokeWidth={1.8} />
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,.55)", textAlign: "center", lineHeight: 1.2, maxWidth: 72, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{app.name}</span>
+            </button>
+          );
+        })}
+      </div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, padding: "4px 16px", alignContent: "start" }}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       >
-        {(appSearch ? filteredApps : homeApps).map((app, idx) => {
+        {homeApps.slice(0, 3).map((app, idx) => {
+          const IconComponent = ICON_MAP[app.icon] || Sparkles;
+          const accent = APP_COLORS[app.id] || "#a78bfa";
+          return (<button key={app.id} data-app-idx={idx} onTouchStart={(e) => handleTouchStart(idx, e)} onClick={() => { if (dragging === null) onAppSelect(app); }} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 4px", borderRadius: 16, border: "none", background: "transparent", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${accent}22, ${accent}11)`, border: `1px solid ${accent}33`, display: "flex", alignItems: "center", justifyContent: "center" }}><IconComponent size={24} color={accent} strokeWidth={1.8} /></div>
+            <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,.55)", textAlign: "center", lineHeight: 1.2, maxWidth: 72, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{app.name}</span>
+          </button>);
+        })}
+        {homeApps[3] && (() => { const app=homeApps[3]; const IC=ICON_MAP[app.icon]||Sparkles; const ac=APP_COLORS[app.id]||"#a78bfa"; return <button key={app.id} onClick={() => onAppSelect(app)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 4px", borderRadius: 16, border: "none", background: "transparent", cursor: "pointer" }}><div style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${ac}22, ${ac}11)`, border: `1px solid ${ac}33`, display: "flex", alignItems: "center", justifyContent: "center" }}><IC size={24} color={ac} strokeWidth={1.8} /></div><span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,.55)", textAlign: "center" }}>{app.name}</span></button> })()}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 8 }}><ABALogo size={44} glow /></div>
+        {homeApps[4] && (() => { const app=homeApps[4]; const IC=ICON_MAP[app.icon]||Sparkles; const ac=APP_COLORS[app.id]||"#a78bfa"; return <button key={app.id} onClick={() => onAppSelect(app)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 4px", borderRadius: 16, border: "none", background: "transparent", cursor: "pointer" }}><div style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${ac}22, ${ac}11)`, border: `1px solid ${ac}33`, display: "flex", alignItems: "center", justifyContent: "center" }}><IC size={24} color={ac} strokeWidth={1.8} /></div><span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,.55)", textAlign: "center" }}>{app.name}</span></button> })()}
+        {homeApps.slice(5, 8).map((app, idx) => {
+          const IconComponent = ICON_MAP[app.icon] || Sparkles;
+          const accent = APP_COLORS[app.id] || "#a78bfa";
+          return (<button key={app.id} onClick={() => onAppSelect(app)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 4px", borderRadius: 16, border: "none", background: "transparent", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${accent}22, ${accent}11)`, border: `1px solid ${accent}33`, display: "flex", alignItems: "center", justifyContent: "center" }}><IconComponent size={24} color={accent} strokeWidth={1.8} /></div>
+            <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,.55)", textAlign: "center", lineHeight: 1.2, maxWidth: 72, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{app.name}</span>
+          </button>);
+        })}
+      </div>}
+
+      {/* LEGACY: keep original map for drag-drop to not break — hidden */}
+      <div style={{display:"none"}}>
+        {homeApps.map((app, idx) => {
           const IconComponent = ICON_MAP[app.icon] || Sparkles;
           const accent = APP_COLORS[app.id] || "#a78bfa";
           const isDragged = dragging === idx;
