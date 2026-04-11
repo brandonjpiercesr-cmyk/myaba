@@ -288,7 +288,7 @@ export default function JobsView({userId, setEditorDoc}){
           <button onClick={async()=>{
             const assignee=(selectedJob.assignees||[])[0]||'unmatched';
             await updateStatus(api,selectedJob.id,'APPLIED',userId,{notes:'Manually marked as applied (applied outside ABA)'});
-            fetchJobs();
+            refreshJobs();
           }} style={{width:'100%',padding:'10px 8px',borderRadius:10,border:'1px solid rgba(163,230,53,.2)',cursor:'pointer',background:'rgba(163,230,53,.08)',color:'rgba(163,230,53,.8)',fontSize:12,fontWeight:500,display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginTop:6}}>
             Already Applied (Mark Status)
           </button></>
