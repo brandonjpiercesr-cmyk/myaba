@@ -123,6 +123,8 @@ export default function MeetingModeView({ userId }) {
     setCookStreaming(false);
   };
   const [showRefineMenu, setShowRefineMenu] = useState(false);
+  const [speakers, setSpeakers] = useState(['Me', 'Unknown']);
+  const [editingSpeaker, setEditingSpeaker] = useState(null);
 
   return () => clearInterval(intervalRef.current);
   }, [running]);
@@ -309,8 +311,6 @@ export default function MeetingModeView({ userId }) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
     a.download = 'meeting-' + new Date().toISOString().slice(0,10) + '.md'; a.click();
   };
-  const [speakers, setSpeakers] = useState(['Me', 'Unknown']);
-  const [editingSpeaker, setEditingSpeaker] = useState(null);
 
   const endMeeting = async () => {
     recRef.current?.stop();
