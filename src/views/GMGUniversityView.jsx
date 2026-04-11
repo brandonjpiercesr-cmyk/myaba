@@ -41,12 +41,22 @@ function DeckPanel({ deck, onClose }) {
   </div>);
 }
 // ⬡B:audra.gmg_university.restructure:FIX:cip_block_sidebar:20260407⬡
-function LessonSidebar({ show, onClose, completedDays, onSelectBlock, onReset, currentLesson, curriculum }) {
+function LessonSidebar({ show, onClose, completedDays, onSelectBlock, onReset, currentLesson, curriculum, cohortType }) {
   if (!show) return null;
   const completed = completedDays || [];
   const blocks = curriculum?.blocks || [];
   const totalAll = blocks.reduce((s, b) => s + (b.days || []).length, 0);
   const totalDone = completed.length;
+  const isFounder = cohortType === 'FOUNDER' || cohortType === 'INTERVIEW_MODE';
+  // ⬡B:GMGU.layered:FIX:cip_lesson_locking:20260410⬡
+  let nextUnlocked = null;
+  for (const block of blocks) {
+    for (let i = 0; i < (block.days || []).length; i++) {
+      const key = 'b' + block.block + '-d' + (i + 1);
+      if (!completed.includes(key)) { nextUnlocked = key; break; }
+    }
+    if (nextUnlocked) break;
+  }
   return (<>
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:90}}/>
     <div style={{position:"fixed",top:0,left:0,bottom:0,width:280,maxWidth:"85vw",background:"rgba(15,15,20,.95)",backdropFilter:"blur(24px)",borderRight:"1px solid rgba(255,255,255,.08)",zIndex:91,display:"flex",flexDirection:"column"}}>
@@ -62,9 +72,9 @@ function LessonSidebar({ show, onClose, completedDays, onSelectBlock, onReset, c
           <div style={{padding:"10px 14px 4px",color:block.block===0?"#fbbf24":"#a78bfa",fontSize:10,fontWeight:600,letterSpacing:1.5,textTransform:"uppercase"}}>
             Block {block.block}{block.track&&block.track!=="UNASSIGNED"?" · "+block.track.replace(/_/g," "):""} — {block.name}
           </div>
-          {(block.days||[]).map((title,i)=>{const d=i+1;const k="b"+block.block+"-d"+d;const done=completed.includes(k);const cur=currentLesson?.block===block.block&&currentLesson?.day===d;return(<button key={k} onClick={()=>{onSelectBlock(block.block,d,title,block.name);onClose();}} style={{width:"100%",padding:"8px 14px",display:"flex",alignItems:"center",gap:8,background:cur?"rgba(124,58,237,.15)":"transparent",border:"none",cursor:"pointer",textAlign:"left",borderLeft:cur?"3px solid #7c3aed":"3px solid transparent"}}>
-            <span style={{width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:600,flexShrink:0,background:done?"rgba(16,185,129,.2)":"rgba(255,255,255,.06)",color:done?"#10b981":"rgba(255,255,255,.3)",border:"1px solid "+(done?"rgba(16,185,129,.3)":"rgba(255,255,255,.08)")}}>{done?"✓":d}</span>
-            <span style={{color:done?"rgba(255,255,255,.5)":"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.3}}>{title}</span>
+          {(block.days||[]).map((title,i)=>{const d=i+1;const k="b"+block.block+"-d"+d;const done=completed.includes(k);const cur=currentLesson?.block===block.block&&currentLesson?.day===d;const isNextUp=k===nextUnlocked;const isLocked=!isFounder&&!done&&!isNextUp;return(<button key={k} onClick={()=>{if(!isLocked){onSelectBlock(block.block,d,title,block.name);onClose();}}} style={{width:"100%",padding:"8px 14px",display:"flex",alignItems:"center",gap:8,background:cur?"rgba(124,58,237,.15)":"transparent",border:"none",cursor:isLocked?"not-allowed":"pointer",textAlign:"left",borderLeft:cur?"3px solid #7c3aed":"3px solid transparent",opacity:isLocked?0.35:1}}>
+            <span style={{width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:600,flexShrink:0,background:done?"rgba(16,185,129,.2)":isLocked?"rgba(255,255,255,.03)":"rgba(255,255,255,.06)",color:done?"#10b981":isLocked?"rgba(255,255,255,.15)":"rgba(255,255,255,.3)",border:"1px solid "+(done?"rgba(16,185,129,.3)":"rgba(255,255,255,.08)")}}>{done?"✓":isLocked?"🔒":d}</span>
+            <span style={{color:done?"rgba(255,255,255,.5)":isLocked?"rgba(255,255,255,.25)":"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.3}}>{title}</span>
           </button>);})}
         </div>))}
       </div>
@@ -136,7 +146,9 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
       const next = getNextBlockLesson(profile?.completedDays, curriculum);
       const h = new Date().getHours();
       let msg = "Good "+(h<12?"morning":h<17?"afternoon":"evening")+", this is "+firstName+". I just opened GMG University.";
-      if (next) { msg += ' My next lesson is Block ' + next.block + ' Day ' + next.day + ': "' + next.title + '". I have completed ' + (profile.completedDays||[]).length + ' of ' + (curriculum?.totalDays||'?') + ' lessons. Check my cohort_type and proceed accordingly.'; setCurrentLesson(next); }
+      if (next) { 
+        const isAssessment = next.block === 0;
+        msg += ' My next ' + (isAssessment ? 'assessment' : 'lesson') + ' is Block ' + next.block + ' Day ' + next.day + ': "' + next.title + '". I have completed ' + (profile.completedDays||[]).length + ' of ' + (curriculum?.totalDays||'?') + ' days. Proceed with my ' + (isAssessment ? 'assessment' : 'lesson') + '.'; setCurrentLesson(next); }
       else { msg += ' I have completed all ' + (curriculum?.totalDays||'?') + ' lessons.'; }
       streamFromAIR(msg, true);
     }
@@ -155,7 +167,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
     setMsgs([]);
     setInitDone(false);
     setTimeout(() => {
-      streamFromAIR(firstName + ' here. I want to do Block ' + blockNum + ' Day ' + dayNum + ': "' + title + '". Check my cohort_type and proceed accordingly.', true);
+      streamFromAIR(firstName + ' here. I want to do Block ' + blockNum + ' Day ' + dayNum + ': "' + title + '". Proceed with my lesson.', true);
     }, 100);
   };
   const resetProgress = async () => {
@@ -176,7 +188,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
       const history=msgs.slice(-20).map(m=>({role:m.role==="aba"?"assistant":"user",content:m.text||""})).filter(m=>m.content);
       const r=await fetch(ABABASE+"/api/air/stream",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:userMsg,user_id:userEmail,userId:userEmail,channel:"gmg-university",conversationHistory:history})});
       const reader=r.body.getReader(); const decoder=new TextDecoder();
-      while(true){const{done,value}=await reader.read();if(done)break;for(const line of decoder.decode(value,{stream:true}).split("\n").filter(l=>l.startsWith("data: "))){try{const d=JSON.parse(line.slice(6));if(d.type==="chunk"){acc+=d.text;sentBufRef.current+=d.text;setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:acc};return c;});if(sentBufRef.current.match(/[.!?]\s*$/)){speak(sentBufRef.current.trim());sentBufRef.current="";}}else if(d.type==="done"){let final=d.fullResponse||acc;setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:final,streaming:false};return c;});if(sentBufRef.current.trim())speak(sentBufRef.current.trim());const deckMatch=final.match(/\[DECK\](.*?)\[\/DECK\]/s); if(deckMatch){try{setDeckContent(JSON.parse(deckMatch[1].trim()));}catch(e){console.error("[GMG-U] Deck:",e);} final=final.replace(/\[DECK\].*?\[\/DECK\]/s,"");} const shouldComplete=final.includes("[LESSON_COMPLETE]"); final=final.replace(/\[LESSON_STARTED\]/g,"").replace(/\[LESSON_COMPLETE\]/g,"").trim(); if(shouldComplete)markComplete();}}catch(e){console.error('[GMG-U] SSE:',e.message);}}}
+      while(true){const{done,value}=await reader.read();if(done)break;for(const line of decoder.decode(value,{stream:true}).split("\n").filter(l=>l.startsWith("data: "))){try{const d=JSON.parse(line.slice(6));if(d.type==="chunk"){acc+=d.text;sentBufRef.current+=d.text;setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:acc};return c;});if(sentBufRef.current.match(/[.!?]\s*$/)){speak(sentBufRef.current.trim());sentBufRef.current="";}}else if(d.type==="done"){const final=d.fullResponse||acc;setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:final,streaming:false};return c;});if(sentBufRef.current.trim())speak(sentBufRef.current.trim());const deckMatch=final.match(/\[DECK\](.*?)\[\/DECK\]/s); if(deckMatch){try{setDeckContent(JSON.parse(deckMatch[1].trim()));}catch(e){console.error("[GMG-U] Deck:",e);} final=final.replace(/\[DECK\].*?\[\/DECK\]/s,"");} const shouldComplete=final.includes("[LESSON_COMPLETE]"); final=final.replace(/\[LESSON_STARTED\]/g,"").replace(/\[LESSON_COMPLETE\]/g,"").trim(); if(shouldComplete)markComplete();}}catch(e){console.error('[GMG-U] SSE:',e.message);}}}
     } catch{setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:"Connection issue.",streaming:false};return c;});}
     finally{setStreaming(false);}
   };
@@ -220,8 +232,9 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
         {!input.trim()&&<button onClick={toggleMic} disabled={streaming} style={{width:36,height:36,borderRadius:"50%",border:"1px solid "+(listening?"transparent":"rgba(124,58,237,.2)"),background:listening?"#7c3aed":"rgba(124,58,237,.1)",color:listening?"white":"#a78bfa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,animation:listening?"micPulse 1.5s infinite":"none"}}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={16} height={16}><rect x={9} y={2} width={6} height={11} rx={3}/><path d="M5 11a7 7 0 0014 0"/><line x1={12} y1={18} x2={12} y2={22}/></svg></button>}
       </div>
     </div>
-    <LessonSidebar show={showSidebar} onClose={()=>setShowSidebar(false)} completedDays={profile?.completedDays} onSelectBlock={selectBlockLesson} curriculum={curriculum} onReset={resetProgress} currentLesson={currentLesson}/>
+    <LessonSidebar show={showSidebar} onClose={()=>setShowSidebar(false)} completedDays={profile?.completedDays} onSelectBlock={selectBlockLesson} curriculum={curriculum} onReset={resetProgress} currentLesson={currentLesson} cohortType={profile?.cohort_type}/>
     <DeckPanel deck={deckContent} onClose={()=>setDeckContent(null)}/>
   </div>);
 }
 
+// build-bust-1775701295
