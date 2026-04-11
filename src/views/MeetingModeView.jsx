@@ -35,6 +35,22 @@ export default function MeetingModeView({ userId }) {
   const [askInput, setAskInput] = useState("");
   const [askLoading, setAskLoading] = useState(false);
   const [summary, setSummary] = useState(null);
+
+  const [glossarySearch, setGlossarySearch] = useState('');
+  const [brainResults, setBrainResults] = useState([]);
+  const [brainSearching, setBrainSearching] = useState(false);
+  const searchBrain = async (q) => {
+    if (!q.trim()) return; setBrainSearching(true);
+    try {
+      const r = await fetch(ABABASE + '/api/meeting/brain-search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q })
+      });
+      if (r.ok) { const d = await r.json(); setBrainResults(d.results || []); }
+    } catch (e) { console.error('Brain search:', e); }
+    setBrainSearching(false);
+  };
+
   const [activeCue, setActiveCue] = useState(null);
   const [cookStreaming, setCookStreaming] = useState(false);
   const [showPrep, setShowPrep] = useState(true);
@@ -58,6 +74,7 @@ export default function MeetingModeView({ userId }) {
   const cueTimeoutRef = useRef(null);
   const transcriptRef = useRef([]);
   const lastTimFire = useRef(0);
+  const cookOverrideRef = useRef('');
   const lastCookFire = useRef(0);
   const speakerModeRef = useRef(SPEAKER_MODES.THEY_TALKING);
 
@@ -67,7 +84,51 @@ export default function MeetingModeView({ userId }) {
   useEffect(() => {
     if (running) { intervalRef.current = setInterval(() => { setSeconds(s => { secondsRef.current = s + 1; return s + 1; }); }, 1000); }
     else clearInterval(intervalRef.current);
-    return () => clearInterval(intervalRef.current);
+  
+  const needAnswerNow = async () => {
+    const segs = transcriptRef.current;
+    if (segs.length === 0) return;
+    const last60 = segs.slice(-20).map(s => s.text).join(' ');
+    setCookStreaming(true);
+    try {
+      const res = await api('/api/cook/answer', {
+        method: 'POST', body: JSON.stringify({
+          question: 'Give me something to say right now based on this conversation',
+          user_id: user?.email || 'unknown', mode: 'meeting',
+          transcript_context: last60.substring(0, 2000),
+          briefing_context: prepContext ? JSON.stringify(prepContext).substring(0, 3000) : '',
+          last_said_by_ham: lastSaidByHamRef.current || '',
+          cook_style_override: cookOverrideRef.current || ''
+        })
+      });
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let answer = '';
+        const ts = formatTime(secondsRef.current);
+        setCookAnswers(prev => [...prev, { time: ts, question: 'Immediate answer', answer: '', streaming: true }]);
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = dec.decode(value, { stream: true });
+          for (const line of chunk.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const d = JSON.parse(line.slice(6));
+              if (d.text) { answer += d.text; setCookAnswers(prev => { const u = [...prev]; u[u.length - 1] = { ...u[u.length - 1], answer, streaming: true }; return u; }); }
+              if (d.type === 'done') setCookAnswers(prev => { const u = [...prev]; u[u.length - 1] = { ...u[u.length - 1], answer, streaming: false }; return u; });
+            } catch {}
+          }
+        }
+      }
+    } catch (e) { console.error('[CIP MESA] Need answer error:', e); }
+    setCookStreaming(false);
+  };
+  const [showRefineMenu, setShowRefineMenu] = useState(false);
+  const [speakers, setSpeakers] = useState(['Me', 'Unknown']);
+  const [editingSpeaker, setEditingSpeaker] = useState(null);
+
+  return () => clearInterval(intervalRef.current);
   }, [running]);
 
   const fmt = formatTime;
@@ -232,6 +293,27 @@ export default function MeetingModeView({ userId }) {
     } catch { alert("Microphone access denied"); }
   };
 
+
+  // Save transcript
+  const buildTranscriptMarkdown = () => {
+    const lines = ['# Meeting Transcript', '', '**Date:** ' + new Date().toLocaleDateString(), '**Duration:** ' + formatTime(secondsRef.current)];
+    lines.push('', '---', '', '## Transcript', '');
+    transcriptRef.current.forEach(t => { lines.push('[' + t.time + '] ' + (t.speaker ? '**' + t.speaker + ':** ' : '') + t.text); lines.push(''); });
+    if (cookAnswers.length > 0) {
+      lines.push('---', '', '## Coached Answers', '');
+      cookAnswers.forEach(a => { lines.push('**[' + a.time + ']** ' + (a.question || '')); lines.push(a.answer); lines.push(''); });
+    }
+    if (summary) lines.push('---', '', '## Summary', '', summary);
+    return lines.join('\n');
+  };
+  const downloadTranscript = (format) => {
+    const md = buildTranscriptMarkdown();
+    if (format === 'copy') { navigator.clipboard.writeText(md).catch(() => {}); return; }
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'meeting-' + new Date().toISOString().slice(0,10) + '.md'; a.click();
+  };
+
   const endMeeting = async () => {
     recRef.current?.stop();
     // v3: Clean up dual audio (mic + system + audio context)
@@ -374,7 +456,7 @@ export default function MeetingModeView({ userId }) {
         color: speakerMode === SPEAKER_MODES.THEY_TALKING ? "#34d399" : speakerMode === SPEAKER_MODES.I_TALKING ? "#60a5fa" : "#f87171",
         border: `1px solid ${speakerMode === SPEAKER_MODES.THEY_TALKING ? "rgba(16,185,129,.2)" : speakerMode === SPEAKER_MODES.I_TALKING ? "rgba(59,130,246,.2)" : "rgba(239,68,68,.2)"}`,
       }}>
-        {speakerMode === SPEAKER_MODES.THEY_TALKING ? "THEY'RE TALKING" : speakerMode === SPEAKER_MODES.I_TALKING ? "I'M TALKING" : "PAUSED"}
+        {speakerMode === SPEAKER_MODES.THEY_TALKING ? "JUST LISTEN" : speakerMode === SPEAKER_MODES.I_TALKING ? "MY TURN" : "PAUSED"}
       </div>}
       <div style={{display:"flex",gap:8}}>
         {!running && <button onClick={startMeeting} style={{padding:"8px 18px",borderRadius:12,border:"1px solid rgba(6,182,212,.3)",background:"linear-gradient(135deg, rgba(6,182,212,.15), rgba(6,182,212,.05))",color:"#22d3ee",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6,boxShadow:"0 0 15px rgba(6,182,212,.1)",transition:"all 0.2s ease"}}><Mic size={14}/>Start</button>}
@@ -383,12 +465,31 @@ export default function MeetingModeView({ userId }) {
 
     {/* Single scroll — transcript, coaching, glossary, summary */}
     <div style={{flex:1,overflowY:"auto",padding:"10px 12px"}}>
+      {/* Brain Search */}
+      <div style={{marginBottom:10,display:"flex",gap:4}}>
+        <input type="text" placeholder="Search brain..." value={glossarySearch} onChange={e=>setGlossarySearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&searchBrain(glossarySearch)} style={{flex:1,padding:"6px 10px",borderRadius:8,fontSize:11,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",color:"#e2e8f0",outline:"none"}} />
+        <button onClick={()=>searchBrain(glossarySearch)} style={{padding:"6px 12px",borderRadius:8,fontSize:10,background:"rgba(34,211,238,.08)",border:"1px solid rgba(34,211,238,.15)",color:"#22d3ee",cursor:"pointer"}}>{brainSearching?"...":"Search"}</button>
+      </div>
+      {brainResults.length>0&&<div style={{marginBottom:10,padding:8,borderRadius:8,background:"rgba(34,211,238,.04)",border:"1px solid rgba(34,211,238,.1)"}}>
+        <div style={{fontSize:9,fontWeight:700,color:"rgba(34,211,238,.5)",marginBottom:4}}>BRAIN RESULTS</div>
+        {brainResults.map((r,i)=><div key={i} style={{marginBottom:4,fontSize:11,color:"rgba(255,255,255,.7)",lineHeight:1.4}}>{typeof r.content==="string"?r.content.substring(0,150):JSON.stringify(r.content).substring(0,150)}...</div>)}
+      </div>}
       {/* TRANSCRIPT */}
       <div style={{marginBottom:12}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"0 4px"}}><Mic size={11} style={{color:"rgba(6,182,212,.4)"}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(6,182,212,.4)",letterSpacing:"0.1em"}}>TRANSCRIPT</span>{transcript.length>0&&<span style={{fontSize:9,background:"rgba(6,182,212,.1)",padding:"2px 6px",borderRadius:8,color:"rgba(6,182,212,.5)",fontWeight:600}}>{transcript.length}</span>}</div>
         {transcript.length===0
           ? <div style={{textAlign:"center",padding:"30px 16px",color:"rgba(255,255,255,.1)"}}><p style={{fontSize:12,margin:0}}>{running?"Listening...":"Tap Start"}</p></div>
-          : transcript.slice(-8).map((t,i) => <div key={i} style={{padding:"8px 10px",marginBottom:4,borderRadius:10,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}><span style={{color:"rgba(6,182,212,.3)",fontSize:9,fontWeight:600,marginRight:6,fontFamily:"monospace"}}>{t.time}</span><span style={{color:"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.5}}>{t.text}</span></div>)
+          : transcript.slice(-8).map((t,i) => <div key={i} style={{padding:"8px 10px",marginBottom:4,borderRadius:10,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                <span style={{color:"rgba(6,182,212,.3)",fontSize:9,fontWeight:600,fontFamily:"monospace"}}>{t.time}</span>
+                <button onClick={()=>setEditingSpeaker(editingSpeaker===i?null:i)} style={{padding:"1px 6px",borderRadius:4,fontSize:9,fontWeight:600,cursor:"pointer",background:t.speaker==="Me"?"rgba(59,130,246,.15)":"rgba(255,255,255,.06)",color:t.speaker==="Me"?"#60a5fa":"rgba(255,255,255,.35)",border:"1px solid rgba(255,255,255,.08)"}}>{t.speaker||"?"}</button>
+              </div>
+              {editingSpeaker===i&&<div style={{display:"flex",gap:4,marginBottom:4,flexWrap:"wrap"}}>
+                {speakers.map(s=><button key={s} onClick={()=>{setTranscript(prev=>prev.map((seg,j)=>j===i?{...seg,speaker:s}:seg));transcriptRef.current=transcriptRef.current.map((seg,j)=>j===i?{...seg,speaker:s}:seg);setEditingSpeaker(null);}} style={{padding:"2px 8px",borderRadius:4,fontSize:9,cursor:"pointer",background:"rgba(34,211,238,.08)",border:"1px solid rgba(34,211,238,.15)",color:"#22d3ee"}}>{s}</button>)}
+                <input type="text" placeholder="New" onKeyDown={e=>{if(e.key==="Enter"&&e.target.value.trim()){const n=e.target.value.trim();if(!speakers.includes(n))setSpeakers(p=>[...p,n]);setTranscript(p=>p.map((seg,j)=>j===i?{...seg,speaker:n}:seg));transcriptRef.current=transcriptRef.current.map((seg,j)=>j===i?{...seg,speaker:n}:seg);setEditingSpeaker(null);}}} style={{padding:"2px 6px",borderRadius:4,fontSize:9,width:60,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",color:"#e2e8f0",outline:"none"}} />
+              </div>}
+              <span style={{color:"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.5}}>{t.text}</span>
+            </div>)
         }
       </div>
 
@@ -425,7 +526,11 @@ export default function MeetingModeView({ userId }) {
       {summary && <div style={{padding:14,borderRadius:12,background:"linear-gradient(135deg, rgba(16,185,129,.06), rgba(16,185,129,.02))",border:"1px solid rgba(16,185,129,.12)"}}>
         <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}><CheckCircle size={12} color="#34d399"/><span style={{fontSize:10,fontWeight:700,color:"#34d399",letterSpacing:"0.5px"}}>SUMMARY</span></div>
         <p style={{color:"rgba(255,255,255,.8)",fontSize:12,margin:0,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{summary}</p>
-        <button onClick={()=>navigator.clipboard.writeText(summary||"")} style={{marginTop:6,padding:"5px 10px",borderRadius:6,border:"1px solid rgba(52,211,153,.2)",background:"rgba(52,211,153,.06)",color:"rgba(52,211,153,.6)",fontSize:10,cursor:"pointer"}}>Copy</button>
+        <div style={{display:'flex',gap:4,marginTop:8,flexWrap:'wrap'}}>
+          <button onClick={()=>navigator.clipboard.writeText(summary||"")} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(52,211,153,.2)",background:"rgba(52,211,153,.06)",color:"rgba(52,211,153,.6)",fontSize:10,cursor:"pointer"}}>Copy Summary</button>
+          <button onClick={()=>downloadTranscript('md')} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(34,211,238,.2)",background:"rgba(34,211,238,.06)",color:"rgba(34,211,238,.6)",fontSize:10,cursor:"pointer"}}>Save .md</button>
+          <button onClick={()=>downloadTranscript('copy')} style={{padding:"5px 10px",borderRadius:6,border:"1px solid rgba(168,85,247,.2)",background:"rgba(168,85,247,.06)",color:"rgba(168,85,247,.6)",fontSize:10,cursor:"pointer"}}>Copy Full</button>
+        </div>
       </div>}
     </div>
 
@@ -459,7 +564,7 @@ export default function MeetingModeView({ userId }) {
         }}>
           <Users size={20} color={speakerMode === SPEAKER_MODES.THEY_TALKING ? "#34d399" : "rgba(255,255,255,.3)"} />
           <span style={{fontSize:11,fontWeight:700,color: speakerMode === SPEAKER_MODES.THEY_TALKING ? "#34d399" : "rgba(255,255,255,.3)",letterSpacing:"0.3px"}}>
-            They're Talking
+            Just Listen
           </span>
           {speakerMode === SPEAKER_MODES.THEY_TALKING && <div style={{width:6,height:6,borderRadius:"50%",background:"#34d399",animation:"mb 1.5s infinite",boxShadow:"0 0 8px rgba(52,211,153,.5)"}}/>}
         </button>
@@ -475,7 +580,7 @@ export default function MeetingModeView({ userId }) {
         }}>
           <User size={20} color={speakerMode === SPEAKER_MODES.I_TALKING ? "#60a5fa" : "rgba(255,255,255,.3)"} />
           <span style={{fontSize:11,fontWeight:700,color: speakerMode === SPEAKER_MODES.I_TALKING ? "#60a5fa" : "rgba(255,255,255,.3)",letterSpacing:"0.3px"}}>
-            I'm Talking
+            My Turn
           </span>
           {speakerMode === SPEAKER_MODES.I_TALKING && <div style={{width:6,height:6,borderRadius:"50%",background:"#60a5fa",animation:"mb 1.5s infinite",boxShadow:"0 0 8px rgba(96,165,250,.5)"}}/>}
         </button>

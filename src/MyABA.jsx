@@ -52,7 +52,7 @@ import { ABAPresence } from './ABAPresence.jsx';
 
 // ⬡B:MACE.phase0:IMPORTS:shared_utils_and_views:20260405⬡
 // Shared utils — extracted from this file
-import { ABABASE, airRequest, airRequestStream, isOnline, airShareChat, airLoadProjects, airCreateProject, airLoadConversations, airCreateConversation, airAddMessage, airUpdateConversation, airDeleteConversation, airLoadSettings, airSaveSettings, airAddProjectFile, IMAGE_TYPES, fileToBase64, uploadAttachment, uploadAttachmentsBatch, reachTranscribe, reachSynthesize, reachPresence, airNameChat, getDawnGreeting, subscribeToPush, unsubscribeFromPush, safeParseGreeting } from "./utils/api.js";
+import { ABABASE, airRequest, airRequestStream, isOnline, airShareChat, airLoadProjects, airCreateProject, airLoadConversations, airCreateConversation, airAddMessage, airUpdateConversation, airDeleteConversation, airLoadSettings, airSaveSettings, airAddProjectFile, IMAGE_TYPES, fileToBase64, uploadAttachment, uploadAttachmentsBatch, reachTranscribe, reachSynthesize, reachPresence, airNameChat, getDawnGreeting, subscribeToPush, unsubscribeFromPush, safeParseGreeting, exportChat, fetchBriefing } from "./utils/api.js";
 import { resolveHamId, isHAM, HAM_EMAIL_MAP, HAM_TEAM } from "./utils/ham.js";
 import { ICON_MAP } from "./utils/icons.js";
 import { renderMd, renderInline } from "./utils/markdown.jsx";
@@ -642,6 +642,21 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
     crm: "#fb923c", ccwa: "#a78bfa", aoa: "#64748b"
   };
 
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [appSearch, setAppSearch] = useState("");
+  const filteredApps = appSearch ? apps.filter(a => a.name.toLowerCase().includes(appSearch.toLowerCase()) || (a.id||"").toLowerCase().includes(appSearch.toLowerCase())) : apps;
+  // Show max 8 on homescreen, rest in drawer
+  // ⬡B:WRAP.fix:LOCAL:usage_based_recommendations:20260410⬡
+  // Zero API calls. Tracks app usage in localStorage, recommends most-used.
+  const [recommendedIds] = useState(() => {
+    try {
+      const usage = JSON.parse(localStorage.getItem("myaba_app_usage") || "{}");
+      const sorted = Object.entries(usage).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+      return sorted.length >= 4 ? sorted.slice(0, 4) : ["chat", "jobs", "briefing", "email"];
+    } catch { return ["chat", "jobs", "briefing", "email"]; }
+  });
+  const recommended = apps.filter(a => recommendedIds.includes(a.id)).slice(0, 4);
+  const homeApps = apps.filter(a => !recommendedIds.includes(a.id)).slice(0, 8);
   if (loading) return (
     <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{width:32,height:32,borderRadius:"50%",border:"2px solid rgba(139,92,246,.3)",borderTopColor:"rgba(139,92,246,.8)",animation:"spin 1s linear infinite"}}/>
@@ -654,6 +669,7 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
   const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   const dateStr = now.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
 
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 4px" }}>
       {/* Time + greeting header */}
@@ -662,19 +678,78 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
         <div style={{ fontSize: 13, color: "rgba(255,255,255,.35)", marginTop: 6, fontWeight: 400, letterSpacing: .5 }}>{dateStr}</div>
       </div>
 
-      {/* App grid */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(4, 1fr)",
-        gap: 10,
-        padding: "4px 8px",
-        flex: 1,
-        alignContent: "start"
-      }}
+      {/* ⬡B:FEATURE:recommended_apps:20260409⬡ Recommended for you */}
+      {!appSearch && recommended.length > 0 && <div style={{ padding: "0 12px 8px" }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,.3)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Recommended for you</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+          {recommended.map((app) => {
+            const IC = ICON_MAP[app.icon] || Sparkles;
+            const ac = APP_COLORS[app.id] || "#a78bfa";
+            return (
+              <button key={"rec-"+app.id} onClick={() => onAppSelect(app)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 4px", borderRadius: 16, border: "1px solid " + ac + "22", background: ac + "08", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: "linear-gradient(135deg, " + ac + "33, " + ac + "15)", border: "1px solid " + ac + "44", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <IC size={20} color={ac} strokeWidth={1.8} />
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 500, color: "rgba(255,255,255,.55)", textAlign: "center", lineHeight: 1.2, maxWidth: 68, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{app.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>}
+
+      {/* ⬡B:FEATURE:smart_app_search:20260409⬡ Search bar */}
+      <div style={{ padding: "0 12px 8px", position: "relative" }}>
+        <Search size={14} style={{ position: "absolute", left: 24, top: 10, color: "rgba(255,255,255,.3)", pointerEvents: "none" }} />
+        <input
+          value={appSearch}
+          onChange={e => setAppSearch(e.target.value)}
+          placeholder="Search apps..."
+          style={{ width: "100%", padding: "10px 12px 10px 36px", borderRadius: 14, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.8)", fontSize: 13, outline: "none", boxSizing: "border-box", backdropFilter: "blur(8px)" }}
+        />
+      </div>
+
+      {/* ⬡B:FEATURE:app_frame_grid:20260411⬡ Frame layout — apps form border, ABA orb in center */}
+      {appSearch ? <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, padding: "4px 12px", alignContent: "start" }}>
+        {filteredApps.map((app, idx) => {
+          const IconComponent = ICON_MAP[app.icon] || Sparkles;
+          const accent = APP_COLORS[app.id] || "#a78bfa";
+          return (
+            <button key={app.id} onClick={() => onAppSelect(app)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 4px", borderRadius: 16, border: "none", background: "transparent", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${accent}22, ${accent}11)`, border: `1px solid ${accent}33`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <IconComponent size={24} color={accent} strokeWidth={1.8} />
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,.55)", textAlign: "center", lineHeight: 1.2, maxWidth: 72, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{app.name}</span>
+            </button>
+          );
+        })}
+      </div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, padding: "4px 16px", alignContent: "start" }}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       >
-        {apps.map((app, idx) => {
+        {homeApps.slice(0, 3).map((app, idx) => {
+          const IconComponent = ICON_MAP[app.icon] || Sparkles;
+          const accent = APP_COLORS[app.id] || "#a78bfa";
+          return (<button key={app.id} data-app-idx={idx} onTouchStart={(e) => handleTouchStart(idx, e)} onClick={() => { if (dragging === null) onAppSelect(app); }} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 4px", borderRadius: 16, border: "none", background: "transparent", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${accent}22, ${accent}11)`, border: `1px solid ${accent}33`, display: "flex", alignItems: "center", justifyContent: "center" }}><IconComponent size={24} color={accent} strokeWidth={1.8} /></div>
+            <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,.55)", textAlign: "center", lineHeight: 1.2, maxWidth: 72, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{app.name}</span>
+          </button>);
+        })}
+        {homeApps[3] && (() => { const app=homeApps[3]; const IC=ICON_MAP[app.icon]||Sparkles; const ac=APP_COLORS[app.id]||"#a78bfa"; return <button key={app.id} onClick={() => onAppSelect(app)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 4px", borderRadius: 16, border: "none", background: "transparent", cursor: "pointer" }}><div style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${ac}22, ${ac}11)`, border: `1px solid ${ac}33`, display: "flex", alignItems: "center", justifyContent: "center" }}><IC size={24} color={ac} strokeWidth={1.8} /></div><span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,.55)", textAlign: "center" }}>{app.name}</span></button> })()}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 8 }}><ABALogo size={44} glow /></div>
+        {homeApps[4] && (() => { const app=homeApps[4]; const IC=ICON_MAP[app.icon]||Sparkles; const ac=APP_COLORS[app.id]||"#a78bfa"; return <button key={app.id} onClick={() => onAppSelect(app)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 4px", borderRadius: 16, border: "none", background: "transparent", cursor: "pointer" }}><div style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${ac}22, ${ac}11)`, border: `1px solid ${ac}33`, display: "flex", alignItems: "center", justifyContent: "center" }}><IC size={24} color={ac} strokeWidth={1.8} /></div><span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,.55)", textAlign: "center" }}>{app.name}</span></button> })()}
+        {homeApps.slice(5, 8).map((app, idx) => {
+          const IconComponent = ICON_MAP[app.icon] || Sparkles;
+          const accent = APP_COLORS[app.id] || "#a78bfa";
+          return (<button key={app.id} onClick={() => onAppSelect(app)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 4px", borderRadius: 16, border: "none", background: "transparent", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${accent}22, ${accent}11)`, border: `1px solid ${accent}33`, display: "flex", alignItems: "center", justifyContent: "center" }}><IconComponent size={24} color={accent} strokeWidth={1.8} /></div>
+            <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,.55)", textAlign: "center", lineHeight: 1.2, maxWidth: 72, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{app.name}</span>
+          </button>);
+        })}
+      </div>}
+
+      {/* LEGACY: keep original map for drag-drop to not break — hidden */}
+      <div style={{display:"none"}}>
+        {homeApps.map((app, idx) => {
           const IconComponent = ICON_MAP[app.icon] || Sparkles;
           const accent = APP_COLORS[app.id] || "#a78bfa";
           const isDragged = dragging === idx;
@@ -724,6 +799,49 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
           );
         })}
       </div>
+
+      {/* ⬡B:FEATURE:all_apps_drawer:20260409⬡ "All Apps" button */}
+      {!appSearch && <button onClick={() => setDrawerOpen(true)} style={{
+        margin: "12px auto 8px", padding: "10px 24px", borderRadius: 14,
+        border: "1px solid rgba(139,92,246,.2)", background: "rgba(139,92,246,.06)",
+        color: "rgba(139,92,246,.8)", cursor: "pointer", fontSize: 13, fontWeight: 600,
+        display: "flex", alignItems: "center", gap: 8, backdropFilter: "blur(8px)"
+      }}><LayoutList size={14} /> All Apps</button>}
+
+      {/* App Drawer overlay */}
+      {drawerOpen && <div style={{ position: "fixed", inset: 0, zIndex: 999, background: "rgba(0,0,0,.7)", backdropFilter: "blur(12px)", display: "flex", flexDirection: "column" }} onClick={() => setDrawerOpen(false)}>
+        <div onClick={e => e.stopPropagation()} style={{ marginTop: "auto", maxHeight: "75vh", background: "rgba(20,16,32,.98)", borderRadius: "24px 24px 0 0", padding: "16px 16px calc(24px + env(safe-area-inset-bottom, 0px))", overflow: "hidden", display: "flex", flexDirection: "column", border: "1px solid rgba(139,92,246,.15)", boxShadow: "0 -8px 32px rgba(0,0,0,.5)" }}>
+          <div style={{ width: 40, height: 4, borderRadius: 2, background: "rgba(255,255,255,.15)", margin: "0 auto 12px" }} />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <h3 style={{ color: "rgba(255,255,255,.9)", fontSize: 18, fontWeight: 700, margin: 0 }}>All Apps</h3>
+            <button onClick={() => setDrawerOpen(false)} style={{ width: 32, height: 32, borderRadius: 10, border: "none", background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.4)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><X size={14} /></button>
+          </div>
+          <div style={{ position: "relative", marginBottom: 12 }}>
+            <Search size={14} style={{ position: "absolute", left: 12, top: 10, color: "rgba(255,255,255,.3)", pointerEvents: "none" }} />
+            <input
+              value={appSearch}
+              onChange={e => setAppSearch(e.target.value)}
+              placeholder="Search apps..."
+              autoFocus
+              style={{ width: "100%", padding: "10px 12px 10px 34px", borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.8)", fontSize: 13, outline: "none", boxSizing: "border-box" }}
+            />
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, padding: "4px 0" }}>
+            {(appSearch ? filteredApps : apps).map((app, idx) => {
+              const IC = ICON_MAP[app.icon] || Sparkles;
+              const ac = APP_COLORS[app.id] || "#a78bfa";
+              return (
+                <button key={app.id} onClick={() => { setDrawerOpen(false); setAppSearch(""); onAppSelect(app); }} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 4px", borderRadius: 16, border: "none", background: "transparent", cursor: "pointer", WebkitTapHighlightColor: "transparent" }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 12, background: `linear-gradient(135deg, ${ac}22, ${ac}11)`, border: `1px solid ${ac}33`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <IC size={22} color={ac} strokeWidth={1.8} />
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 500, color: "rgba(255,255,255,.55)", textAlign: "center", lineHeight: 1.2, maxWidth: 70, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{app.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>}
     </div>
   );
 }
@@ -1132,12 +1250,15 @@ function TalkToABA({userId}){
     }
   },[conversation,orbState]);
 
-  const colors={idle:"139,92,246",connecting:"245,158,11",listening:"139,92,246",thinking:"245,158,11",speaking:"16,185,129",error:"239,68,68"};
+  // ⬡B:MACE.fix:UI:orb_redesign_aba_logo_always:20260411⬡
+  // ABA logo ALWAYS visible inside orb. Color and animation change per state.
+  // Brandon loves the golden connecting circle — that warmth carries across all states.
+  const colors={idle:"180,140,80",connecting:"245,158,11",listening:"139,92,246",thinking:"245,158,11",speaking:"16,185,129",error:"239,68,68"};
   const c=colors[orbState]||colors.idle;
-  const icons={idle:Mic,connecting:Sparkles,listening:Mic,thinking:Sparkles,speaking:Volume2,error:AlertTriangle};
-  const Icon=icons[orbState]||Mic;
   const labels={idle:"TAP TO TALK",connecting:"CONNECTING",listening:"LISTENING",thinking:"THINKING",speaking:"SPEAKING",error:"ERROR"};
   const isActive=orbState!=="idle"&&orbState!=="error";
+  const isSpinning=orbState==="connecting"||orbState==="thinking";
+  const breatheSpeed=orbState==="listening"?"1s":orbState==="speaking"?"1.5s":orbState==="connecting"?"0.8s":"3s";
 
   return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,position:"relative"}}>
@@ -1146,17 +1267,19 @@ function TalkToABA({userId}){
       <div style={{position:"absolute",width:300,height:300,borderRadius:"50%",border:`1px solid rgba(${c},.08)`,animation:isActive?"pulse 2s ease-out .5s infinite":"none",opacity:.3,pointerEvents:"none"}}/>
       <div style={{position:"absolute",width:380,height:380,borderRadius:"50%",border:`1px solid rgba(${c},.05)`,animation:isActive?"pulse 2s ease-out 1s infinite":"none",opacity:.2,pointerEvents:"none"}}/>
 
-      {/* Main orb */}
+      {/* Main orb — ALWAYS shows ABA logo */}
       <button onClick={handleTap} style={{
         width:160,height:160,borderRadius:"50%",border:"none",cursor:"pointer",
         background:`radial-gradient(circle at 30% 30%, rgba(${c},.5), rgba(${c},.25))`,
         boxShadow:`0 0 80px rgba(${c},.4), inset 0 0 40px rgba(255,255,255,.1)`,
         display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,color:"white",
-        animation:orbState==="listening"?"breathe 1s ease-in-out infinite":orbState==="speaking"?"breathe 1.5s ease-in-out infinite":"breathe 3s ease-in-out infinite",
-        transition:"all .3s"
+        animation:`breathe ${breatheSpeed} ease-in-out infinite`,
+        transition:"all .5s"
       }}>
-        {orbState==="thinking"||orbState==="connecting"?<div style={{animation:"spin 1s linear infinite"}}><ABALogo size={44} color="white"/></div>:<Icon size={44}/>}
-        <span style={{fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>{labels[orbState]}</span>
+        <div style={{animation:isSpinning?"spin 1.5s linear infinite":"none",transition:"all .3s"}}>
+          <ABALogo size={48} glow color="white"/>
+        </div>
+        <span style={{fontSize:10,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",opacity:.9}}>{labels[orbState]}</span>
       </button>
 
       {/* Status */}
@@ -1171,7 +1294,7 @@ function TalkToABA({userId}){
       </div>
 
       {/* Last response */}
-      {lastMsg&&<div style={{position:"absolute",bottom:20,left:16,right:16,padding:"12px 16px",background:"rgba(0,0,0,.6)",backdropFilter:"blur(12px)",borderRadius:16,border:`1px solid rgba(${c},.2)`,transition:"all .3s",maxHeight:120,overflow:"hidden"}}>
+      {lastMsg&&<div style={{position:"absolute",bottom:20,left:16,right:16,padding:"12px 16px",background:"rgba(0,0,0,.6)",backdropFilter:"blur(12px)",borderRadius:16,border:`1px solid rgba(${c},.2)`,transition:"all .3s",maxHeight:200,overflow:"hidden"}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
           <ABALogo size={14}/>
           <span style={{color:`rgba(${c},.7)`,fontSize:9,fontWeight:600}}>{orbState==="speaking"?"ABA IS SAYING":orbState==="thinking"?"ABA IS THINKING":"ABA SAID"}</span>
@@ -1348,7 +1471,7 @@ function Login({onLogin}){
     }).catch(()=>{});
   },[]);
 
-  const go=async()=>{setLoading(true);setError(null);try{const result=await signInGoogle();onLogin(result.user)}catch(e){setError(e.message)}finally{setLoading(false)}};
+  const go=async()=>{setLoading(true);setError(null);try{const result=await signInGoogle();if(result&&result.user)onLogin(result.user)}catch(e){setError(e.message)}finally{setLoading(false)}};
 
   return(<div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"#08080d",fontFamily:"'SF Pro Display',-apple-system,sans-serif",overflow:"auto"}}>
     <div style={{position:"absolute",inset:0,backgroundImage:`url(${BG.pinkSmoke.u})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.3) saturate(.6)",animation:"kenBurns 30s ease-in-out infinite"}}/>
@@ -1693,7 +1816,7 @@ function MyABAInner(){
   const[voiceMode,setVoiceMode]=useState(()=>{try{return localStorage.getItem("myaba_voiceMode")||"chat"}catch{return "chat"}});
   const[settingsLoaded,setSettingsLoaded]=useState(false);
   
-  const[settingsOpen,setSettingsOpen]=useState(false);const[sidebarOpen,setSidebarOpen]=useState(false);
+  const[settingsOpen,setSettingsOpen]=useState(false);const[sidebarOpen,setSidebarOpen]=useState(false);const[exportMenu,setExportMenu]=useState(false);
   const[mainTab,setMainTab]=useState("home"); // ⬡B:phase3:CIP_LAUNCHER:home_default:20260323⬡
   const[appScope,setAppScope]=useState(null); // Current app agent scope for AIR calls
   const[briefingData,setBriefingData]=useState(null);
@@ -2037,13 +2160,14 @@ function MyABAInner(){
     reachPresence(userId).then(d=>{if(d.items)setProactiveItems(d.items)});
   },[user]);
 
+  // ⬡B:WRAP.migration:FIX:rename_new_chat_convos:20260409⬡
+  // Rename active conversation if still "New Chat"
   useEffect(()=>{
     if(!activeConv||activeConv.autoNamed||!user)return;
     if(activeConv.messages.length>=2){
       airNameChat(activeConv.messages,user.email||user.uid).then(name=>{
         if(name){
           setConvos(p=>p.map(c=>c.id===activeId?{...c,title:name,autoNamed:true}:c));
-          // Sync title to backend
           if(activeId&&!String(activeId).startsWith('conv-')){
             fetch(`${ABABASE}/api/conversations/${activeId}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:name})}).catch(()=>{});
           }
@@ -2051,6 +2175,25 @@ function MyABAInner(){
       });
     }
   },[messages.length,activeId]);
+
+  // ⬡B:WRAP.migration:FIX:bulk_rename_on_load:20260409⬡
+  // One-time migration: rename all "New Chat" conversations with messages
+  useEffect(()=>{
+    if(!user||!convos.length)return;
+    const unnamed=convos.filter(c=>c.title==="New Chat"&&!c.autoNamed&&c.messages&&c.messages.length>=2);
+    if(!unnamed.length)return;
+    // [WRAP] migration runs silently
+    unnamed.slice(0,5).forEach(c=>{
+      airNameChat(c.messages,user.email||user.uid).then(name=>{
+        if(name){
+          setConvos(p=>p.map(x=>x.id===c.id?{...x,title:name,autoNamed:true}:x));
+          if(c.id&&!String(c.id).startsWith('conv-')){
+            fetch(`${ABABASE}/api/conversations/${c.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:name})}).catch(()=>{});
+          }
+        }
+      });
+    });
+  },[convos.length,user]);
 
   // ⬡B:MYABA:FIX:remove_duplicate_save:20260321⬡
   // REMOVED: saveConversation useEffect that ran on every messages.length change.
@@ -2213,6 +2356,10 @@ function MyABAInner(){
       },
       onToolStart:(tool)=>{
         setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:m.content+(m.content?"\n":"")+"_Checking "+tool+"..._"}:m));
+      },
+      onAttachment:(att)=>{
+        // ⬡B:MACE.file_delivery:UI:attachment_in_bubble:20260409⬡
+        setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,attachments:[...(m.attachments||[]),{name:att.filename,type:att.contentType,size:att.sizeKB?att.sizeKB*1024:0,url:att.url}]}:m));
       },
       onDone:(data)=>{
         const finalText=data.fullResponse||data.response||"";
@@ -2415,6 +2562,17 @@ function MyABAInner(){
         <div style={{display:"flex",gap:4}}>
           {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:lastABAResponse?"rgba(34,197,94,.1)":"rgba(255,255,255,.04)",color:lastABAResponse?"rgba(34,197,94,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}><Activity size={14}/></button>}
           <button onClick={()=>setVoiceOut(!voiceOut)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:voiceOut?"rgba(139,92,246,.1)":"rgba(255,255,255,.04)",color:voiceOut?"rgba(139,92,246,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={13}/>:<VolumeX size={13}/>}</button>
+          {mainTab==="chat"&&activeConv&&activeConv.messages.length>0&&<div style={{position:"relative"}}>
+            <button onClick={()=>setExportMenu(!exportMenu)} style={{padding:"0 10px",height:32,borderRadius:10,border:"none",cursor:"pointer",background:exportMenu?"rgba(139,92,246,.15)":"rgba(255,255,255,.06)",color:exportMenu?"rgba(139,92,246,.7)":"rgba(255,255,255,.4)",display:"flex",alignItems:"center",justifyContent:"center",gap:4,fontSize:11,fontWeight:500}} title="Save chat"><Download size={13}/>Save</button>
+            {exportMenu&&<div style={{position:"absolute",top:36,right:0,background:"rgba(20,16,32,.97)",border:"1px solid rgba(139,92,246,.2)",borderRadius:12,padding:4,minWidth:120,zIndex:50,boxShadow:"0 8px 24px rgba(0,0,0,.5)",backdropFilter:"blur(12px)"}}>
+              {[["pdf","PDF"],["docx","Word"],["md","Markdown"]].map(([fmt,label])=>(
+                <button key={fmt} onClick={()=>{setExportMenu(false);exportChat(activeConv.messages,activeConv.title||"ABA Chat",fmt)}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"10px 12px",border:"none",background:"transparent",color:"rgba(255,255,255,.75)",cursor:"pointer",borderRadius:8,fontSize:12,fontWeight:500,textAlign:"left"}}
+                  onMouseEnter={e=>e.target.style.background="rgba(139,92,246,.1)"}
+                  onMouseLeave={e=>e.target.style.background="transparent"}
+                ><FileText size={12} style={{color:"rgba(139,92,246,.6)",flexShrink:0}}/>{label}</button>
+              ))}
+            </div>}
+          </div>}
           <button onClick={()=>setSettingsOpen(true)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}><Settings size={13}/></button>
         </div>
       </div>}
@@ -2431,8 +2589,10 @@ function MyABAInner(){
               if(voiceMode==="talk")setVoiceMode("chat");
               setSnapOpen(false);setClipboardOpen(false);
             }
+            // ⬡B:WRAP.fix:LOCAL:track_app_usage:20260410⬡
+            try { const u = JSON.parse(localStorage.getItem("myaba_app_usage") || "{}"); u[app.id] = (u[app.id] || 0) + 1; localStorage.setItem("myaba_app_usage", JSON.stringify(u)); } catch {}
             if(app.id==="chat"){setMainTab("chat")}
-            else if(app.id==="briefing"){setMainTab("briefing");if(!briefingData&&!briefingLoading){setBriefingLoading(true);fetchBriefing(user?.email||user?.uid||"unknown").then(d=>{setBriefingData(d);setBriefingLoading(false)})}}
+            else if(app.id==="briefing"){setMainTab("briefing");if(!briefingData&&!briefingLoading){setBriefingLoading(true);fetchBriefing(user?.email||user?.uid||"unknown").then(d=>{setBriefingData(d);setBriefingLoading(false)}).catch(()=>setBriefingLoading(false))}}
             else if(app.id==="jobs"){setMainTab("jobs")}
             else if(app.id==="pipeline"){setMainTab("pipeline")}
             else if(app.id==="email"){setMainTab("email")}
@@ -2489,7 +2649,7 @@ function MyABAInner(){
         {voiceMode==="chat"&&<div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
           <button onClick={()=>fileInputRef.current?.click()} style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:"rgba(255,255,255,.05)",color:"rgba(255,255,255,.4)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Paperclip size={16}/></button>
           <button onClick={()=>setScannerOpen(true)} title="Scan food barcode" style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:"rgba(255,255,255,.05)",color:"rgba(139,92,246,.5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Camera size={16}/></button>
-          <div style={{flex:1,display:"flex",alignItems:"flex-end",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:20,padding:"6px 6px 6px 16px",minHeight:44}}><textarea value={input} onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px"}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage(input)}}} onFocus={scrollInputIntoView} placeholder="Message ABA..." rows={1} style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.9)",fontSize:16,padding:"8px 0",WebkitAppearance:"none",resize:"none",overflow:"hidden",lineHeight:"1.4",maxHeight:120,minHeight:20,fontFamily:"inherit"}}/><button onClick={()=>{if(!isListening)startListening();else stopListening()}} style={{width:36,height:36,borderRadius:99,border:"none",cursor:"pointer",background:isListening?"rgba(6,182,212,.2)":"rgba(255,255,255,.05)",color:isListening?"rgba(6,182,212,.95)":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{isListening?<MicOff size={14}/>:<Mic size={14}/>}</button></div>
+          <div style={{flex:1,display:"flex",alignItems:"flex-end",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:20,padding:"6px 6px 6px 16px",minHeight:44}}><textarea value={input} onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,200)+"px"}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage(input)}}} onFocus={scrollInputIntoView} placeholder="Message ABA..." rows={1} style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.9)",fontSize:16,padding:"8px 0",WebkitAppearance:"none",resize:"none",overflow:"hidden",lineHeight:"1.4",maxHeight:200,minHeight:20,fontFamily:"inherit"}}/><button onClick={()=>{if(!isListening)startListening();else stopListening()}} style={{width:36,height:36,borderRadius:99,border:"none",cursor:"pointer",background:isListening?"rgba(6,182,212,.2)":"rgba(255,255,255,.05)",color:isListening?"rgba(6,182,212,.95)":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{isListening?<MicOff size={14}/>:<Mic size={14}/>}</button></div>
           <button onClick={()=>sendMessage(input)} disabled={!input.trim()&&attachments.length===0} style={{width:48,height:48,borderRadius:99,border:"none",cursor:(input.trim()||attachments.length>0)?"pointer":"default",background:(input.trim()||attachments.length>0)?"rgba(139,92,246,.4)":"rgba(255,255,255,.04)",color:(input.trim()||attachments.length>0)?"white":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:(input.trim()||attachments.length>0)?"0 0 16px rgba(139,92,246,.25)":"none"}}><Send size={18}/></button>
         </div>}
         

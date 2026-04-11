@@ -2,6 +2,32 @@
 // Extracted from MyABA.jsx — zero logic changes, just exports added
 // Every backend communication function lives here. Views import what they need.
 
+// ⬡B:VIGIL.gatekeeper:FRONTEND:auth_headers:20260408⬡
+// Gatekeeper integration — injects Firebase ID token into all backend calls
+import { auth } from '../firebase.js';
+
+const ABA_PLATFORM = 'myaba';
+
+async function getAuthHeaders() {
+  const headers = { 'X-ABA-Platform': ABA_PLATFORM };
+  try {
+    const user = auth.currentUser;
+    if (user) {
+      const token = await user.getIdToken();
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  } catch (e) {
+    console.warn('[AUTH] Failed to get ID token:', e.message);
+  }
+  return headers;
+}
+
+async function abaFetch(url, options = {}) {
+  const authHeaders = await getAuthHeaders();
+  const mergedHeaders = { ...authHeaders, ...(options.headers || {}) };
+  return fetch(url, { ...options, headers: mergedHeaders });
+}
+
 export const ABABASE = "https://abacia-services.onrender.com";
 
 // v1.2.0: Check online status
@@ -22,7 +48,7 @@ export async function airRequest(type, payload = {}, userId = "unknown", maxRetr
       // ⬡B:MYABA:ABABASE_WIRED:v2.16.0:20260321⬡
       // FIX 1: Send conversationHistory so ABA has context between messages
       // FIX 2: Send email field separately for HAM identity crosswalk
-      const res = await fetch(`${ABABASE}/api/air/process`, {
+      const res = await abaFetch(`${ABABASE}/api/air/process`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -61,14 +87,14 @@ export async function airRequest(type, payload = {}, userId = "unknown", maxRetr
 // ⬡B:roadmap.tier3:STREAMING:airRequestStream:20260323⬡
 // SSE streaming variant of airRequest. Streams text chunks via onChunk callback.
 // Returns the full response when done. Used by sendMessage for real-time chat.
-export async function airRequestStream({ message, userId, channel, conversationId, conversationHistory, images, appScope, onChunk, onToolStart, onDone, onError }) {
+export async function airRequestStream({ message, userId, channel, conversationId, conversationHistory, images, appScope, onChunk, onToolStart, onAttachment, onDone, onError }) {
   if (!isOnline()) {
     onError?.("You are offline");
     return { response: null, offline: true };
   }
   
   try {
-    const res = await fetch(ABABASE + "/api/air/stream", {
+    const res = await abaFetch(ABABASE + "/api/air/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -112,6 +138,8 @@ export async function airRequestStream({ message, userId, channel, conversationI
             onChunk?.(null, data.text, "filler");
           } else if (data.type === "filler_end") {
             onChunk?.(null, null, "filler_end");
+          } else if (data.type === "attachment") {
+            onAttachment?.(data);
           } else if (data.type === "tool_start") {
             onToolStart?.(data.tool);
           } else if (data.type === "done") {
@@ -138,7 +166,7 @@ export async function airRequestStream({ message, userId, channel, conversationI
 
 export async function airShareChat(userId, convId, emails) {
   try {
-    const res = await fetch(`${ABABASE}/api/conversations/${convId}/share`, {
+    const res = await abaFetch(`${ABABASE}/api/conversations/${convId}/share`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, sharedWith: emails })
@@ -150,7 +178,7 @@ export async function airShareChat(userId, convId, emails) {
 // SPURT 4: Project functions - now using direct /api/projects endpoint
 export async function airLoadProjects(userId) {
   try {
-    const res = await fetch(`${ABABASE}/api/projects?userId=${encodeURIComponent(userId)}`);
+    const res = await abaFetch(`${ABABASE}/api/projects?userId=${encodeURIComponent(userId)}`);
     if (res.ok) {
       const data = await res.json();
       return { success: true, projects: data.projects || [] };
@@ -161,7 +189,7 @@ export async function airLoadProjects(userId) {
 
 export async function airCreateProject(userId, name, shared = false, sharedWith = []) {
   try {
-    const res = await fetch(`${ABABASE}/api/projects`, {
+    const res = await abaFetch(`${ABABASE}/api/projects`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, name, shared, sharedWith })
@@ -179,7 +207,7 @@ export async function airLoadConversations(userId, projectId = null) {
   try {
     let url = `${ABABASE}/api/conversations?userId=${encodeURIComponent(userId)}`;
     if (projectId) url += `&projectId=${encodeURIComponent(projectId)}`;
-    const res = await fetch(url);
+    const res = await abaFetch(url);
     if (res.ok) {
       const data = await res.json();
       return { success: true, conversations: data.conversations || [] };
@@ -190,7 +218,7 @@ export async function airLoadConversations(userId, projectId = null) {
 
 export async function airCreateConversation(userId, title = 'New Chat', projectId = null, shared = false) {
   try {
-    const res = await fetch(`${ABABASE}/api/conversations`, {
+    const res = await abaFetch(`${ABABASE}/api/conversations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, title, projectId, shared })
@@ -205,7 +233,7 @@ export async function airCreateConversation(userId, title = 'New Chat', projectI
 
 export async function airAddMessage(conversationId, role, content) {
   try {
-    const res = await fetch(`${ABABASE}/api/conversations/${conversationId}/messages`, {
+    const res = await abaFetch(`${ABABASE}/api/conversations/${conversationId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role, content })
@@ -220,7 +248,7 @@ export async function airAddMessage(conversationId, role, content) {
 
 export async function airUpdateConversation(conversationId, updates) {
   try {
-    const res = await fetch(`${ABABASE}/api/conversations/${conversationId}`, {
+    const res = await abaFetch(`${ABABASE}/api/conversations/${conversationId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updates)
@@ -231,7 +259,7 @@ export async function airUpdateConversation(conversationId, updates) {
 
 export async function airDeleteConversation(conversationId) {
   try {
-    const res = await fetch(`${ABABASE}/api/conversations/${conversationId}`, {
+    const res = await abaFetch(`${ABABASE}/api/conversations/${conversationId}`, {
       method: "DELETE"
     });
     return res.ok;
@@ -241,7 +269,7 @@ export async function airDeleteConversation(conversationId) {
 // SPURT 4C: Settings functions - using /api/settings endpoint
 export async function airLoadSettings(userId) {
   try {
-    const res = await fetch(`${ABABASE}/api/settings?userId=${encodeURIComponent(userId)}`);
+    const res = await abaFetch(`${ABABASE}/api/settings?userId=${encodeURIComponent(userId)}`);
     if (res.ok) {
       const data = await res.json();
       return { success: true, settings: data.settings || {} };
@@ -252,7 +280,7 @@ export async function airLoadSettings(userId) {
 
 export async function airSaveSettings(userId, settings) {
   try {
-    const res = await fetch(`${ABABASE}/api/settings`, {
+    const res = await abaFetch(`${ABABASE}/api/settings`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, settings })
@@ -267,7 +295,7 @@ export async function airAddProjectFile(userId, projectId, file) {
   formData.append("projectId", projectId);
   formData.append("userId", userId);
   try {
-    const res = await fetch(`${ABABASE}/api/project/upload`, { method: "POST", body: formData });
+    const res = await abaFetch(`${ABABASE}/api/project/upload`, { method: "POST", body: formData });
     return res.ok ? await res.json() : { error: true };
   } catch { return { error: true }; }
 }
@@ -296,7 +324,7 @@ export async function uploadAttachment(file, userId, conversationId) {
     console.log(`[UPLOAD] Reading ${file.name} (${file.type}, ${file.size} bytes)`);
     const base64 = await fileToBase64(file);
     console.log(`[UPLOAD] Uploading ${file.name} to backend...`);
-    const res = await fetch(`${ABABASE}/api/attachments/upload`, {
+    const res = await abaFetch(`${ABABASE}/api/attachments/upload`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -328,7 +356,7 @@ export async function uploadAttachmentsBatch(files, userId, conversationId) {
       fileData.push({ filename: file.name, contentType: file.type || 'application/octet-stream', base64 });
     }
     console.log(`[UPLOAD] Batch uploading ${fileData.length} files...`);
-    const res = await fetch(`${ABABASE}/api/attachments/upload-batch`, {
+    const res = await abaFetch(`${ABABASE}/api/attachments/upload-batch`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ files: fileData, userId: userId || 'unknown', conversationId })
@@ -354,7 +382,7 @@ export async function reachTranscribe(audioBlob) {
     }
     console.log("[VOICE] Transcribing", audioBlob.size, "bytes,", audioBlob.type);
     const contentType = audioBlob.type || "audio/webm";
-    const res = await fetch(`${ABABASE}/api/voice/transcribe`, { 
+    const res = await abaFetch(`${ABABASE}/api/voice/transcribe`, { 
       method: "POST", 
       headers: { "Content-Type": contentType },
       body: audioBlob 
@@ -372,7 +400,7 @@ export async function reachTranscribe(audioBlob) {
 export async function reachSynthesize(text) {
   try {
     // ⬡B:MYABA.V2:voice:20260313⬡ Using VARA (Vocal Authorized Representative of ABA) voice
-    const res = await fetch(`${ABABASE}/api/voice/synthesize`, {
+    const res = await abaFetch(`${ABABASE}/api/voice/synthesize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, voiceId: "AIFDUhRnM6s61433WMNu", model: "eleven_turbo_v2_5" }),
@@ -385,24 +413,27 @@ export async function reachSynthesize(text) {
 
 export async function reachPresence(userId) {
   try {
-    const res = await fetch(`${ABABASE}/api/presence?userId=${userId}`);
+    const res = await abaFetch(`${ABABASE}/api/presence?userId=${userId}`);
     return res.ok ? await res.json() : { items: [] };
   } catch { return { items: [] }; }
 }
 
-export async function airNameChat(messages, userId) {
+export async function airNameChat(messages) {
+  // ⬡B:WRAP.fix:LOCAL:smart_naming_no_api:20260410⬡
+  // Zero API calls. Strips filler words, takes content words from first user message.
   try {
-    const firstUserMsg = messages.find(m => m.role === "user");
-    if (!firstUserMsg) return null;
-    
-    const words = firstUserMsg.content.trim().split(/\s+/).slice(0, 6).join(" ");
-    const localName = words.length > 35 ? words.substring(0, 35) + "..." : words;
-    console.log("[CHAT] Named chat:", localName);
-    return localName;
-  } catch (e) { 
-    console.error("[CHAT] Name error:", e);
-    return null; 
-  }
+    const firstUser = messages.find(m => m.role === "user");
+    if (!firstUser) return null;
+    const text = (firstUser.content || firstUser.text || "").trim();
+    if (!text) return null;
+    const FILLER = new Set(["i","me","my","we","our","you","your","the","a","an","is","am","are","was","were","be","do","does","did","have","has","had","can","could","would","should","will","shall","may","might","must","to","for","of","in","on","at","by","from","with","and","or","but","not","so","if","it","its","that","this","what","which","who","how","when","where","why","there","here","just","also","very","really","right","now","like","want","need","let","lets","got","get","going","thing","things","something","about","some","any","all","than","then","them","they","their","those","these","into","out","up","down","no","yes","ok","hey","hi","hello","please","thanks","thank","dont","im","ive","id","ill","ur","u","aba","help"]);
+    const words = text.replace(/[^a-zA-Z0-9\s]/g, " ").split(/\s+/).filter(w => w.length > 1 && !FILLER.has(w.toLowerCase()));
+    if (words.length === 0) {
+      const fallback = text.split(/\s+/).slice(0, 4).join(" ");
+      return fallback.length > 30 ? fallback.substring(0, 30) + "..." : fallback;
+    }
+    return words.slice(0, 5).join(" ");
+  } catch { return null; }
 }
 
 // v1.2.0: JARVIS-style greeting from AGENT DAWN (Daily Automated Wisdom Notifier)
@@ -471,7 +502,7 @@ export async function subscribeToPush(userId) {
       });
     }
     
-    await fetch(`${ABABASE}/api/push/subscribe`, {
+    await abaFetch(`${ABABASE}/api/push/subscribe`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, subscription: subscription.toJSON() })
@@ -491,7 +522,7 @@ export async function unsubscribeFromPush(userId) {
     const subscription = await registration.pushManager.getSubscription();
     if (subscription) {
       await subscription.unsubscribe();
-      await fetch(`${ABABASE}/api/push/unsubscribe`, {
+      await abaFetch(`${ABABASE}/api/push/unsubscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId })
@@ -516,4 +547,78 @@ export function safeParseGreeting(response) {
     return { title: parsed.greeting || parsed.title || "", subtitle: parsed.context || parsed.subtitle || "" };
   }
   return { title: String(response), subtitle: "" };
+}
+
+
+// ⬡B:MACE.fix:FUNC:fetchBriefing:20260411⬡
+// Returns data in the format BriefingView expects: {summary, handled, pending, upcoming, news}
+export async function fetchBriefing(userId) {
+  try {
+    const res = await abaFetch(ABABASE + "/api/air/process", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Generate my daily briefing. Include a summary paragraph, then list what you have handled for me today, what is pending and needs my attention, upcoming calendar events, and any news. Return as JSON with keys: summary (string), handled (array of strings), pending (array of strings), upcoming (array of strings), news (array of strings). Return ONLY the JSON object, no markdown, no backticks.",
+        user_id: userId, userId, channel: "myaba", appScope: "briefing"
+      })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text = data.response || data.text || "";
+    // Try to parse structured JSON from AIR response
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.summary || parsed.handled || parsed.pending) return parsed;
+      }
+    } catch {}
+    // Fallback: wrap the raw text as a summary so BriefingView can display it
+    return { summary: text, handled: [], pending: [], upcoming: [], news: [] };
+  } catch (e) { console.error("[BRIEFING] Fetch error:", e.message); return null; }
+}
+
+// ⬡B:FEATURE:chat_export:20260409⬡ Export chat to downloadable format (PDF, DOCX, MD)
+export async function exportChat(messages, title, format = "md") {
+  try {
+    // Use backend for PDF and DOCX generation
+    if (format === "pdf" || format === "docx") {
+      const res = await fetch(ABABASE + "/api/chat/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages, title, format })
+      });
+      if (!res.ok) throw new Error("Export failed: " + res.status);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${title.replace(/[^a-zA-Z0-9 ]/g, "").replace(/\s+/g, "_")}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return;
+    }
+    
+    // Client-side for markdown (fast, no network needed)
+    const timestamp = new Date().toLocaleString("en-US", { dateStyle: "full", timeStyle: "short" });
+    let output = `# ${title}\n\n*Exported ${timestamp}*\n\n---\n\n`;
+    messages.forEach(m => {
+      const role = m.role === "user" ? "**You**" : "**ABA**";
+      const text = m.content || m.text || "";
+      output += `${role}:\n${text}\n\n---\n\n`;
+    });
+    const blob = new Blob([output], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title.replace(/[^a-zA-Z0-9 ]/g, "").replace(/\s+/g, "_")}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error("[EXPORT] Error:", e);
+  }
 }

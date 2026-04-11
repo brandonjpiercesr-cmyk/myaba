@@ -36,6 +36,7 @@ export const PANEL_OPTIONS = ['transcript', 'coaching', 'glossary'];
 export const SPEAKER_MODES = {
   THEY_TALKING: 'they_talking',   // Other party speaking — TIM + COOK active
   I_TALKING: 'i_talking',         // HAM speaking — transcript only, no TIM/COOK
+  MY_TEAM: 'my_team',             // HAM's teammate speaking — listen but don't contradict
   PAUSED: 'paused',               // All processing paused — screen freezes
 };
 
@@ -233,6 +234,7 @@ export function createSegmentProcessor(api, userId, context) {
       if (speakerMode === SPEAKER_MODES.PAUSED) return;
 
       // I_TALKING: record transcript only, no TIM/COOK fires
+      // MY_TEAM: processes normally — COOK Rule 11 prevents contradicting teammates
       // This prevents the screen from jumping while the HAM is reading coached answers
       if (speakerMode === SPEAKER_MODES.I_TALKING) return;
 

@@ -2,7 +2,7 @@
 // MemosView — extracted from MyABA.jsx lines 4302-4464.
 
 import { useState, useEffect } from "react";
-import { Send, Loader2, RefreshCw } from "lucide-react";
+import { Send, Loader2, RefreshCw, Mail } from "lucide-react";
 import { ABABASE } from "../utils/api.js";
 import { HAM_TEAM } from "../utils/ham.js";
 
@@ -97,7 +97,7 @@ export default function MemosView({userId}){
           <span style={{color:"rgba(255,255,255,.2)",fontSize:9,flexShrink:0}}>{m.sentAt?new Date(m.sentAt).toLocaleDateString():""}</span>
         </div>
         {m.subject&&<p style={{color:isUnread?"rgba(255,255,255,.75)":"rgba(255,255,255,.5)",fontSize:12,fontWeight:isUnread?600:400,margin:"0 0 3px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.subject}</p>}
-        <p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:0,lineHeight:1.4,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{m.body?.substring(0,200)}</p>
+        {m.bodyHtml?<div style={{color:"rgba(255,255,255,.6)",fontSize:12,margin:0,lineHeight:1.6}} dangerouslySetInnerHTML={{__html:m.bodyHtml}}/>:<p style={{color:"rgba(255,255,255,.4)",fontSize:12,margin:0,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{m.body}</p>}
         {m.reactions&&m.reactions.length>0&&(
           <div style={{display:"flex",gap:3,marginTop:6}}>{m.reactions.map((r,i)=><span key={i} style={{fontSize:13,background:"rgba(255,255,255,.05)",padding:"1px 4px",borderRadius:6}}>{r.emoji}</span>)}</div>
         )}

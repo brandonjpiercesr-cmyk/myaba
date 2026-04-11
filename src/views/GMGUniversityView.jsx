@@ -41,12 +41,22 @@ function DeckPanel({ deck, onClose }) {
   </div>);
 }
 // ⬡B:audra.gmg_university.restructure:FIX:cip_block_sidebar:20260407⬡
-function LessonSidebar({ show, onClose, completedDays, onSelectBlock, onReset, currentLesson, curriculum }) {
+function LessonSidebar({ show, onClose, completedDays, onSelectBlock, onReset, currentLesson, curriculum, cohortType }) {
   if (!show) return null;
   const completed = completedDays || [];
   const blocks = curriculum?.blocks || [];
   const totalAll = blocks.reduce((s, b) => s + (b.days || []).length, 0);
   const totalDone = completed.length;
+  const isFounder = cohortType === 'FOUNDER' || cohortType === 'INTERVIEW_MODE';
+  // ⬡B:GMGU.layered:FIX:cip_lesson_locking:20260410⬡
+  let nextUnlocked = null;
+  for (const block of blocks) {
+    for (let i = 0; i < (block.days || []).length; i++) {
+      const key = 'b' + block.block + '-d' + (i + 1);
+      if (!completed.includes(key)) { nextUnlocked = key; break; }
+    }
+    if (nextUnlocked) break;
+  }
   return (<>
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:90}}/>
     <div style={{position:"fixed",top:0,left:0,bottom:0,width:280,maxWidth:"85vw",background:"rgba(15,15,20,.95)",backdropFilter:"blur(24px)",borderRight:"1px solid rgba(255,255,255,.08)",zIndex:91,display:"flex",flexDirection:"column"}}>
@@ -62,9 +72,9 @@ function LessonSidebar({ show, onClose, completedDays, onSelectBlock, onReset, c
           <div style={{padding:"10px 14px 4px",color:block.block===0?"#fbbf24":"#a78bfa",fontSize:10,fontWeight:600,letterSpacing:1.5,textTransform:"uppercase"}}>
             Block {block.block}{block.track&&block.track!=="UNASSIGNED"?" · "+block.track.replace(/_/g," "):""} — {block.name}
           </div>
-          {(block.days||[]).map((title,i)=>{const d=i+1;const k="b"+block.block+"-d"+d;const done=completed.includes(k);const cur=currentLesson?.block===block.block&&currentLesson?.day===d;return(<button key={k} onClick={()=>{onSelectBlock(block.block,d,title,block.name);onClose();}} style={{width:"100%",padding:"8px 14px",display:"flex",alignItems:"center",gap:8,background:cur?"rgba(124,58,237,.15)":"transparent",border:"none",cursor:"pointer",textAlign:"left",borderLeft:cur?"3px solid #7c3aed":"3px solid transparent"}}>
-            <span style={{width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:600,flexShrink:0,background:done?"rgba(16,185,129,.2)":"rgba(255,255,255,.06)",color:done?"#10b981":"rgba(255,255,255,.3)",border:"1px solid "+(done?"rgba(16,185,129,.3)":"rgba(255,255,255,.08)")}}>{done?"✓":d}</span>
-            <span style={{color:done?"rgba(255,255,255,.5)":"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.3}}>{title}</span>
+          {(block.days||[]).map((title,i)=>{const d=i+1;const k="b"+block.block+"-d"+d;const done=completed.includes(k);const cur=currentLesson?.block===block.block&&currentLesson?.day===d;const isNextUp=k===nextUnlocked;const isLocked=!isFounder&&!done&&!isNextUp;return(<button key={k} onClick={()=>{if(!isLocked){onSelectBlock(block.block,d,title,block.name);onClose();}}} style={{width:"100%",padding:"8px 14px",display:"flex",alignItems:"center",gap:8,background:cur?"rgba(124,58,237,.15)":"transparent",border:"none",cursor:isLocked?"not-allowed":"pointer",textAlign:"left",borderLeft:cur?"3px solid #7c3aed":"3px solid transparent",opacity:isLocked?0.35:1}}>
+            <span style={{width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:600,flexShrink:0,background:done?"rgba(16,185,129,.2)":isLocked?"rgba(255,255,255,.03)":"rgba(255,255,255,.06)",color:done?"#10b981":isLocked?"rgba(255,255,255,.15)":"rgba(255,255,255,.3)",border:"1px solid "+(done?"rgba(16,185,129,.3)":"rgba(255,255,255,.08)")}}>{done?"✓":isLocked?"🔒":d}</span>
+            <span style={{color:done?"rgba(255,255,255,.5)":isLocked?"rgba(255,255,255,.25)":"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.3}}>{title}</span>
           </button>);})}
         </div>))}
       </div>
@@ -126,19 +136,48 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SR) { const rec = new SR(); rec.continuous=false; rec.interimResults=true; rec.lang="en-US"; rec.onresult=e=>{setInput(Array.from(e.results).map(r=>r[0].transcript).join(""));if(e.results[0].isFinal)setListening(false);}; rec.onend=()=>setListening(false); rec.onerror=()=>setListening(false); recognitionRef.current=rec; }
   }, []);
-  // ⬡B:GMGU.curriculum:FIX:wait_for_curriculum_before_init:20260408⬡
-  // Previously, auto-init fired when profile loaded but BEFORE curriculum fetched.
-  // curriculum was null, getNextBlockLesson returned null, ABA thought all lessons done.
-  // Fix: wait for curriculum to be non-null before running auto-init.
+  // ⬡B:GMGU.layered:FIX:cip_backend_pairing_init:20260410⬡
+  // Calls /api/gmg-university/next-lessons — same endpoint as standalone and CIB.
+  // T7+ enforced pairing on the backend. No local calculation.
   useEffect(() => {
     if (profile && curriculum && !initDone && !streaming) {
       setInitDone(true);
-      const next = getNextBlockLesson(profile?.completedDays, curriculum);
       const h = new Date().getHours();
-      let msg = "Good "+(h<12?"morning":h<17?"afternoon":"evening")+", this is "+firstName+". I just opened GMG University.";
-      if (next) { msg += ' My next lesson is Block ' + next.block + ' Day ' + next.day + ': "' + next.title + '". I have completed ' + (profile.completedDays||[]).length + ' of ' + (curriculum?.totalDays||'?') + ' lessons. Proceed with my lesson.'; setCurrentLesson(next); }
-      else { msg += ' I have completed all ' + (curriculum?.totalDays||'?') + ' lessons.'; }
-      streamFromAIR(msg, true);
+      const greeting = h<12?"morning":h<17?"afternoon":"evening";
+      (async () => {
+        try {
+          const nlRes = await fetch(ABABASE+"/api/gmg-university/next-lessons?email="+encodeURIComponent(userEmail));
+          if (!nlRes.ok) throw new Error('next-lessons failed');
+          const nl = await nlRes.json();
+          if (nl.mode === 'paired' && nl.nextLessons.length > 1) {
+            const b0 = nl.nextLessons.find(l => l.block === 0);
+            const b1 = nl.nextLessons.find(l => l.block === 1);
+            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. Day ${nl.currentPair} has two tracks.\n\n**🧬 LAYERED Assessment** — Day ${b0?.day}: ${b0?.title}\n\n**📚 Nonprofit Foundations** — Day ${b1?.day}: ${b1?.title}\n\nBoth must be done before Day ${nl.currentPair+1}. Which first?` }]);
+            return;
+          }
+          if (nl.mode === 'paired' && nl.nextLessons.length === 1) {
+            const lesson = nl.nextLessons[0];
+            setCurrentLesson({ block:lesson.block, day:lesson.day, title:lesson.title });
+            const isA = lesson.block===0;
+            streamFromAIR(firstName+" here. I want to do Block "+lesson.block+" Day "+lesson.day+": \""+lesson.title+"\". Proceed with my "+(isA?"assessment":"lesson")+".", true);
+            return;
+          }
+          if (nl.mode === 'single' && nl.nextLessons.length > 0) {
+            const lesson = nl.nextLessons[0];
+            const isA = lesson.type==='assessment';
+            setCurrentLesson({ block:lesson.block, day:lesson.day, title:lesson.title });
+            streamFromAIR("Good "+greeting+", this is "+firstName+". I just opened GMG University. My next "+(isA?"assessment":"lesson")+" is Block "+lesson.block+" Day "+lesson.day+": \""+lesson.title+"\". Proceed with my "+(isA?"assessment":"lesson")+".", true);
+            return;
+          }
+          streamFromAIR("Good "+greeting+", this is "+firstName+". I just opened GMG University. I have completed all "+(curriculum?.totalDays||'?')+" days.", true);
+        } catch(e) {
+          console.error('[GMG-U] Next lessons:', e.message);
+          const next = getNextBlockLesson(profile?.completedDays, curriculum);
+          let msg = "Good "+greeting+", this is "+firstName+". I just opened GMG University.";
+          if (next) { msg += " My next lesson is Block "+next.block+" Day "+next.day+". Proceed."; setCurrentLesson(next); }
+          streamFromAIR(msg, true);
+        }
+      })();
     }
   }, [profile, curriculum, initDone]);
 
@@ -220,7 +259,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
         {!input.trim()&&<button onClick={toggleMic} disabled={streaming} style={{width:36,height:36,borderRadius:"50%",border:"1px solid "+(listening?"transparent":"rgba(124,58,237,.2)"),background:listening?"#7c3aed":"rgba(124,58,237,.1)",color:listening?"white":"#a78bfa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,animation:listening?"micPulse 1.5s infinite":"none"}}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width={16} height={16}><rect x={9} y={2} width={6} height={11} rx={3}/><path d="M5 11a7 7 0 0014 0"/><line x1={12} y1={18} x2={12} y2={22}/></svg></button>}
       </div>
     </div>
-    <LessonSidebar show={showSidebar} onClose={()=>setShowSidebar(false)} completedDays={profile?.completedDays} onSelectBlock={selectBlockLesson} curriculum={curriculum} onReset={resetProgress} currentLesson={currentLesson}/>
+    <LessonSidebar show={showSidebar} onClose={()=>setShowSidebar(false)} completedDays={profile?.completedDays} onSelectBlock={selectBlockLesson} curriculum={curriculum} onReset={resetProgress} currentLesson={currentLesson} cohortType={profile?.cohort_type}/>
     <DeckPanel deck={deckContent} onClose={()=>setDeckContent(null)}/>
   </div>);
 }

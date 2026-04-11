@@ -14,7 +14,7 @@ import {
 import { captureDualAudio } from "../utils/mesa-core.js";
 
 // v3: Speaker modes for control panel
-const SPEAKER_MODES = { THEY: 'they_talking', ME: 'i_talking', PAUSED: 'paused' };
+const SPEAKER_MODES = { THEY: 'they_talking', ME: 'i_talking', TEAM: 'my_team', PAUSED: 'paused' };
 import {
   STARCoachMobile, CompanyResearchMobile, PostInterviewMobile,
   TIMQueueMobile, MockInterviewPanel,
@@ -67,6 +67,25 @@ export default function InterviewModeView({ userId }) {
   const [seconds, setSeconds] = useState(0);
   const [running, setRunning] = useState(false);
   const [summary, setSummary] = useState(null);
+  const [speakers, setSpeakers] = useState(['Me', 'Unknown']);
+  const [editingSpeaker, setEditingSpeaker] = useState(null);
+
+
+  const [glossarySearch, setGlossarySearch] = useState('');
+  const [brainResults, setBrainResults] = useState([]);
+  const [brainSearching, setBrainSearching] = useState(false);
+  const searchBrain = async (q) => {
+    if (!q.trim()) return; setBrainSearching(true);
+    try {
+      const r = await fetch(ABABASE + '/api/meeting/brain-search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q })
+      });
+      if (r.ok) { const d = await r.json(); setBrainResults(d.results || []); }
+    } catch (e) { console.error('Brain search:', e); }
+    setBrainSearching(false);
+  };
+
   const recRef = useRef(null);
   const streamRef = useRef(null);
   const wsRef = useRef(null);
@@ -303,6 +322,63 @@ export default function InterviewModeView({ userId }) {
     } catch { alert("Microphone access denied"); }
   };
 
+  const needAnswerNow = async () => {
+    const segs = transcriptRef.current;
+    if (segs.length === 0) return;
+    const last60 = segs.slice(-20).map(s => s.text).join(' ');
+    try {
+      const res = await fetch(apiBase + '/api/cook/answer', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: 'Give me something to say right now',
+          user_id: user?.email || 'unknown', mode: 'interview',
+          transcript_context: last60.substring(0, 2000),
+          briefing_context: prepData ? JSON.stringify(prepData).substring(0, 3000) : '',
+          last_said_by_ham: ''
+        })
+      });
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let answer = '';
+        setCookAnswers(prev => [...prev, { time: fmt(secondsRef.current), question: 'Immediate', answer: '', streaming: true }]);
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          for (const line of dec.decode(value, { stream: true }).split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const d = JSON.parse(line.slice(6));
+              if (d.text) { answer += d.text; setCookAnswers(prev => { const u=[...prev]; u[u.length-1]={...u[u.length-1],answer,streaming:true}; return u; }); }
+              if (d.type==='done') setCookAnswers(prev => { const u=[...prev]; u[u.length-1]={...u[u.length-1],answer,streaming:false}; return u; });
+            } catch {}
+          }
+        }
+      }
+    } catch (e) { console.error('[CIP IRIS] Answer now error:', e); }
+  };
+  const [showRefineMenu, setShowRefineMenu] = useState(false);
+
+
+  const buildTranscriptMarkdown = () => {
+    const lines = ['# Interview Transcript', '', '**Date:** ' + new Date().toLocaleDateString()];
+    lines.push('', '---', '', '## Transcript', '');
+    transcriptRef.current.forEach(t => { lines.push('[' + t.time + '] ' + (t.speaker ? '**' + t.speaker + ':** ' : '') + t.text + ''); });
+    if (cookAnswers.length > 0) {
+      lines.push('', '---', '', '## Coached Answers', '');
+      cookAnswers.forEach(a => { lines.push('**[' + a.time + ']** ' + (a.question || '')); lines.push(a.answer + ''); });
+    }
+    if (summary) lines.push('', '---', '', '## Summary', '', summary);
+    return lines.join('\n');
+  };
+  const downloadTranscript = (fmt) => {
+    const md = buildTranscriptMarkdown();
+    if (fmt === 'copy') { navigator.clipboard.writeText(md).catch(() => {}); return; }
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'interview-' + new Date().toISOString().slice(0,10) + '.md'; a.click();
+  };
+
   const endInterview = async () => {
     recRef.current?.stop();
     streamRef.current?.getTracks().forEach(t => t.stop());
@@ -350,6 +426,52 @@ export default function InterviewModeView({ userId }) {
     <div style={{flex:1,overflowY:"auto",padding:12}}>
       {!selectedJob?<p style={{color:"rgba(255,255,255,.4)",textAlign:"center",padding:40}}>Select a job first to research the company.</p>
       :<CompanyResearchMobile job={selectedJob} api={api} userId={userId}/>}
+
+    {/* ⬡B:MACE.iris:UI:bottom_control_panel_cip:20260409⬡ */}
+    {running && <div style={{flexShrink:0,padding:"8px 10px",borderTop:"1px solid rgba(255,255,255,.06)",background:"rgba(0,0,0,.4)"}}>
+      <div style={{display:"flex",gap:4,marginBottom:6}}>
+        {[
+          {mode:SPEAKER_MODES.THEY,bg:"16,185,129",hex:"#34d399",icon:<Users size={14}/>,label:"Just Listen"},
+          {mode:SPEAKER_MODES.ME,bg:"59,130,246",hex:"#60a5fa",icon:<User size={14}/>,label:"My Turn"},
+          {mode:SPEAKER_MODES.TEAM,bg:"168,85,247",hex:"#a78bfa",icon:<Users size={14}/>,label:"My Team"},
+          {mode:SPEAKER_MODES.PAUSED,bg:"239,68,68",hex:"#f87171",icon:<Hand size={14}/>,label:"Pause"},
+        ].map(b=>(
+          <button key={b.mode} onClick={()=>setSpeakerMode_iv(b.mode)} style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:speakerMode_iv===b.mode?`rgba(${b.bg},.18)`:"rgba(255,255,255,.03)",border:speakerMode_iv===b.mode?`2px solid rgba(${b.bg},.35)`:"1px solid rgba(255,255,255,.06)",transition:"all 0.2s"}}>
+            {React.cloneElement(b.icon,{color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"})}
+            <span style={{fontSize:9,fontWeight:700,color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"}}>{b.label}</span>
+          </button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        <button onClick={needAnswerNow} style={{flex:2,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"linear-gradient(135deg, rgba(251,191,36,.12), rgba(245,158,11,.06))",border:"1px solid rgba(251,191,36,.25)"}}>
+          <Zap size={13} color="#fbbf24"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#fbbf24"}}>Answer Now</span>
+        </button>
+        <div style={{position:"relative",flex:1}}>
+          <button onClick={()=>setShowRefineMenu(!showRefineMenu)} style={{width:"100%",padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.15)"}}>
+            <RotateCcw size={13} color="rgba(245,158,11,.5)"/>
+            <span style={{fontSize:11,fontWeight:700,color:"rgba(245,158,11,.5)"}}>Refine</span>
+          </button>
+          {showRefineMenu&&<div style={{position:"absolute",bottom:"100%",left:0,right:0,marginBottom:4,background:"rgba(15,23,42,.98)",border:"1px solid rgba(245,158,11,.2)",borderRadius:8,overflow:"hidden",zIndex:50}}>
+            {[
+                { label: 'Make Answers Longer', override: 'Give detailed, thorough answers. 2-3 paragraphs minimum.' },
+                { label: 'Make Answers Shorter', override: 'Keep answers brief and punchy. 2-3 sentences max.' },
+                { label: 'More Specific & Real', override: 'Use exact numbers, real names, specific examples.' },
+                { label: 'Reset Coaching', action: () => { setCookAnswers([]); setTimCues([]); setCurrentTimCue(null); lastCookFire.current = 0; lastTimFire.current = 0; } },
+              ].map((opt, i) => (
+                <button key={i} onClick={() => { if (opt.action) { opt.action(); } else { cookOverrideRef.current = opt.override; } setShowRefineMenu(false); }} style={{
+                  width: '100%', padding: '10px 12px', border: 'none', borderBottom: '1px solid rgba(255,255,255,.05)',
+                  background: 'transparent', color: 'rgba(245,158,11,.7)', fontSize: 11, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
+                }}>{opt.label}</button>
+              ))}
+          </div>}
+        </div>
+        <button onClick={endInterview} style={{flex:1,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.15)"}}>
+          <Square size={13} color="#f87171"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#f87171"}}>End</span>
+        </button>
+      </div>
+    </div>}
     </div>
   </div>);
   // ═══════ PRACTICE MODE (STAR Coach) ═══════
@@ -363,6 +485,43 @@ export default function InterviewModeView({ userId }) {
         <p style={{color:"rgba(255,255,255,.3)",fontSize:10,fontWeight:600,marginBottom:4}}>CUSTOM QUESTION:</p>
         <input value={starQuestion} onChange={e=>setStarQuestion(e.target.value)} placeholder="Type a custom interview question..." style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,.1)",background:"rgba(255,255,255,.03)",color:"white",fontSize:12,boxSizing:"border-box"}}/>
       </div>
+
+    {/* ⬡B:MACE.iris:UI:bottom_control_panel_cip:20260409⬡ */}
+    {running && <div style={{flexShrink:0,padding:"8px 10px",borderTop:"1px solid rgba(255,255,255,.06)",background:"rgba(0,0,0,.4)"}}>
+      <div style={{display:"flex",gap:4,marginBottom:6}}>
+        {[
+          {mode:SPEAKER_MODES.THEY,bg:"16,185,129",hex:"#34d399",icon:<Users size={14}/>,label:"Just Listen"},
+          {mode:SPEAKER_MODES.ME,bg:"59,130,246",hex:"#60a5fa",icon:<User size={14}/>,label:"My Turn"},
+          {mode:SPEAKER_MODES.TEAM,bg:"168,85,247",hex:"#a78bfa",icon:<Users size={14}/>,label:"My Team"},
+          {mode:SPEAKER_MODES.PAUSED,bg:"239,68,68",hex:"#f87171",icon:<Hand size={14}/>,label:"Pause"},
+        ].map(b=>(
+          <button key={b.mode} onClick={()=>setSpeakerMode_iv(b.mode)} style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:speakerMode_iv===b.mode?`rgba(${b.bg},.18)`:"rgba(255,255,255,.03)",border:speakerMode_iv===b.mode?`2px solid rgba(${b.bg},.35)`:"1px solid rgba(255,255,255,.06)",transition:"all 0.2s"}}>
+            {React.cloneElement(b.icon,{color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"})}
+            <span style={{fontSize:9,fontWeight:700,color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"}}>{b.label}</span>
+          </button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        <button onClick={needAnswerNow} style={{flex:2,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"linear-gradient(135deg, rgba(251,191,36,.12), rgba(245,158,11,.06))",border:"1px solid rgba(251,191,36,.25)"}}>
+          <Zap size={13} color="#fbbf24"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#fbbf24"}}>Answer Now</span>
+        </button>
+        <div style={{position:"relative",flex:1}}>
+          <button onClick={()=>setShowRefineMenu(!showRefineMenu)} style={{width:"100%",padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.15)"}}>
+            <RotateCcw size={13} color="rgba(245,158,11,.5)"/>
+            <span style={{fontSize:11,fontWeight:700,color:"rgba(245,158,11,.5)"}}>Refine</span>
+          </button>
+          {showRefineMenu&&<div style={{position:"absolute",bottom:"100%",left:0,right:0,marginBottom:4,background:"rgba(15,23,42,.98)",border:"1px solid rgba(245,158,11,.2)",borderRadius:8,overflow:"hidden",zIndex:50}}>
+            <button onClick={()=>{setCookAnswers([]);setTimCues([]);setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",borderBottom:"1px solid rgba(255,255,255,.05)",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Reset Coaching</button>
+            <button onClick={()=>{setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Recalibrate</button>
+          </div>}
+        </div>
+        <button onClick={endInterview} style={{flex:1,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.15)"}}>
+          <Square size={13} color="#f87171"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#f87171"}}>End</span>
+        </button>
+      </div>
+    </div>}
     </div>
   </div>);
   // ═══════ PREP MODE ═══════
@@ -403,6 +562,43 @@ export default function InterviewModeView({ userId }) {
         : prepData ? <div style={{fontSize:12.5,color:"rgba(255,255,255,.75)",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{typeof prepData === "string" ? prepData : JSON.stringify(prepData, null, 2)}</div>
         : null}
       </>)}
+
+    {/* ⬡B:MACE.iris:UI:bottom_control_panel_cip:20260409⬡ */}
+    {running && <div style={{flexShrink:0,padding:"8px 10px",borderTop:"1px solid rgba(255,255,255,.06)",background:"rgba(0,0,0,.4)"}}>
+      <div style={{display:"flex",gap:4,marginBottom:6}}>
+        {[
+          {mode:SPEAKER_MODES.THEY,bg:"16,185,129",hex:"#34d399",icon:<Users size={14}/>,label:"Just Listen"},
+          {mode:SPEAKER_MODES.ME,bg:"59,130,246",hex:"#60a5fa",icon:<User size={14}/>,label:"My Turn"},
+          {mode:SPEAKER_MODES.TEAM,bg:"168,85,247",hex:"#a78bfa",icon:<Users size={14}/>,label:"My Team"},
+          {mode:SPEAKER_MODES.PAUSED,bg:"239,68,68",hex:"#f87171",icon:<Hand size={14}/>,label:"Pause"},
+        ].map(b=>(
+          <button key={b.mode} onClick={()=>setSpeakerMode_iv(b.mode)} style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:speakerMode_iv===b.mode?`rgba(${b.bg},.18)`:"rgba(255,255,255,.03)",border:speakerMode_iv===b.mode?`2px solid rgba(${b.bg},.35)`:"1px solid rgba(255,255,255,.06)",transition:"all 0.2s"}}>
+            {React.cloneElement(b.icon,{color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"})}
+            <span style={{fontSize:9,fontWeight:700,color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"}}>{b.label}</span>
+          </button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        <button onClick={needAnswerNow} style={{flex:2,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"linear-gradient(135deg, rgba(251,191,36,.12), rgba(245,158,11,.06))",border:"1px solid rgba(251,191,36,.25)"}}>
+          <Zap size={13} color="#fbbf24"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#fbbf24"}}>Answer Now</span>
+        </button>
+        <div style={{position:"relative",flex:1}}>
+          <button onClick={()=>setShowRefineMenu(!showRefineMenu)} style={{width:"100%",padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.15)"}}>
+            <RotateCcw size={13} color="rgba(245,158,11,.5)"/>
+            <span style={{fontSize:11,fontWeight:700,color:"rgba(245,158,11,.5)"}}>Refine</span>
+          </button>
+          {showRefineMenu&&<div style={{position:"absolute",bottom:"100%",left:0,right:0,marginBottom:4,background:"rgba(15,23,42,.98)",border:"1px solid rgba(245,158,11,.2)",borderRadius:8,overflow:"hidden",zIndex:50}}>
+            <button onClick={()=>{setCookAnswers([]);setTimCues([]);setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",borderBottom:"1px solid rgba(255,255,255,.05)",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Reset Coaching</button>
+            <button onClick={()=>{setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Recalibrate</button>
+          </div>}
+        </div>
+        <button onClick={endInterview} style={{flex:1,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.15)"}}>
+          <Square size={13} color="#f87171"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#f87171"}}>End</span>
+        </button>
+      </div>
+    </div>}
     </div>
   </div>);
 
@@ -417,6 +613,43 @@ export default function InterviewModeView({ userId }) {
       {selectedJob && varaInterview===null && <button onClick={()=>setVaraInterview(selectedJob)} style={{width:"100%",marginTop:10,padding:"10px",borderRadius:10,border:"1px solid rgba(34,211,238,.2)",background:"rgba(34,211,238,.06)",color:"#22d3ee",fontSize:12,fontWeight:600,cursor:"pointer"}}>
         Voice Mock (VARA)
       </button>}
+
+    {/* ⬡B:MACE.iris:UI:bottom_control_panel_cip:20260409⬡ */}
+    {running && <div style={{flexShrink:0,padding:"8px 10px",borderTop:"1px solid rgba(255,255,255,.06)",background:"rgba(0,0,0,.4)"}}>
+      <div style={{display:"flex",gap:4,marginBottom:6}}>
+        {[
+          {mode:SPEAKER_MODES.THEY,bg:"16,185,129",hex:"#34d399",icon:<Users size={14}/>,label:"Just Listen"},
+          {mode:SPEAKER_MODES.ME,bg:"59,130,246",hex:"#60a5fa",icon:<User size={14}/>,label:"My Turn"},
+          {mode:SPEAKER_MODES.TEAM,bg:"168,85,247",hex:"#a78bfa",icon:<Users size={14}/>,label:"My Team"},
+          {mode:SPEAKER_MODES.PAUSED,bg:"239,68,68",hex:"#f87171",icon:<Hand size={14}/>,label:"Pause"},
+        ].map(b=>(
+          <button key={b.mode} onClick={()=>setSpeakerMode_iv(b.mode)} style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:speakerMode_iv===b.mode?`rgba(${b.bg},.18)`:"rgba(255,255,255,.03)",border:speakerMode_iv===b.mode?`2px solid rgba(${b.bg},.35)`:"1px solid rgba(255,255,255,.06)",transition:"all 0.2s"}}>
+            {React.cloneElement(b.icon,{color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"})}
+            <span style={{fontSize:9,fontWeight:700,color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"}}>{b.label}</span>
+          </button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        <button onClick={needAnswerNow} style={{flex:2,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"linear-gradient(135deg, rgba(251,191,36,.12), rgba(245,158,11,.06))",border:"1px solid rgba(251,191,36,.25)"}}>
+          <Zap size={13} color="#fbbf24"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#fbbf24"}}>Answer Now</span>
+        </button>
+        <div style={{position:"relative",flex:1}}>
+          <button onClick={()=>setShowRefineMenu(!showRefineMenu)} style={{width:"100%",padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.15)"}}>
+            <RotateCcw size={13} color="rgba(245,158,11,.5)"/>
+            <span style={{fontSize:11,fontWeight:700,color:"rgba(245,158,11,.5)"}}>Refine</span>
+          </button>
+          {showRefineMenu&&<div style={{position:"absolute",bottom:"100%",left:0,right:0,marginBottom:4,background:"rgba(15,23,42,.98)",border:"1px solid rgba(245,158,11,.2)",borderRadius:8,overflow:"hidden",zIndex:50}}>
+            <button onClick={()=>{setCookAnswers([]);setTimCues([]);setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",borderBottom:"1px solid rgba(255,255,255,.05)",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Reset Coaching</button>
+            <button onClick={()=>{setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Recalibrate</button>
+          </div>}
+        </div>
+        <button onClick={endInterview} style={{flex:1,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.15)"}}>
+          <Square size={13} color="#f87171"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#f87171"}}>End</span>
+        </button>
+      </div>
+    </div>}
     </div>
   </div>);
 
@@ -443,35 +676,26 @@ export default function InterviewModeView({ userId }) {
       </div>
       <div style={{display:"flex",gap:6}}>
         <button onClick={toggleRecord} style={{padding:"8px 14px",borderRadius:10,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:recording?"rgba(239,68,68,.12)":`linear-gradient(135deg, ${amber(.15)}, ${amber(.05)})`,color:recording?"#fca5a5":"#fbbf24",display:"flex",alignItems:"center",gap:5}}>{recording?<><MicOff size={12}/>Stop</>:<><Mic size={12}/>Record</>}</button>
-        {running && <button onClick={endInterview} style={{padding:"8px 14px",borderRadius:10,border:"1px solid rgba(239,68,68,.15)",background:"transparent",color:"#f87171",fontSize:11,fontWeight:600,cursor:"pointer"}}>End</button>}
+        
       </div>
     </div>
-    {/* v3: CONTROL PANEL — Speaker Mode */}
-    {running && <div style={{padding:"8px 10px",borderBottom:"1px solid rgba(255,255,255,.04)",background:"rgba(0,0,0,.3)",display:"flex",gap:6}}>
-      <button onClick={()=>setSpeakerMode_iv(SPEAKER_MODES.THEY)} style={{flex:1,padding:"10px 6px",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:speakerMode_iv===SPEAKER_MODES.THEY?"linear-gradient(135deg, rgba(16,185,129,.2), rgba(16,185,129,.06))":"rgba(255,255,255,.03)",border:speakerMode_iv===SPEAKER_MODES.THEY?"2px solid rgba(16,185,129,.35)":"1px solid rgba(255,255,255,.06)",transition:"all 0.2s ease"}}>
-        <Users size={16} color={speakerMode_iv===SPEAKER_MODES.THEY?"#34d399":"rgba(255,255,255,.25)"}/>
-        <span style={{fontSize:10,fontWeight:700,color:speakerMode_iv===SPEAKER_MODES.THEY?"#34d399":"rgba(255,255,255,.25)"}}>They're Talking</span>
-      </button>
-      <button onClick={()=>setSpeakerMode_iv(SPEAKER_MODES.ME)} style={{flex:1,padding:"10px 6px",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:speakerMode_iv===SPEAKER_MODES.ME?"linear-gradient(135deg, rgba(59,130,246,.2), rgba(59,130,246,.06))":"rgba(255,255,255,.03)",border:speakerMode_iv===SPEAKER_MODES.ME?"2px solid rgba(59,130,246,.35)":"1px solid rgba(255,255,255,.06)",transition:"all 0.2s ease"}}>
-        <User size={16} color={speakerMode_iv===SPEAKER_MODES.ME?"#60a5fa":"rgba(255,255,255,.25)"}/>
-        <span style={{fontSize:10,fontWeight:700,color:speakerMode_iv===SPEAKER_MODES.ME?"#60a5fa":"rgba(255,255,255,.25)"}}>I'm Talking</span>
-      </button>
-      <button onClick={()=>setSpeakerMode_iv(SPEAKER_MODES.PAUSED)} style={{flex:1,padding:"10px 6px",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:speakerMode_iv===SPEAKER_MODES.PAUSED?"linear-gradient(135deg, rgba(239,68,68,.2), rgba(239,68,68,.06))":"rgba(255,255,255,.03)",border:speakerMode_iv===SPEAKER_MODES.PAUSED?"2px solid rgba(239,68,68,.35)":"1px solid rgba(255,255,255,.06)",transition:"all 0.2s ease"}}>
-        <Hand size={16} color={speakerMode_iv===SPEAKER_MODES.PAUSED?"#f87171":"rgba(255,255,255,.25)"}/>
-        <span style={{fontSize:10,fontWeight:700,color:speakerMode_iv===SPEAKER_MODES.PAUSED?"#f87171":"rgba(255,255,255,.25)"}}>Pause</span>
-      </button>
-      <button onClick={endInterview} style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.15)"}}>
-        <Square size={16} color="#f87171"/>
-        <span style={{fontSize:10,fontWeight:700,color:"#f87171"}}>End</span>
-      </button>
-    </div>}
     <div style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
       {/* TRANSCRIPT */}
       <div style={{marginBottom:12}}>
         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"0 4px"}}><Mic size={11} style={{color:amber(.4)}}/><span style={{fontSize:10,fontWeight:700,color:amber(.4),letterSpacing:"0.1em"}}>TRANSCRIPT</span>{transcript.length>0&&<span style={{fontSize:9,background:amber(.1),padding:"2px 6px",borderRadius:8,color:amber(.5),fontWeight:600}}>{transcript.length}</span>}</div>
         {transcript.length===0
           ? <div style={{textAlign:"center",padding:"30px 16px",color:"rgba(255,255,255,.1)"}}><p style={{fontSize:12,margin:0}}>{running?"Listening...":"Tap Record to start"}</p></div>
-          : transcript.slice(-8).map((t,i) => <div key={i} style={{padding:"8px 10px",marginBottom:4,borderRadius:10,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}><span style={{color:amber(.3),fontSize:9,fontWeight:600,marginRight:6,fontFamily:"monospace"}}>{t.time}</span><span style={{color:"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.5}}>{t.text}</span></div>)
+          : transcript.slice(-8).map((t,i) => <div key={i} style={{padding:"8px 10px",marginBottom:4,borderRadius:10,background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.04)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                <span style={{color:amber(.3),fontSize:9,fontWeight:600,fontFamily:"monospace"}}>{t.time}</span>
+                <button onClick={()=>setEditingSpeaker(editingSpeaker===i?null:i)} style={{padding:"1px 6px",borderRadius:4,fontSize:9,fontWeight:600,cursor:"pointer",background:t.speaker==="Me"?"rgba(59,130,246,.15)":"rgba(255,255,255,.06)",color:t.speaker==="Me"?"#60a5fa":"rgba(255,255,255,.35)",border:"1px solid rgba(255,255,255,.08)"}}>{t.speaker||"?"}</button>
+              </div>
+              {editingSpeaker===i&&<div style={{display:"flex",gap:4,marginBottom:4,flexWrap:"wrap"}}>
+                {speakers.map(s=><button key={s} onClick={()=>{setTranscript(prev=>prev.map((seg,j)=>j===i?{...seg,speaker:s}:seg));transcriptRef.current=transcriptRef.current.map((seg,j)=>j===i?{...seg,speaker:s}:seg);setEditingSpeaker(null);}} style={{padding:"2px 8px",borderRadius:4,fontSize:9,cursor:"pointer",background:"rgba(34,211,238,.08)",border:"1px solid rgba(34,211,238,.15)",color:"#22d3ee"}}>{s}</button>)}
+                <input type="text" placeholder="New" onKeyDown={e=>{if(e.key==="Enter"&&e.target.value.trim()){const n=e.target.value.trim();if(!speakers.includes(n))setSpeakers(p=>[...p,n]);setTranscript(p=>p.map((seg,j)=>j===i?{...seg,speaker:n}:seg));transcriptRef.current=transcriptRef.current.map((seg,j)=>j===i?{...seg,speaker:n}:seg);setEditingSpeaker(null);}}} style={{padding:"2px 6px",borderRadius:4,fontSize:9,width:60,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",color:"#e2e8f0",outline:"none"}} />
+              </div>}
+              <span style={{color:"rgba(255,255,255,.8)",fontSize:12,lineHeight:1.5}}>{t.text}</span>
+            </div>)
         }
       </div>
 
@@ -510,6 +734,43 @@ export default function InterviewModeView({ userId }) {
 
       {/* POST-INTERVIEW ACTIONS — thank you email, recap notes, follow-up tasks */}
       {summary && selectedJob && <div style={{marginTop:10}}><PostInterviewMobile job={selectedJob} api={api} userId={userId}/></div>}
+
+    {/* ⬡B:MACE.iris:UI:bottom_control_panel_cip:20260409⬡ */}
+    {running && <div style={{flexShrink:0,padding:"8px 10px",borderTop:"1px solid rgba(255,255,255,.06)",background:"rgba(0,0,0,.4)"}}>
+      <div style={{display:"flex",gap:4,marginBottom:6}}>
+        {[
+          {mode:SPEAKER_MODES.THEY,bg:"16,185,129",hex:"#34d399",icon:<Users size={14}/>,label:"Just Listen"},
+          {mode:SPEAKER_MODES.ME,bg:"59,130,246",hex:"#60a5fa",icon:<User size={14}/>,label:"My Turn"},
+          {mode:SPEAKER_MODES.TEAM,bg:"168,85,247",hex:"#a78bfa",icon:<Users size={14}/>,label:"My Team"},
+          {mode:SPEAKER_MODES.PAUSED,bg:"239,68,68",hex:"#f87171",icon:<Hand size={14}/>,label:"Pause"},
+        ].map(b=>(
+          <button key={b.mode} onClick={()=>setSpeakerMode_iv(b.mode)} style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:speakerMode_iv===b.mode?`rgba(${b.bg},.18)`:"rgba(255,255,255,.03)",border:speakerMode_iv===b.mode?`2px solid rgba(${b.bg},.35)`:"1px solid rgba(255,255,255,.06)",transition:"all 0.2s"}}>
+            {React.cloneElement(b.icon,{color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"})}
+            <span style={{fontSize:9,fontWeight:700,color:speakerMode_iv===b.mode?b.hex:"rgba(255,255,255,.2)"}}>{b.label}</span>
+          </button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        <button onClick={needAnswerNow} style={{flex:2,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"linear-gradient(135deg, rgba(251,191,36,.12), rgba(245,158,11,.06))",border:"1px solid rgba(251,191,36,.25)"}}>
+          <Zap size={13} color="#fbbf24"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#fbbf24"}}>Answer Now</span>
+        </button>
+        <div style={{position:"relative",flex:1}}>
+          <button onClick={()=>setShowRefineMenu(!showRefineMenu)} style={{width:"100%",padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.15)"}}>
+            <RotateCcw size={13} color="rgba(245,158,11,.5)"/>
+            <span style={{fontSize:11,fontWeight:700,color:"rgba(245,158,11,.5)"}}>Refine</span>
+          </button>
+          {showRefineMenu&&<div style={{position:"absolute",bottom:"100%",left:0,right:0,marginBottom:4,background:"rgba(15,23,42,.98)",border:"1px solid rgba(245,158,11,.2)",borderRadius:8,overflow:"hidden",zIndex:50}}>
+            <button onClick={()=>{setCookAnswers([]);setTimCues([]);setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",borderBottom:"1px solid rgba(255,255,255,.05)",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Reset Coaching</button>
+            <button onClick={()=>{setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Recalibrate</button>
+          </div>}
+        </div>
+        <button onClick={endInterview} style={{flex:1,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.15)"}}>
+          <Square size={13} color="#f87171"/>
+          <span style={{fontSize:11,fontWeight:700,color:"#f87171"}}>End</span>
+        </button>
+      </div>
+    </div>}
     </div>
   </div>);
 }
