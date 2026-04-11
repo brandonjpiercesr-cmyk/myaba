@@ -550,19 +550,31 @@ export function safeParseGreeting(response) {
 }
 
 
-// ⬡B:MACE.fix:FUNC:fetchBriefing:20260410⬡
+// ⬡B:MACE.fix:FUNC:fetchBriefing:20260411⬡
+// Returns data in the format BriefingView expects: {summary, handled, pending, upcoming, news}
 export async function fetchBriefing(userId) {
   try {
     const res = await abaFetch(ABABASE + "/api/air/process", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        message: "Generate my daily briefing. Include upcoming calendar events, important emails, job application updates, news based on my interests, and any pending reminders or tasks.",
+        message: "Generate my daily briefing. Include a summary paragraph, then list what you have handled for me today, what is pending and needs my attention, upcoming calendar events, and any news. Return as JSON with keys: summary (string), handled (array of strings), pending (array of strings), upcoming (array of strings), news (array of strings). Return ONLY the JSON object, no markdown, no backticks.",
         user_id: userId, userId, channel: "myaba", appScope: "briefing"
       })
     });
     if (!res.ok) return null;
-    return await res.json();
+    const data = await res.json();
+    const text = data.response || data.text || "";
+    // Try to parse structured JSON from AIR response
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.summary || parsed.handled || parsed.pending) return parsed;
+      }
+    } catch {}
+    // Fallback: wrap the raw text as a summary so BriefingView can display it
+    return { summary: text, handled: [], pending: [], upcoming: [], news: [] };
   } catch (e) { console.error("[BRIEFING] Fetch error:", e.message); return null; }
 }
 
