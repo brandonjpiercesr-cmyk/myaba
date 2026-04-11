@@ -136,21 +136,48 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SR) { const rec = new SR(); rec.continuous=false; rec.interimResults=true; rec.lang="en-US"; rec.onresult=e=>{setInput(Array.from(e.results).map(r=>r[0].transcript).join(""));if(e.results[0].isFinal)setListening(false);}; rec.onend=()=>setListening(false); rec.onerror=()=>setListening(false); recognitionRef.current=rec; }
   }, []);
-  // ⬡B:GMGU.curriculum:FIX:wait_for_curriculum_before_init:20260408⬡
-  // Previously, auto-init fired when profile loaded but BEFORE curriculum fetched.
-  // curriculum was null, getNextBlockLesson returned null, ABA thought all lessons done.
-  // Fix: wait for curriculum to be non-null before running auto-init.
+  // ⬡B:GMGU.layered:FIX:cip_backend_pairing_init:20260410⬡
+  // Calls /api/gmg-university/next-lessons — same endpoint as standalone and CIB.
+  // T7+ enforced pairing on the backend. No local calculation.
   useEffect(() => {
     if (profile && curriculum && !initDone && !streaming) {
       setInitDone(true);
-      const next = getNextBlockLesson(profile?.completedDays, curriculum);
       const h = new Date().getHours();
-      let msg = "Good "+(h<12?"morning":h<17?"afternoon":"evening")+", this is "+firstName+". I just opened GMG University.";
-      if (next) { 
-        const isAssessment = next.block === 0;
-        msg += ' My next ' + (isAssessment ? 'assessment' : 'lesson') + ' is Block ' + next.block + ' Day ' + next.day + ': "' + next.title + '". I have completed ' + (profile.completedDays||[]).length + ' of ' + (curriculum?.totalDays||'?') + ' days. Proceed with my ' + (isAssessment ? 'assessment' : 'lesson') + '.'; setCurrentLesson(next); }
-      else { msg += ' I have completed all ' + (curriculum?.totalDays||'?') + ' lessons.'; }
-      streamFromAIR(msg, true);
+      const greeting = h<12?"morning":h<17?"afternoon":"evening";
+      (async () => {
+        try {
+          const nlRes = await fetch(ABABASE+"/api/gmg-university/next-lessons?email="+encodeURIComponent(userEmail));
+          if (!nlRes.ok) throw new Error('next-lessons failed');
+          const nl = await nlRes.json();
+          if (nl.mode === 'paired' && nl.nextLessons.length > 1) {
+            const b0 = nl.nextLessons.find(l => l.block === 0);
+            const b1 = nl.nextLessons.find(l => l.block === 1);
+            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. Day ${nl.currentPair} has two tracks.\n\n**🧬 LAYERED Assessment** — Day ${b0?.day}: ${b0?.title}\n\n**📚 Nonprofit Foundations** — Day ${b1?.day}: ${b1?.title}\n\nBoth must be done before Day ${nl.currentPair+1}. Which first?` }]);
+            return;
+          }
+          if (nl.mode === 'paired' && nl.nextLessons.length === 1) {
+            const lesson = nl.nextLessons[0];
+            setCurrentLesson({ block:lesson.block, day:lesson.day, title:lesson.title });
+            const isA = lesson.block===0;
+            streamFromAIR(firstName+" here. I want to do Block "+lesson.block+" Day "+lesson.day+": \""+lesson.title+"\". Proceed with my "+(isA?"assessment":"lesson")+".", true);
+            return;
+          }
+          if (nl.mode === 'single' && nl.nextLessons.length > 0) {
+            const lesson = nl.nextLessons[0];
+            const isA = lesson.type==='assessment';
+            setCurrentLesson({ block:lesson.block, day:lesson.day, title:lesson.title });
+            streamFromAIR("Good "+greeting+", this is "+firstName+". I just opened GMG University. My next "+(isA?"assessment":"lesson")+" is Block "+lesson.block+" Day "+lesson.day+": \""+lesson.title+"\". Proceed with my "+(isA?"assessment":"lesson")+".", true);
+            return;
+          }
+          streamFromAIR("Good "+greeting+", this is "+firstName+". I just opened GMG University. I have completed all "+(curriculum?.totalDays||'?')+" days.", true);
+        } catch(e) {
+          console.error('[GMG-U] Next lessons:', e.message);
+          const next = getNextBlockLesson(profile?.completedDays, curriculum);
+          let msg = "Good "+greeting+", this is "+firstName+". I just opened GMG University.";
+          if (next) { msg += " My next lesson is Block "+next.block+" Day "+next.day+". Proceed."; setCurrentLesson(next); }
+          streamFromAIR(msg, true);
+        }
+      })();
     }
   }, [profile, curriculum, initDone]);
 
