@@ -453,8 +453,17 @@ export default function InterviewModeView({ userId }) {
             <span style={{fontSize:11,fontWeight:700,color:"rgba(245,158,11,.5)"}}>Refine</span>
           </button>
           {showRefineMenu&&<div style={{position:"absolute",bottom:"100%",left:0,right:0,marginBottom:4,background:"rgba(15,23,42,.98)",border:"1px solid rgba(245,158,11,.2)",borderRadius:8,overflow:"hidden",zIndex:50}}>
-            <button onClick={()=>{setCookAnswers([]);setTimCues([]);setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",borderBottom:"1px solid rgba(255,255,255,.05)",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Reset Coaching</button>
-            <button onClick={()=>{setShowRefineMenu(false);}} style={{width:"100%",padding:"10px",border:"none",background:"transparent",color:"rgba(245,158,11,.7)",fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left"}}>Recalibrate</button>
+            {[
+                { label: 'Make Answers Longer', override: 'Give detailed, thorough answers. 2-3 paragraphs minimum.' },
+                { label: 'Make Answers Shorter', override: 'Keep answers brief and punchy. 2-3 sentences max.' },
+                { label: 'More Specific & Real', override: 'Use exact numbers, real names, specific examples.' },
+                { label: 'Reset Coaching', action: () => { setCookAnswers([]); setTimCues([]); setCurrentTimCue(null); lastCookFire.current = 0; lastTimFire.current = 0; } },
+              ].map((opt, i) => (
+                <button key={i} onClick={() => { if (opt.action) { opt.action(); } else { cookOverrideRef.current = opt.override; } setShowRefineMenu(false); }} style={{
+                  width: '100%', padding: '10px 12px', border: 'none', borderBottom: '1px solid rgba(255,255,255,.05)',
+                  background: 'transparent', color: 'rgba(245,158,11,.7)', fontSize: 11, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
+                }}>{opt.label}</button>
+              ))}
           </div>}
         </div>
         <button onClick={endInterview} style={{flex:1,padding:"10px 8px",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.15)"}}>
