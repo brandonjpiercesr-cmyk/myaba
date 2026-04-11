@@ -136,7 +136,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
       const next = getNextBlockLesson(profile?.completedDays, curriculum);
       const h = new Date().getHours();
       let msg = "Good "+(h<12?"morning":h<17?"afternoon":"evening")+", this is "+firstName+". I just opened GMG University.";
-      if (next) { msg += ' My next lesson is Block ' + next.block + ' Day ' + next.day + ': "' + next.title + '". I have completed ' + (profile.completedDays||[]).length + ' of ' + (curriculum?.totalDays||'?') + ' lessons. Proceed with my lesson.'; setCurrentLesson(next); }
+      if (next) { msg += ' My next lesson is Block ' + next.block + ' Day ' + next.day + ': "' + next.title + '". I have completed ' + (profile.completedDays||[]).length + ' of ' + (curriculum?.totalDays||'?') + ' lessons. Check my cohort_type and proceed accordingly.'; setCurrentLesson(next); }
       else { msg += ' I have completed all ' + (curriculum?.totalDays||'?') + ' lessons.'; }
       streamFromAIR(msg, true);
     }
@@ -155,7 +155,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
     setMsgs([]);
     setInitDone(false);
     setTimeout(() => {
-      streamFromAIR(firstName + ' here. I want to do Block ' + blockNum + ' Day ' + dayNum + ': "' + title + '". Proceed with my lesson.', true);
+      streamFromAIR(firstName + ' here. I want to do Block ' + blockNum + ' Day ' + dayNum + ': "' + title + '". Check my cohort_type and proceed accordingly.', true);
     }, 100);
   };
   const resetProgress = async () => {
@@ -176,7 +176,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
       const history=msgs.slice(-20).map(m=>({role:m.role==="aba"?"assistant":"user",content:m.text||""})).filter(m=>m.content);
       const r=await fetch(ABABASE+"/api/air/stream",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:userMsg,user_id:userEmail,userId:userEmail,channel:"gmg-university",conversationHistory:history})});
       const reader=r.body.getReader(); const decoder=new TextDecoder();
-      while(true){const{done,value}=await reader.read();if(done)break;for(const line of decoder.decode(value,{stream:true}).split("\n").filter(l=>l.startsWith("data: "))){try{const d=JSON.parse(line.slice(6));if(d.type==="chunk"){acc+=d.text;sentBufRef.current+=d.text;setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:acc};return c;});if(sentBufRef.current.match(/[.!?]\s*$/)){speak(sentBufRef.current.trim());sentBufRef.current="";}}else if(d.type==="done"){const final=d.fullResponse||acc;setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:final,streaming:false};return c;});if(sentBufRef.current.trim())speak(sentBufRef.current.trim());const deckMatch=final.match(/\[DECK\](.*?)\[\/DECK\]/s); if(deckMatch){try{setDeckContent(JSON.parse(deckMatch[1].trim()));}catch(e){console.error("[GMG-U] Deck:",e);} final=final.replace(/\[DECK\].*?\[\/DECK\]/s,"");} const shouldComplete=final.includes("[LESSON_COMPLETE]"); final=final.replace(/\[LESSON_STARTED\]/g,"").replace(/\[LESSON_COMPLETE\]/g,"").trim(); if(shouldComplete)markComplete();}}catch(e){console.error('[GMG-U] SSE:',e.message);}}}
+      while(true){const{done,value}=await reader.read();if(done)break;for(const line of decoder.decode(value,{stream:true}).split("\n").filter(l=>l.startsWith("data: "))){try{const d=JSON.parse(line.slice(6));if(d.type==="chunk"){acc+=d.text;sentBufRef.current+=d.text;setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:acc};return c;});if(sentBufRef.current.match(/[.!?]\s*$/)){speak(sentBufRef.current.trim());sentBufRef.current="";}}else if(d.type==="done"){let final=d.fullResponse||acc;setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:final,streaming:false};return c;});if(sentBufRef.current.trim())speak(sentBufRef.current.trim());const deckMatch=final.match(/\[DECK\](.*?)\[\/DECK\]/s); if(deckMatch){try{setDeckContent(JSON.parse(deckMatch[1].trim()));}catch(e){console.error("[GMG-U] Deck:",e);} final=final.replace(/\[DECK\].*?\[\/DECK\]/s,"");} const shouldComplete=final.includes("[LESSON_COMPLETE]"); final=final.replace(/\[LESSON_STARTED\]/g,"").replace(/\[LESSON_COMPLETE\]/g,"").trim(); if(shouldComplete)markComplete();}}catch(e){console.error('[GMG-U] SSE:',e.message);}}}
     } catch{setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:"Connection issue.",streaming:false};return c;});}
     finally{setStreaming(false);}
   };
@@ -225,4 +225,3 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
   </div>);
 }
 
-// build-bust-1775701295
