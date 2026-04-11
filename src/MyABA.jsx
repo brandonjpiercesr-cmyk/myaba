@@ -1250,12 +1250,15 @@ function TalkToABA({userId}){
     }
   },[conversation,orbState]);
 
-  const colors={idle:"139,92,246",connecting:"245,158,11",listening:"139,92,246",thinking:"245,158,11",speaking:"16,185,129",error:"239,68,68"};
+  // ⬡B:MACE.fix:UI:orb_redesign_aba_logo_always:20260411⬡
+  // ABA logo ALWAYS visible inside orb. Color and animation change per state.
+  // Brandon loves the golden connecting circle — that warmth carries across all states.
+  const colors={idle:"180,140,80",connecting:"245,158,11",listening:"139,92,246",thinking:"245,158,11",speaking:"16,185,129",error:"239,68,68"};
   const c=colors[orbState]||colors.idle;
-  const icons={idle:Mic,connecting:Sparkles,listening:Mic,thinking:Sparkles,speaking:Volume2,error:AlertTriangle};
-  const Icon=icons[orbState]||Mic;
   const labels={idle:"TAP TO TALK",connecting:"CONNECTING",listening:"LISTENING",thinking:"THINKING",speaking:"SPEAKING",error:"ERROR"};
   const isActive=orbState!=="idle"&&orbState!=="error";
+  const isSpinning=orbState==="connecting"||orbState==="thinking";
+  const breatheSpeed=orbState==="listening"?"1s":orbState==="speaking"?"1.5s":orbState==="connecting"?"0.8s":"3s";
 
   return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,position:"relative"}}>
@@ -1264,17 +1267,19 @@ function TalkToABA({userId}){
       <div style={{position:"absolute",width:300,height:300,borderRadius:"50%",border:`1px solid rgba(${c},.08)`,animation:isActive?"pulse 2s ease-out .5s infinite":"none",opacity:.3,pointerEvents:"none"}}/>
       <div style={{position:"absolute",width:380,height:380,borderRadius:"50%",border:`1px solid rgba(${c},.05)`,animation:isActive?"pulse 2s ease-out 1s infinite":"none",opacity:.2,pointerEvents:"none"}}/>
 
-      {/* Main orb */}
+      {/* Main orb — ALWAYS shows ABA logo */}
       <button onClick={handleTap} style={{
         width:160,height:160,borderRadius:"50%",border:"none",cursor:"pointer",
         background:`radial-gradient(circle at 30% 30%, rgba(${c},.5), rgba(${c},.25))`,
         boxShadow:`0 0 80px rgba(${c},.4), inset 0 0 40px rgba(255,255,255,.1)`,
         display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,color:"white",
-        animation:orbState==="listening"?"breathe 1s ease-in-out infinite":orbState==="speaking"?"breathe 1.5s ease-in-out infinite":"breathe 3s ease-in-out infinite",
-        transition:"all .3s"
+        animation:`breathe ${breatheSpeed} ease-in-out infinite`,
+        transition:"all .5s"
       }}>
-        {orbState==="thinking"||orbState==="connecting"?<div style={{animation:"spin 1s linear infinite"}}><ABALogo size={44} color="white"/></div>:<Icon size={44}/>}
-        <span style={{fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase"}}>{labels[orbState]}</span>
+        <div style={{animation:isSpinning?"spin 1.5s linear infinite":"none",transition:"all .3s"}}>
+          <ABALogo size={48} glow color="white"/>
+        </div>
+        <span style={{fontSize:10,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",opacity:.9}}>{labels[orbState]}</span>
       </button>
 
       {/* Status */}
