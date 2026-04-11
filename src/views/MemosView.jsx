@@ -2,7 +2,7 @@
 // MemosView — extracted from MyABA.jsx lines 4302-4464.
 
 import { useState, useEffect } from "react";
-import { Send, Loader2, RefreshCw } from "lucide-react";
+import { Send, Loader2, RefreshCw, Mail } from "lucide-react";
 import { ABABASE } from "../utils/api.js";
 import { HAM_TEAM } from "../utils/ham.js";
 
