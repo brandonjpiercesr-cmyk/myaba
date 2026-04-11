@@ -418,46 +418,22 @@ export async function reachPresence(userId) {
   } catch { return { items: [] }; }
 }
 
-export async function airNameChat(messages, userId) {
+export async function airNameChat(messages) {
+  // ⬡B:WRAP.fix:LOCAL:smart_naming_no_api:20260410⬡
+  // Zero API calls. Strips filler words, takes content words from first user message.
   try {
-    const firstUserMsg = messages.find(m => m.role === "user");
-    const firstAbaMsg = messages.find(m => m.role === "assistant");
-    if (!firstUserMsg) return null;
-    
-    // ⬡B:FIX:wrap_agent_naming:20260409⬡ Call AIR to generate a real chat name
-    // instead of dumb 6-word truncation. Falls back to local naming if AIR fails.
-    try {
-      const snippet = (firstUserMsg.content || "").substring(0, 200);
-      const abaSnippet = (firstAbaMsg?.content || firstAbaMsg?.text || "").substring(0, 200);
-      const res = await fetch(ABABASE + "/api/air/process", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: `Name this conversation in 3-6 words. User said: "${snippet}" ABA replied: "${abaSnippet}". Return ONLY the short title, nothing else. No quotes.`,
-          user_id: userId,
-          channel: "wrap",
-          skipTools: true
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const name = (data.response || "").replace(/^["']|["']$/g, "").trim();
-        if (name && name.length > 2 && name.length < 60) {
-          console.log("[WRAP] AIR named chat:", name);
-          return name;
-        }
-      }
-    } catch (e) { console.warn("[WRAP] AIR naming failed, using local fallback:", e.message); }
-    
-    // Local fallback: first 6 words
-    const words = firstUserMsg.content.trim().split(/\s+/).slice(0, 6).join(" ");
-    const localName = words.length > 35 ? words.substring(0, 35) + "..." : words;
-    console.log("[WRAP] Local named chat:", localName);
-    return localName;
-  } catch (e) { 
-    console.error("[WRAP] Name error:", e);
-    return null; 
-  }
+    const firstUser = messages.find(m => m.role === "user");
+    if (!firstUser) return null;
+    const text = (firstUser.content || firstUser.text || "").trim();
+    if (!text) return null;
+    const FILLER = new Set(["i","me","my","we","our","you","your","the","a","an","is","am","are","was","were","be","do","does","did","have","has","had","can","could","would","should","will","shall","may","might","must","to","for","of","in","on","at","by","from","with","and","or","but","not","so","if","it","its","that","this","what","which","who","how","when","where","why","there","here","just","also","very","really","right","now","like","want","need","let","lets","got","get","going","thing","things","something","about","some","any","all","than","then","them","they","their","those","these","into","out","up","down","no","yes","ok","hey","hi","hello","please","thanks","thank","dont","im","ive","id","ill","ur","u","aba","help"]);
+    const words = text.replace(/[^a-zA-Z0-9\s]/g, " ").split(/\s+/).filter(w => w.length > 1 && !FILLER.has(w.toLowerCase()));
+    if (words.length === 0) {
+      const fallback = text.split(/\s+/).slice(0, 4).join(" ");
+      return fallback.length > 30 ? fallback.substring(0, 30) + "..." : fallback;
+    }
+    return words.slice(0, 5).join(" ");
+  } catch { return null; }
 }
 
 // v1.2.0: JARVIS-style greeting from AGENT DAWN (Daily Automated Wisdom Notifier)
@@ -573,6 +549,22 @@ export function safeParseGreeting(response) {
   return { title: String(response), subtitle: "" };
 }
 
+
+// ⬡B:MACE.fix:FUNC:fetchBriefing:20260410⬡
+export async function fetchBriefing(userId) {
+  try {
+    const res = await abaFetch(ABABASE + "/api/air/process", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Generate my daily briefing. Include upcoming calendar events, important emails, job application updates, news based on my interests, and any pending reminders or tasks.",
+        user_id: userId, userId, channel: "myaba", appScope: "briefing"
+      })
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) { console.error("[BRIEFING] Fetch error:", e.message); return null; }
+}
 
 // ⬡B:FEATURE:chat_export:20260409⬡ Export chat to downloadable format (PDF, DOCX, MD)
 export async function exportChat(messages, title, format = "md") {
