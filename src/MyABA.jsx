@@ -2557,7 +2557,7 @@ function MyABAInner(){
             // ⬡B:WRAP.fix:LOCAL:track_app_usage:20260410⬡
             try { const u = JSON.parse(localStorage.getItem("myaba_app_usage") || "{}"); u[app.id] = (u[app.id] || 0) + 1; localStorage.setItem("myaba_app_usage", JSON.stringify(u)); } catch {}
             if(app.id==="chat"){setMainTab("chat")}
-            else if(app.id==="briefing"){setMainTab("briefing");if(!briefingData&&!briefingLoading){setBriefingLoading(true);fetchBriefing(user?.email||user?.uid||"unknown").then(d=>{setBriefingData(d);setBriefingLoading(false)})}}
+            else if(app.id==="briefing"){setMainTab("briefing");if(!briefingData&&!briefingLoading){setBriefingLoading(true);fetchBriefing(user?.email||user?.uid||"unknown").then(d=>{setBriefingData(d);setBriefingLoading(false)}).catch(()=>setBriefingLoading(false))}}
             else if(app.id==="jobs"){setMainTab("jobs")}
             else if(app.id==="pipeline"){setMainTab("pipeline")}
             else if(app.id==="email"){setMainTab("email")}
