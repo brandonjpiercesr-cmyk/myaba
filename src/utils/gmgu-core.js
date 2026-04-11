@@ -60,7 +60,7 @@ export function lessonTitle(vol, day) {
 // Fetch block-structured curriculum from backend (single source of truth)
 export async function fetchCurriculum(api, cohortType, track) {
   try {
-    const baseUrl = typeof api._baseUrl === 'string' ? api._baseUrl : 'https://abacia-services.onrender.com';
+    const baseUrl = (api && typeof api._baseUrl === 'string') ? api._baseUrl : 'https://abacia-services.onrender.com';
     const r = await fetch(baseUrl + '/api/gmg-university/curriculum?cohort_type=' + encodeURIComponent(cohortType || 'FOUNDING_LINE') + '&track=' + encodeURIComponent(track || 'UNASSIGNED'));
     if (r.ok) return await r.json();
   } catch (err) { console.error('[GMG-U] Curriculum fetch:', err); }
@@ -133,7 +133,7 @@ export async function speak(api, text) {
   if (!text || !text.trim()) return null;
   try {
     // TTS needs raw fetch for blob response — api adapter provides base URL
-    const baseUrl = typeof api._baseUrl === 'string' ? api._baseUrl : 'https://abacia-services.onrender.com';
+    const baseUrl = (api && typeof api._baseUrl === 'string') ? api._baseUrl : 'https://abacia-services.onrender.com';
     const r = await fetch(baseUrl + '/api/tts/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
