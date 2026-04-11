@@ -74,6 +74,7 @@ export default function MeetingModeView({ userId }) {
   const cueTimeoutRef = useRef(null);
   const transcriptRef = useRef([]);
   const lastTimFire = useRef(0);
+  const cookOverrideRef = useRef('');
   const lastCookFire = useRef(0);
   const speakerModeRef = useRef(SPEAKER_MODES.THEY_TALKING);
 
@@ -96,7 +97,8 @@ export default function MeetingModeView({ userId }) {
           user_id: user?.email || 'unknown', mode: 'meeting',
           transcript_context: last60.substring(0, 2000),
           briefing_context: prepContext ? JSON.stringify(prepContext).substring(0, 3000) : '',
-          last_said_by_ham: lastSaidByHamRef.current || ''
+          last_said_by_ham: lastSaidByHamRef.current || '',
+          cook_style_override: cookOverrideRef.current || ''
         })
       });
       if (res.ok && res.body) {
