@@ -95,7 +95,7 @@ export default function MeetingModeView({ userId }) {
           question: 'Give me something to say right now based on this conversation',
           user_id: user?.email || 'unknown', mode: 'meeting',
           transcript_context: last60.substring(0, 2000),
-          briefing_context: prepCtxRef.current ? JSON.stringify(prepCtxRef.current).substring(0, 3000) : '',
+          briefing_context: prepContext ? JSON.stringify(prepContext).substring(0, 3000) : '',
           last_said_by_ham: lastSaidByHamRef.current || ''
         })
       });
