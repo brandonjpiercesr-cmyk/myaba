@@ -15,6 +15,7 @@ export default function MemosView({userId}){
   const[composing,setComposing]=useState(false);
   const[composeForm,setComposeForm]=useState({to:"",subject:"",body:"",priority:"normal"});
   const[sending,setSending]=useState(false);
+  const[selectedMemo,setSelectedMemo]=useState(null);
 
   // ⬡B:AUDRA.W1:FIX:memos_dynamic_team:20260403⬡ Dynamic team from HAM_TEAM, no hardcoded emails
   const hamId = (userId||"").split("@")[0];
@@ -81,7 +82,7 @@ export default function MemosView({userId}){
     const isUnread=m.read===false&&m.to===userId;
     
     return(
-    <div key={m.id||m.dbId} onClick={()=>{if(isUnread)markRead(m.id)}} style={{padding:"12px 14px",borderRadius:14,background:isUnread?"rgba(139,92,246,.08)":"rgba(255,255,255,.03)",border:`1px solid ${isUnread?"rgba(139,92,246,.2)":"rgba(255,255,255,.05)"}`,marginBottom:6,cursor:"pointer",display:"flex",gap:10}}>
+    <div key={m.id||m.dbId} onClick={()=>{if(isUnread)markRead(m.id);setSelectedMemo(selectedMemo?.id===m.id?null:m)}} style={{padding:"12px 14px",borderRadius:14,background:isUnread?"rgba(139,92,246,.08)":selectedMemo?.id===m.id?"rgba(139,92,246,.05)":"rgba(255,255,255,.03)",border:`1px solid ${isUnread?"rgba(139,92,246,.2)":selectedMemo?.id===m.id?"rgba(139,92,246,.15)":"rgba(255,255,255,.05)"}`,marginBottom:6,cursor:"pointer",display:"flex",gap:10}}>
       {/* Avatar */}
       <div style={{width:36,height:36,borderRadius:99,background:`${senderColor}30`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
         <span style={{color:senderColor,fontSize:14,fontWeight:700}}>{initial}</span>
@@ -97,7 +98,7 @@ export default function MemosView({userId}){
           <span style={{color:"rgba(255,255,255,.2)",fontSize:9,flexShrink:0}}>{m.sentAt?new Date(m.sentAt).toLocaleDateString():""}</span>
         </div>
         {m.subject&&<p style={{color:isUnread?"rgba(255,255,255,.75)":"rgba(255,255,255,.5)",fontSize:12,fontWeight:isUnread?600:400,margin:"0 0 3px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.subject}</p>}
-        {m.bodyHtml?<div style={{color:"rgba(255,255,255,.6)",fontSize:12,margin:0,lineHeight:1.6}} dangerouslySetInnerHTML={{__html:m.bodyHtml}}/>:<p style={{color:"rgba(255,255,255,.4)",fontSize:12,margin:0,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{m.body}</p>}
+        {m.bodyHtml&&selectedMemo?.id===m.id?<div style={{color:"rgba(255,255,255,.75)",fontSize:12,margin:0,lineHeight:1.6}} dangerouslySetInnerHTML={{__html:m.bodyHtml}}/>:selectedMemo?.id===m.id?<p style={{color:"rgba(255,255,255,.7)",fontSize:12,margin:0,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{m.body}</p>:<p style={{color:"rgba(255,255,255,.4)",fontSize:11,margin:0,lineHeight:1.4,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{m.body?.substring(0,200)}</p>}
         {m.reactions&&m.reactions.length>0&&(
           <div style={{display:"flex",gap:3,marginTop:6}}>{m.reactions.map((r,i)=><span key={i} style={{fontSize:13,background:"rgba(255,255,255,.05)",padding:"1px 4px",borderRadius:6}}>{r.emoji}</span>)}</div>
         )}
