@@ -83,6 +83,7 @@ import SettingsDrawer from "./views/SettingsDrawer.jsx";
 import MeetingModeView from "./views/MeetingModeView.jsx";
 import InterviewModeView from "./views/InterviewModeView.jsx";
 import JobsView from "./views/JobsView.jsx";
+import ReadingView from "./views/ReadingView.jsx";
 
 
 class ErrorBoundary extends React.Component {
@@ -639,7 +640,7 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
     memos: "#84cc16", nura: "#06b6d4", guide: "#10b981", approve: "#8b5cf6",
     phone: "#22c55e", settings: "#6b7280", gmg_university: "#ec4899", incidents: "#ef4444",
     journal: "#818cf8", tasks: "#f472b6", notes: "#fbbf24", calendar: "#2dd4bf",
-    crm: "#fb923c", ccwa: "#a78bfa", aoa: "#64748b"
+    crm: "#fb923c", ccwa: "#a78bfa", aoa: "#64748b", reading: "#8b5cf6"
   };
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -2569,7 +2570,7 @@ function MyABAInner(){
       {/* App title bar — only shows when NOT on home */}
       {mainTab!=="home"&&mainTab!=="apps"&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 12px 4px",flexShrink:0}}>
         <button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ChevronLeft size={18}/></button>
-        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"Talk to ABA":mainTab==="briefing"?"Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"Command Center":mainTab==="nura"?"Nutrition":mainTab==="phone"?"ABA Dials":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"ABA Guides":mainTab==="sports"?"Scoreboard":mainTab==="music"?"Music":mainTab==="ccwa"?"Come Code with ABA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"MESA":mainTab==="interview"?"IRIS":mainTab.replace(/_/g," ")}</span>
+        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"Talk to ABA":mainTab==="briefing"?"Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"Command Center":mainTab==="nura"?"Nutrition":mainTab==="phone"?"ABA Dials":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"ABA Guides":mainTab==="sports"?"Scoreboard":mainTab==="music"?"Music":mainTab==="reading"?"Reading":mainTab==="ccwa"?"Come Code with ABA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"MESA":mainTab==="interview"?"IRIS":mainTab.replace(/_/g," ")}</span>
         <div style={{display:"flex",gap:4}}>
           {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:lastABAResponse?"rgba(34,197,94,.1)":"rgba(255,255,255,.04)",color:lastABAResponse?"rgba(34,197,94,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}><Activity size={14}/></button>}
           <button onClick={()=>setVoiceOut(!voiceOut)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:voiceOut?"rgba(139,92,246,.1)":"rgba(255,255,255,.04)",color:voiceOut?"rgba(139,92,246,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={13}/>:<VolumeX size={13}/>}</button>
@@ -2706,6 +2707,7 @@ function MyABAInner(){
       {mainTab==="guide"&&<GuideView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="sports"&&<SportsView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="music"&&<MusicView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="reading"&&<ReadingView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="ccwa"&&<CCWAView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="aoa"&&<AOAView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="shadow"&&<ShadowView/>}
