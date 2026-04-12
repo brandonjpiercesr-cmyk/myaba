@@ -189,7 +189,8 @@ export default function InterviewModeView({ userId }) {
     try {
       const res = await fetch(`${ABABASE}/api/cook/answer`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: 'Interviewer said: "' + question + '" — Give a STAR-method answer. Always answer.', transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId, last_said_by_ham: lastSaidByHamRef_iv.current, briefing_context: prepData ? JSON.stringify(prepData).substring(0, 3000) : '' })
+        body: JSON.stringify({ question: 'Interviewer said: "' + question + '" — Give a STAR-method answer. Always answer.', transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId, last_said_by_ham: lastSaidByHamRef_iv.current,
+          cook_style_override: cookOverrideRef.current || '', briefing_context: prepData ? JSON.stringify(prepData).substring(0, 3000) : '' })
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -347,7 +348,8 @@ export default function InterviewModeView({ userId }) {
           user_id: user?.email || 'unknown', mode: 'interview',
           transcript_context: last60.substring(0, 2000),
           briefing_context: prepData ? JSON.stringify(prepData).substring(0, 3000) : '',
-          last_said_by_ham: ''
+          last_said_by_ham: '',
+          cook_style_override: cookOverrideRef.current || ''
         })
       });
       if (res.ok && res.body) {
