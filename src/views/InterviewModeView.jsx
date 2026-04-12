@@ -272,7 +272,7 @@ export default function InterviewModeView({ userId }) {
     if (recording) { recRef.current?.stop(); streamRef.current?.getTracks().forEach(t=>t.stop()); if(wsRef.current&&wsRef.current.readyState===WebSocket.OPEN)wsRef.current.close(); wsRef.current=null; setRecording(false); return; }
     try {
       // v4: Dual audio — captures mic AND system audio (Zoom/Meet/FaceTime)
-      const dualAudio = await captureDualAudio();
+      const dualAudio = await captureDualAudio(micOnlyRef.current);
       dualAudioRef_iv.current = dualAudio;
       const stream = dualAudio.mixedStream;
       streamRef.current = dualAudio.micStream;
