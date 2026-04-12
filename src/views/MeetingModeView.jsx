@@ -39,6 +39,19 @@ export default function MeetingModeView({ userId }) {
   const [glossarySearch, setGlossarySearch] = useState('');
   const [brainResults, setBrainResults] = useState([]);
   const [brainSearching, setBrainSearching] = useState(false);
+  const [webSearchResult, setWebSearchResult] = useState(null);
+  const [webSearching, setWebSearching] = useState(false);
+  const searchWeb = async (q) => {
+    if (!q.trim()) return; setWebSearching(true);
+    try {
+      const r = await fetch(ABABASE + '/api/meeting/web-search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q })
+      });
+      if (r.ok) { const d = await r.json(); setWebSearchResult(d.answer || null); }
+    } catch (e) { console.error('Web search:', e); }
+    setWebSearching(false);
+  };
   const searchBrain = async (q) => {
     if (!q.trim()) return; setBrainSearching(true);
     try {
