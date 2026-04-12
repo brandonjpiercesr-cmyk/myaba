@@ -6,7 +6,7 @@ import { X, Bell, Volume2, VolumeX, LogOut, User, Mail, ChevronRight, Loader2, E
 import { ABABASE, subscribeToPush, unsubscribeFromPush } from "../utils/api.js";
 import { resolveHamId } from "../utils/ham.js";
 
-export default function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,user}){
+export default function SettingsDrawer({open,onClose,bg,setBg,BG,voiceOut,setVoiceOut,onLogout,user}){
   const[notifyBriefing,setNotifyBriefing]=useState(()=>{try{return localStorage.getItem("myaba_notifyBriefing")!=="false"}catch{return true}});
   const[notifyUrgent,setNotifyUrgent]=useState(()=>{try{return localStorage.getItem("myaba_notifyUrgent")!=="false"}catch{return true}});
   const[autoSpeak,setAutoSpeak]=useState(()=>{try{return localStorage.getItem("myaba_autoSpeak")==="true"}catch{return false}});

@@ -2768,7 +2768,7 @@ function MyABAInner(){
     <Queue open={queueOpen} onToggle={()=>setQueueOpen(!queueOpen)} items={proactiveItems}/>
     <ClosedCaptions text={captionText} visible={captionVisible} />
     {editorDoc&&<MobileDocEditor content={editorDoc.content} docType={editorDoc.type} onClose={()=>setEditorDoc(null)} onSave={(text)=>{setOutput&&setOutput(text);setEditorDoc(null)}}/>}
-    <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} voiceOut={voiceOut} setVoiceOut={setVoiceOut} user={user} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
+    <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} BG={BG} voiceOut={voiceOut} setVoiceOut={setVoiceOut} user={user} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
     {/* ⬡B:snap.quick_question:FAB_AND_PANEL:20260317⬡ */}
     {/* ⬡B:clipboard.history:FAB:20260320⬡ Clipboard History Button */}
     {!clipboardOpen&&!snapOpen&&mainTab==="chat"&&<button onClick={()=>setClipboardOpen(true)} style={{
