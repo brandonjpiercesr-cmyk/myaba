@@ -194,7 +194,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
     setMsgs([]);
     setInitDone(false);
     setTimeout(() => {
-      streamFromAIR(firstName + ' here. I want to do Block ' + blockNum + ' Day ' + dayNum + ': "' + title + '". Proceed with my lesson.', true);
+      streamFromAIR(firstName + ' here. I want to do Block ' + blockNum + ' Day ' + dayNum + ': "' + title + '". Check my cohort_type and proceed accordingly.', true);
     }, 100);
   };
   const resetProgress = async () => {
@@ -264,4 +264,3 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
   </div>);
 }
 
-// build-bust-1775701295

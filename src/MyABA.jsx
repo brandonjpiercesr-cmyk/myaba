@@ -1818,6 +1818,17 @@ function MyABAInner(){
   
   const[settingsOpen,setSettingsOpen]=useState(false);const[sidebarOpen,setSidebarOpen]=useState(false);const[exportMenu,setExportMenu]=useState(false);
   const[mainTab,setMainTab]=useState("home"); // ⬡B:phase3:CIP_LAUNCHER:home_default:20260323⬡
+  const[deepLinkMemoId,setDeepLinkMemoId]=useState(null);
+  
+  // ⬡B:MEMOS:FEAT:deep_link:20260412⬡ URL params: ?tab=memos&memo=UUID
+  useEffect(()=>{
+    try{
+      const params=new URLSearchParams(window.location.search);
+      const tab=params.get("tab");
+      const memoId=params.get("memo");
+      if(tab==="memos"){setMainTab("memos");if(memoId)setDeepLinkMemoId(memoId)}
+    }catch(e){}
+  },[]);
   const[appScope,setAppScope]=useState(null); // Current app agent scope for AIR calls
   const[briefingData,setBriefingData]=useState(null);
   const[briefingLoading,setBriefingLoading]=useState(false);
@@ -2679,7 +2690,7 @@ function MyABAInner(){
       {mainTab==="pipeline"&&<PipelineView userId={user?.email||user?.uid||"unknown"}/>}
       
       {/* Memos Mode - ⬡B:MYABA:memos_tab:20260319⬡ */}
-      {mainTab==="memos"&&<MemosView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="memos"&&<MemosView userId={user?.email||user?.uid||"unknown"} deepLinkMemoId={deepLinkMemoId}/>}
       
       {/* Email Mode - ⬡B:MYABA:email_tab:20260321⬡ */}
       {mainTab==="email"&&<EmailView userId={user?.email||user?.uid||"unknown"}/>}

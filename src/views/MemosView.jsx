@@ -6,7 +6,7 @@ import { Send, Loader2, RefreshCw, Mail } from "lucide-react";
 import { ABABASE } from "../utils/api.js";
 import { HAM_TEAM } from "../utils/ham.js";
 
-export default function MemosView({userId}){
+export default function MemosView({userId, deepLinkMemoId}){
   const[memos,setMemos]=useState([]);
   const[loading,setLoading]=useState(true);
   const[view,setView]=useState("inbox"); // inbox | sent | thread
@@ -16,6 +16,14 @@ export default function MemosView({userId}){
   const[composeForm,setComposeForm]=useState({to:"",subject:"",body:"",priority:"normal"});
   const[sending,setSending]=useState(false);
   const[selectedMemo,setSelectedMemo]=useState(null);
+
+  // ⬡B:MEMOS:FEAT:deep_link_auto_expand:20260412⬡
+  useEffect(()=>{
+    if(deepLinkMemoId&&memos.length>0&&!selectedMemo){
+      const found=memos.find(m=>m.id===deepLinkMemoId||m.dbId===deepLinkMemoId);
+      if(found){setSelectedMemo(found);if(!found.read)markRead(found.id)}
+    }
+  },[deepLinkMemoId,memos]);
 
   // ⬡B:AUDRA.W1:FIX:memos_dynamic_team:20260403⬡ Dynamic team from HAM_TEAM, no hardcoded emails
   const hamId = (userId||"").split("@")[0];
