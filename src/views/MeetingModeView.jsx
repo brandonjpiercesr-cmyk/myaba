@@ -75,6 +75,7 @@ export default function MeetingModeView({ userId }) {
   const transcriptRef = useRef([]);
   const lastTimFire = useRef(0);
   const cookOverrideRef = useRef('');
+  const micOnlyRef = useRef(false);
   const lastCookFire = useRef(0);
   const speakerModeRef = useRef(SPEAKER_MODES.THEY_TALKING);
 
@@ -240,7 +241,7 @@ export default function MeetingModeView({ userId }) {
   const startMeeting = async () => {
     try {
       // v3: Dual audio — captures mic AND system audio (Zoom/Meet/FaceTime)
-      const dualAudio = await captureDualAudio();
+      const dualAudio = await captureDualAudio(micOnlyRef.current);
       dualAudioRef.current = dualAudio;
       const stream = dualAudio.mixedStream;
       streamRef.current = dualAudio.micStream; // for cleanup
