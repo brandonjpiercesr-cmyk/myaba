@@ -2367,6 +2367,7 @@ function MyABAInner(){
     const abaMsg={id:abaMsgId,role:"aba",timestamp:Date.now(),content:"",streaming:true};
     addMsg(abaMsg);
     
+    let doneReceived=false; // ⬡B:911.reconnect_guard:FIX:no_overwrite_done:20260413⬡
     const streamResult=await airRequestStream({
       message:messageForAIR,
       userId:user?.email||user?.uid||"unknown",
@@ -2395,6 +2396,7 @@ function MyABAInner(){
         setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,attachments:[...(m.attachments||[]),{name:att.filename,type:att.contentType,size:att.sizeKB?att.sizeKB*1024:0,url:att.url}]}:m));
       },
       onDone:(data)=>{
+        doneReceived=true;
         const finalText=data.fullResponse||data.response||"";
         setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:finalText||m.content,streaming:false}:m));
         setLastABAResponse(data);
@@ -2404,8 +2406,9 @@ function MyABAInner(){
       },
       onError:(err)=>{
         console.error("[STREAM] Error:",err);
-        setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:"Taking a moment to reconnect...",streaming:false}:m));
-        showToast("Taking a moment to reconnect...","offline");
+        if(doneReceived){console.log("[STREAM] Post-done error ignored:",err);return;}
+        setMessages(prev=>prev.map(m=>m.id===abaMsgId?{...m,content:"ABA ran into an issue. Try again.",streaming:false}:m));
+        showToast("ABA ran into an issue. Try again.","error");
       }
     });
     
