@@ -33,15 +33,25 @@ export async function fetchAccounts(api, userId) {
   }
 }
 
-// Get OAuth URL for connecting a new account (+ button)
-export async function getConnectUrl(api, userId, provider = 'google') {
-  try {
-    const result = await api(`/api/iman/connect?userId=${encodeURIComponent(userId)}&provider=${provider}&format=json`);
-    return result.auth_url || null;
-  } catch (err) {
-    console.error('[EMAIL] Connect URL error:', err);
-    return null;
+// ⬡B:iman.processor:FIX:connect_url_client_side:20260413⬡
+// Build OAuth URL client-side — no backend call needed. One less point of failure.
+// After auth, Nylas redirects to /api/nylas/callback which exchanges code for grant and saves to brain.
+const NYLAS_CLIENT_ID = '1c693097-2bf7-4391-b922-29880466ec8e';
+const NYLAS_REDIRECT_URI = 'https://abacia-services.onrender.com/api/nylas/callback';
+const NYLAS_SCOPES = 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/contacts';
+
+export function getConnectUrl(api, userId, provider = 'google') {
+  const params = new URLSearchParams({
+    client_id: NYLAS_CLIENT_ID,
+    redirect_uri: NYLAS_REDIRECT_URI,
+    response_type: 'code',
+    access_type: 'offline',
+    scope: NYLAS_SCOPES,
+  });
+  if (userId && userId.includes('@')) {
+    params.set('login_hint', userId);
   }
+  return 'https://api.us.nylas.com/v3/connect/auth?' + params.toString();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -171,10 +181,10 @@ export function useAccounts(api, userId) {
 
   useEffect(() => { load(); }, [load]);
 
-  const connect = useCallback(async (provider = 'google') => {
-    const url = await getConnectUrl(api, userId, provider);
+  const connect = useCallback((provider = 'google') => {
+    const url = getConnectUrl(null, userId, provider);
     if (url) window.open(url, '_blank');
-  }, [api, userId]);
+  }, [userId]);
 
   return { accounts, loading, reload: load, connect };
 }
