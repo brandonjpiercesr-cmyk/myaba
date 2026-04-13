@@ -166,7 +166,7 @@ export default function ReadingView({ userId }) {
     if (!epubUrl.trim()) return;
     setImporting(true);
     setImportResult('');
-    const data = await callAIR(\`download and import this epub to my reading library: \${epubUrl}\`);
+    const data = await callAIR(`download and import this epub to my reading library: ${epubUrl}`);
     setImportResult(data.response || 'Processing...');
     setEpubUrl('');
     setImporting(false);
@@ -179,7 +179,7 @@ export default function ReadingView({ userId }) {
     if (!highlightsText.trim() || !highlightsBook.trim()) return;
     setImporting(true);
     const data = await callAIR(
-      \`Save these Kindle highlights from "\${highlightsBook}" to my brain. These are passages I highlighted while reading:\n\n\${highlightsText.substring(0, 8000)}\`
+      `Save these Kindle highlights from "${highlightsBook}" to my brain. These are passages I highlighted while reading:\n\n${highlightsText.substring(0, 8000)}`
     );
     setImportResult(data.response || 'Highlights saved.');
     setHighlightsText('');
