@@ -32,6 +32,12 @@ export default function ReadingView({ userId }) {
   const [chapterMeta, setChapterMeta] = useState({});
   const [abaResponse, setAbaResponse] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [importMode, setImportMode] = useState('paste'); // paste | epub | highlights
+  const [pasteText, setPasteText] = useState('');
+  const [pasteTitle, setPasteTitle] = useState('');
+  const [pasteAuthor, setPasteAuthor] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState('');
 
   const callAIR = useCallback(async (message) => {
     try {
@@ -106,7 +112,82 @@ export default function ReadingView({ userId }) {
     loadList();
   };
 
-  useEffect(() => { if (tab === 'list') loadList(); }, [tab]);
+
+  // Import pasted text as a book
+  const importPastedText = async () => {
+    if (!pasteText.trim() || !pasteTitle.trim()) return;
+    setImporting(true);
+    setImportResult('');
+    const bookId = pasteTitle.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40).toLowerCase();
+    // Split into chapters by common markers or just store as one chapter
+    const chapters = pasteText.split(/\n\s*(?:CHAPTER|Chapter)\s+[IVXLCDM\d]+/gi).filter(c => c.trim().length > 100);
+    const chapterCount = Math.max(chapters.length, 1);
+    
+    // Store via AIR
+    const data = await callAIR(
+      `Save this book to my reading list and brain. Title: "${pasteTitle}", Author: "${pasteAuthor || 'Unknown'}". ` +
+      `Store it with book_id "${bookId}" and source "brain". It has ${chapterCount} chapter(s). ` +
+      `Here is the text for chapter 1:\n\n${pasteText.substring(0, 7000)}`
+    );
+    setImportResult(data.response || 'Saved to your library.');
+    setPasteText('');
+    setPasteTitle('');
+    setPasteAuthor('');
+    setImporting(false);
+  };
+
+  // Import EPUB file
+  const handleEpubUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportResult('');
+    
+    // For now, upload EPUB via URL isn't possible from file input
+    // We need to read the file and send it to ABA for processing
+    // Since page_upload_epub expects a URL, we'll use a workaround:
+    // Read as text if possible, or prompt user for URL
+    if (file.name.endsWith('.epub')) {
+      setImportResult('EPUB files need to be uploaded via URL. Go to amazon.com/mycd, right-click the EPUB download link, copy the URL, and paste it below.');
+      setImportMode('epub_url');
+    } else if (file.name.endsWith('.txt') || file.name.endsWith('.html') || file.name.endsWith('.htm')) {
+      const text = await file.text();
+      setPasteText(text);
+      setPasteTitle(file.name.replace(/\.[^.]+$/, ''));
+      setImportMode('paste');
+      setImportResult('Text loaded. Enter a title and tap Import.');
+    }
+    setImporting(false);
+  };
+
+  // Import EPUB from URL
+  const [epubUrl, setEpubUrl] = useState('');
+  const importEpubFromUrl = async () => {
+    if (!epubUrl.trim()) return;
+    setImporting(true);
+    setImportResult('');
+    const data = await callAIR(\`download and import this epub to my reading library: \${epubUrl}\`);
+    setImportResult(data.response || 'Processing...');
+    setEpubUrl('');
+    setImporting(false);
+  };
+
+  // Import highlights
+  const [highlightsText, setHighlightsText] = useState('');
+  const [highlightsBook, setHighlightsBook] = useState('');
+  const importHighlights = async () => {
+    if (!highlightsText.trim() || !highlightsBook.trim()) return;
+    setImporting(true);
+    const data = await callAIR(
+      \`Save these Kindle highlights from "\${highlightsBook}" to my brain. These are passages I highlighted while reading:\n\n\${highlightsText.substring(0, 8000)}\`
+    );
+    setImportResult(data.response || 'Highlights saved.');
+    setHighlightsText('');
+    setHighlightsBook('');
+    setImporting(false);
+  };
+
+    useEffect(() => { if (tab === 'list') loadList(); }, [tab]);
 
   const sty = {
     container: { padding: '12px', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', maxWidth: '100%' },
@@ -131,6 +212,7 @@ export default function ReadingView({ userId }) {
       <div style={sty.tabs}>
         <button style={sty.tab(tab === 'search')} onClick={() => setTab('search')}>Search</button>
         <button style={sty.tab(tab === 'list')} onClick={() => setTab('list')}>My Books</button>
+        <button style={sty.tab(tab === 'import')} onClick={() => setTab('import')}>Import</button>
         {readerBook && <button style={sty.tab(tab === 'reader')} onClick={() => setTab('reader')}>Reader</button>}
       </div>
 
@@ -211,7 +293,77 @@ export default function ReadingView({ userId }) {
         </div>
       )}
 
-      {tab === 'reader' && (
+
+      {tab === 'import' && (
+        <div>
+          <div style={{display:'flex',gap:'6px',marginBottom:'16px',flexWrap:'wrap'}}>
+            <button style={sty.tab(importMode==='paste')} onClick={()=>setImportMode('paste')}>Paste Text</button>
+            <button style={sty.tab(importMode==='epub_url')} onClick={()=>setImportMode('epub_url')}>EPUB Link</button>
+            <button style={sty.tab(importMode==='highlights')} onClick={()=>setImportMode('highlights')}>Highlights</button>
+          </div>
+
+          {importMode === 'paste' && (
+            <div>
+              <div style={{fontSize:'13px',color:'#888',marginBottom:'12px',lineHeight:'1.5'}}>
+                Copy text from Kindle Cloud Reader (read.amazon.com), a PDF, or any source. Paste it here and ABA will store it in your personal library.
+              </div>
+              <input style={sty.input} placeholder="Book title (required)" value={pasteTitle} onChange={e=>setPasteTitle(e.target.value)} />
+              <input style={{...sty.input,marginTop:'8px'}} placeholder="Author (optional)" value={pasteAuthor} onChange={e=>setPasteAuthor(e.target.value)} />
+              <textarea style={{...sty.input,marginTop:'8px',minHeight:'200px',resize:'vertical',fontFamily:'Georgia, serif',lineHeight:'1.6'}} placeholder="Paste chapter text here..." value={pasteText} onChange={e=>setPasteText(e.target.value)} />
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'10px'}}>
+                <span style={{fontSize:'12px',color:'#999'}}>{pasteText.length > 0 ? `${pasteText.split(/\s+/).length} words` : ''}</span>
+                <button style={sty.btn} onClick={importPastedText} disabled={importing || !pasteText.trim() || !pasteTitle.trim()}>
+                  {importing ? 'Saving...' : 'Import to Library'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {importMode === 'epub_url' && (
+            <div>
+              <div style={{fontSize:'13px',color:'#888',marginBottom:'12px',lineHeight:'1.5'}}>
+                <strong>Step 1:</strong> Go to <span style={{color:'#1a1a2e',fontWeight:'600'}}>amazon.com/mycd</span> on your computer<br/>
+                <strong>Step 2:</strong> Click Content tab, find your book<br/>
+                <strong>Step 3:</strong> Click three dots (...) → "Download and transfer via USB"<br/>
+                <strong>Step 4:</strong> If EPUB format appears, the book is DRM-free<br/>
+                <strong>Step 5:</strong> Right-click the download link → Copy Link Address<br/>
+                <strong>Step 6:</strong> Paste the link below
+              </div>
+              <div style={{display:'flex',gap:'8px'}}>
+                <input style={sty.input} placeholder="Paste EPUB download URL here..." value={epubUrl} onChange={e=>setEpubUrl(e.target.value)} />
+                <button style={sty.btn} onClick={importEpubFromUrl} disabled={importing || !epubUrl.trim()}>
+                  {importing ? '...' : 'Import'}
+                </button>
+              </div>
+              <div style={{fontSize:'12px',color:'#999',marginTop:'8px'}}>
+                Works with Gutenberg EPUBs too — search a book, copy the EPUB link, paste here.
+              </div>
+            </div>
+          )}
+
+          {importMode === 'highlights' && (
+            <div>
+              <div style={{fontSize:'13px',color:'#888',marginBottom:'12px',lineHeight:'1.5'}}>
+                <strong>Step 1:</strong> Go to <span style={{color:'#1a1a2e',fontWeight:'600'}}>read.amazon.com/notebook</span><br/>
+                <strong>Step 2:</strong> Click a book on the left sidebar<br/>
+                <strong>Step 3:</strong> Select all highlights (Ctrl+A) and copy (Ctrl+C)<br/>
+                <strong>Step 4:</strong> Paste below — ABA saves them to your brain
+              </div>
+              <input style={sty.input} placeholder="Book title (required)" value={highlightsBook} onChange={e=>setHighlightsBook(e.target.value)} />
+              <textarea style={{...sty.input,marginTop:'8px',minHeight:'150px',resize:'vertical',lineHeight:'1.6'}} placeholder="Paste your highlights and notes here..." value={highlightsText} onChange={e=>setHighlightsText(e.target.value)} />
+              <div style={{display:'flex',justifyContent:'flex-end',marginTop:'10px'}}>
+                <button style={sty.btn} onClick={importHighlights} disabled={importing || !highlightsText.trim() || !highlightsBook.trim()}>
+                  {importing ? 'Saving...' : 'Save Highlights'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {importResult && <div style={sty.abaResp}>{importResult}</div>}
+        </div>
+      )}
+
+            {tab === 'reader' && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <button style={sty.smallBtn} onClick={() => setTab('search')}>Back</button>
