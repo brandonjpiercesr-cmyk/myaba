@@ -70,14 +70,23 @@ export default function ReadingView({ userId }) {
     setSearching(false);
   };
 
-  // Load reading list
+  // Load reading list — direct Supabase query (fast, no AIR overhead)
   const loadList = async () => {
     setListLoading(true);
-    const data = await callAIR('show my reading list');
-    const listTool = (data.toolsExecuted || []).find(t => t.tool_name === 'page_reading_list');
-    if (listTool?.result) {
-      const all = listTool.result.all || [];
-      setReadingList(all);
+    try {
+      const res = await fetch(
+        'https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory?memory_type=eq.page_reading_list&user_id=eq.' + encodeURIComponent(userId) + '&order=updated_at.desc&limit=50',
+        { headers: { 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw' }}
+      );
+      const rows = await res.json();
+      const books = (rows || []).map(r => {
+        try { return typeof r.content === 'string' ? JSON.parse(r.content) : r.content; }
+        catch { return null; }
+      }).filter(Boolean);
+      setReadingList(books);
+    } catch (e) {
+      console.error('[PAGE] Reading list fetch failed:', e);
+      setReadingList([]);
     }
     setListLoading(false);
   };
