@@ -180,9 +180,36 @@ export default function EmailView({userId}){
           <div style={{marginTop:4,maxHeight:300,overflowY:"auto"}}>
             {cookedItems.map((item, i) => (
               <CookedCard key={item.message_id || i} item={item}
-                onApprove={(it) => { /* TODO: send draft via IMAN */ }}
-                onEdit={(it) => { /* TODO: open edit modal */ }}
-                onDismiss={(it) => { /* TODO: mark dismissed in brain */ }}
+                onApprove={async (it) => {
+                  // ⬡B:iman.processor:FIX:cooked_card_handlers:20260413⬡
+                  if (!confirm('Send this draft to ' + (it.from || 'recipient') + '?')) return;
+                  try {
+                    const res = await api('/api/air/process', {
+                      method: 'POST',
+                      body: {
+                        message: 'Send this drafted email reply. Reply to message ID: ' + (it.draft?.reply_to_message_id || it.message_id) + '. Thread ID: ' + (it.draft?.thread_id || '') + '. To: ' + (it.from_email || it.from) + '. Body: ' + (it.draft?.body || ''),
+                        user_id: userId,
+                        channel: 'myaba'
+                      }
+                    });
+                    if (res.response) alert('Sent!');
+                  } catch (e) { alert('Send failed: ' + e.message); }
+                }}
+                onEdit={(it) => {
+                  const newBody = prompt('Edit the draft:', it.draft?.body || '');
+                  if (newBody !== null && newBody.trim()) {
+                    it.draft.body = newBody;
+                  }
+                }}
+                onDismiss={async (it) => {
+                  try {
+                    await api('/api/iman/digest/dismiss', {
+                      method: 'POST',
+                      body: { message_id: it.message_id, user_id: userId }
+                    });
+                  } catch {}
+                  processNow();
+                }}
               />
             ))}
           </div>
