@@ -84,6 +84,11 @@ import MeetingModeView from "./views/MeetingModeView.jsx";
 import InterviewModeView from "./views/InterviewModeView.jsx";
 import JobsView from "./views/JobsView.jsx";
 import ReadingView from "./views/ReadingView.jsx";
+import SoulView from "./views/SoulView.jsx";
+import ATTERView from "./views/ATTERView.jsx";
+import LogfulView from "./views/LogfulView.jsx";
+import WritesView from "./views/WritesView.jsx";
+import SeedView from "./views/SeedView.jsx";
 
 
 class ErrorBoundary extends React.Component {
@@ -2731,6 +2736,11 @@ function MyABAInner(){
       {mainTab==="guide"&&<GuideView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="sports"&&<SportsView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="music"&&<MusicView userId={user?.email||user?.uid||"unknown"}/>}
+              {mainTab==="soul"&&<SoulView userId={user?.email||user?.uid||"unknown"}/>}
+              {mainTab==="atter"&&<ATTERView userId={user?.email||user?.uid||"unknown"}/>}
+              {mainTab==="logful"&&<LogfulView userId={user?.email||user?.uid||"unknown"}/>}
+              {mainTab==="writes"&&<WritesView userId={user?.email||user?.uid||"unknown"}/>}
+              {mainTab==="seed"&&<SeedView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="reading"&&<ReadingView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="ccwa"&&<CCWAView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="aoa"&&<AOAView userId={user?.email||user?.uid||"unknown"}/>}
