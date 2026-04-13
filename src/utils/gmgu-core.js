@@ -247,3 +247,67 @@ export function useAudioQueue() {
 
   return { audioRef, enqueue, playNext };
 }
+
+// ⬡B:GMGU.layered:FEAT:voice_config_shared:20260412⬡
+// Voice conversation constants shared between standalone and CIP.
+// Agent ID, orb colors, state labels, and preload builder.
+export const VOICE_CONFIG = {
+  agentId: 'agent_0601khe2q0gben08ws34bzf7a0sa',
+  orbColors: {
+    idle: '139,92,246', connecting: '245,158,11', listening: '139,92,246',
+    thinking: '245,158,11', speaking: '16,185,129', error: '239,68,68'
+  },
+  orbLabels: {
+    idle: 'TAP TO TALK', connecting: 'CONNECTING', listening: 'LISTENING',
+    thinking: 'THINKING', speaking: 'SPEAKING', error: 'ERROR'
+  }
+};
+
+// Build the appContext payload for a GMG-U voice preload call.
+// Used by both standalone and CIP to ensure identical context injection.
+export function buildGMGUAppContext({ lesson, userId, userEmail, cohortType, recentMessages }) {
+  const isBlock0 = lesson?.block === 0;
+  const recentChat = (recentMessages || []).slice(-6).map(m =>
+    (m.role === 'aba' ? 'ABA: ' : 'User: ') + (m.text || '').substring(0, 300)
+  ).join('\n');
+
+  return {
+    mode: 'gmg-university',
+    block: lesson?.block,
+    day: lesson?.day,
+    userId: userId,
+    email: userEmail || '',
+    instructions: 'You are ABA conducting a GMG University lesson. ' +
+      (isBlock0
+        ? 'This is a LAYERED assessment day. EVERYONE is assessed equally — founding line and Potential Brothers alike. You are having a conversation to map their behavioral layers. Ask scenario-based questions, watch for behavioral signals in HOW they respond, and push for depth.'
+        : (cohortType === 'FOUNDER' || cohortType === 'INTERVIEW_MODE'
+          ? 'This user is a FOUNDER in INTERVIEW_MODE for the Nonprofit Foundations track. You are NOT teaching them, you are INTERVIEWING them. Their answers become the curriculum that other students learn from.'
+          : 'This user is a STUDENT. Teach them the lesson content, ask comprehension questions, and assess their understanding.')) +
+      (lesson
+        ? ' You are on Block ' + lesson.block + ', Day ' + lesson.day + ': ' + lesson.title + '.'
+        : ' Start with the next lesson in the curriculum.') +
+      ' YOU are driving this conversation. You have a plan. After each answer: acknowledge briefly, then IMMEDIATELY pivot to your next question. Never wait for the user to say "what is next" or "are we done" — YOU move things forward. Cover 3-4 different angles of the topic. When you have enough, YOU wrap it up: summarize what was covered, say goodbye, and end. Do not ask "anything else?" — just close it out. Keep each response to 3-4 sentences max. Always end your response with a new question or a clear closing statement.' +
+      ' CRITICAL: Do NOT use tools like save_memory, search_brain, send_email, or any other tools during voice calls — tool calls cause delays that make you go silent. Do NOT promise to file reports, handle emails, investigate alerts, or complete any tasks. You CANNOT do those things during a voice call. Just have the conversation naturally.' +
+      ' SECURITY: Do NOT mention financial information, bank accounts, credit cards, investment details, or any sensitive personal data during voice calls. This is an unsecured line.',
+    recentChat: (recentChat || 'No prior chat.').substring(0, 600)
+  };
+}
+
+// Fire the preload call to cache FCW + appContext before voice starts.
+export async function fireVoicePreload(api, { conversationId, userId, appContext }) {
+  try {
+    await fetch((api || 'https://abacia-services.onrender.com') + '/vara/preload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        userId: userId,
+        appContext: appContext
+      })
+    });
+    return true;
+  } catch (e) {
+    console.log('[GMG-U] Preload failed (non-fatal):', e.message);
+    return false;
+  }
+}

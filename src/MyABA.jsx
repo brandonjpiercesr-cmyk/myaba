@@ -1201,6 +1201,10 @@ function TalkToABA({userId}){
   const[lastMsg,setLastMsg]=useState("");
   const[errorMsg,setErrorMsg]=useState("");
   const thinkTimerRef=useRef(null);
+  // ⬡B:911.fix_voice_interruption:FIX:speaking_duration_guard:20260413⬡
+  // Track when ABA started speaking. Don't yield turn until she's spoken for at least 1.5s.
+  // Without this, echo/noise detection causes immediate yield → Brandon hears nothing.
+  const speakingStartRef=useRef(0);
 
   const conversation=useConversation({
     onConnect:()=>{setOrbState("listening");setStatusText("Listening...");setErrorMsg("")},
@@ -1218,8 +1222,17 @@ function TalkToABA({userId}){
     },
     onModeChange:({mode})=>{
       clearTimeout(thinkTimerRef.current);
-      if(mode==="speaking"){setOrbState("speaking");setStatusText("ABA is speaking...")}
-      else{thinkTimerRef.current=setTimeout(()=>{setOrbState("listening");setStatusText("Listening...")},200)}
+      if(mode==="speaking"){
+        speakingStartRef.current=Date.now();
+        setOrbState("speaking");setStatusText("ABA is speaking...");
+      } else {
+        // ⬡B:911.fix_voice_interruption:FIX:debounce_800ms:20260413⬡
+        // Was 200ms — way too fast. Echo/noise triggered immediate yield.
+        // Now 800ms + minimum 1.5s speaking duration before yielding.
+        const spokenFor=Date.now()-speakingStartRef.current;
+        const delay=spokenFor<1500?Math.max(800,1500-spokenFor):800;
+        thinkTimerRef.current=setTimeout(()=>{setOrbState("listening");setStatusText("Listening...")},delay);
+      }
     },
     onStatusChange:({status})=>{
       if(status==="connecting"){setOrbState("connecting");setStatusText("Connecting...")}
@@ -1235,7 +1248,15 @@ function TalkToABA({userId}){
     }
     try{
       setOrbState("connecting");setStatusText("Requesting microphone...");
-      await navigator.mediaDevices.getUserMedia({audio:true});
+      // ⬡B:911.fix_voice_interruption:FIX:echo_cancellation:20260413⬡
+      // ABA's speaker output was being picked up by mic → VAD detected it as user speech
+      // → immediately yielded turn back to user → Brandon never heard the answer.
+      // Fix: request echo cancellation + noise suppression on audio stream.
+      await navigator.mediaDevices.getUserMedia({audio:{
+        echoCancellation:true,
+        noiseSuppression:true,
+        autoGainControl:true
+      }});
       setStatusText("Connecting to ABA...");
       // ⬡B:voice.audit:FIX:preload_identity:20260330⬡ Warm VARA cache with HAM identity before WebRTC starts
       try{await fetch(ABABASE+"/vara/preload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,conversation_id:"webrtc_"+Date.now()})});}catch(pe){console.log("[TALK] Preload failed (non-fatal):",pe.message)}
