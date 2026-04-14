@@ -225,7 +225,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
           if ((nl.mode === 'paired' && nl.nextLessons.length === 1) || (nl.mode === 'single' && nl.nextLessons.length > 0)) {
             const lesson = nl.nextLessons[0];
             setCurrentLesson({ block:lesson.block, day:lesson.day, title:lesson.title });
-            streamFromAIR(firstName + ' just opened GMG University. Today\'s session is "' + lesson.title + '." Greet ' + firstName + ' warmly and set up what today\'s session is about, then wait for them to start.', true);
+            streamFromAIR("Just opened GMG University. Today we are doing " + lesson.title + ". Greet me warmly and set up what we are covering, then wait for me to begin.", true);
             return;
           }
           setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. You have completed everything so far. That is a serious accomplishment, and I hope you know that.` }]);
@@ -234,7 +234,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
           const next = getNextBlockLesson(profile?.completedDays, curriculum);
           if (next) {
             setCurrentLesson(next);
-            streamFromAIR(firstName + ' just opened GMG University. Today\'s session is "' + next.title + '." Greet ' + firstName + ' warmly and set up what today\'s session is about, then wait for them to start.', true);
+            streamFromAIR("Just opened GMG University. Today we are doing " + next.title + ". Greet me warmly and set up what we are covering, then wait for me to begin.", true);
           } else {
             setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. Welcome to GMG University.` }]);
           }
