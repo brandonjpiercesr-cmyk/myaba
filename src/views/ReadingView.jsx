@@ -1,43 +1,34 @@
-// ⬡B:BIRTH.PAGE:VIEW:reading_view_cip:20260412⬡
-// ReadingView for CIP (MyABA mobile) — imports from page-core.js
+// ⬡B:BIRTH.PAGE:VIEW:reading_view_v2:20260413⬡
+// ReadingView v2 — visual redesign with covers, reading plans, progress bars
 import { useState, useEffect, useCallback } from 'react';
 
 const API_BASE = 'https://abacia-services.onrender.com';
-
-// Inline core functions (CIP doesn't have module resolution for separate core files)
-const READING_STATUS = {
-  reading: { label: 'Reading', color: '#4CAF50', bg: '#E8F5E9' },
-  want_to_read: { label: 'Want to Read', color: '#2196F3', bg: '#E3F2FD' },
-  finished: { label: 'Finished', color: '#9E9E9E', bg: '#F5F5F5' }
-};
-
-function formatDuration(d) {
-  if (!d) return '';
-  const p = d.split(':');
-  if (p.length === 3) { const h = parseInt(p[0]), m = parseInt(p[1]); return h > 0 ? `${h}h ${m}m` : `${m}m`; }
-  return d;
-}
+const SUPABASE_URL = 'https://htlxjkbrstpwwtzsbyvb.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw';
 
 export default function ReadingView({ userId }) {
-  const [tab, setTab] = useState('search'); // search | list | reader
+  const [tab, setTab] = useState('library');
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
-  const [results, setResults] = useState({ audiobooks: [], ebooks: [] });
+  const [results, setResults] = useState({ audiobooks: [], ebooks: [], openLibrary: [] });
   const [readingList, setReadingList] = useState([]);
-  const [listLoading, setListLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
   const [readerBook, setReaderBook] = useState(null);
   const [chapterText, setChapterText] = useState('');
   const [chapterLoading, setChapterLoading] = useState(false);
   const [chapterNum, setChapterNum] = useState(1);
   const [chapterMeta, setChapterMeta] = useState({});
   const [abaResponse, setAbaResponse] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [importMode, setImportMode] = useState('paste'); // paste | epub | highlights
+  const [planLoading, setPlanLoading] = useState(null); // book title being planned
+  const [importMode, setImportMode] = useState('paste');
   const [pasteText, setPasteText] = useState('');
   const [pasteTitle, setPasteTitle] = useState('');
   const [pasteAuthor, setPasteAuthor] = useState('');
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState('');
+  const [epubUrl, setEpubUrl] = useState('');
+  const [highlightsText, setHighlightsText] = useState('');
+  const [highlightsBook, setHighlightsBook] = useState('');
 
   const callAIR = useCallback(async (message) => {
     try {
@@ -50,33 +41,13 @@ export default function ReadingView({ userId }) {
     } catch (e) { return { error: e.message }; }
   }, [userId]);
 
-  // Search books
-  const doSearch = async () => {
-    if (!query.trim()) return;
-    setSearching(true);
-    setResults({ audiobooks: [], ebooks: [] });
-    const data = await callAIR(`find me books about ${query}`);
-    const searchTools = (data.toolsExecuted || []).filter(t => t.tool_name === 'page_search');
-    let allAudio = [], allEbooks = [];
-    for (const t of searchTools) {
-      if (t.result?.audiobooks) allAudio.push(...t.result.audiobooks);
-      if (t.result?.ebooks) allEbooks.push(...t.result.ebooks);
-    }
-    // Dedup by id
-    const seenAudio = new Set(); allAudio = allAudio.filter(a => { if (seenAudio.has(a.id)) return false; seenAudio.add(a.id); return true; });
-    const seenEbook = new Set(); allEbooks = allEbooks.filter(e => { if (seenEbook.has(e.id)) return false; seenEbook.add(e.id); return true; });
-    setResults({ audiobooks: allAudio, ebooks: allEbooks });
-    setAbaResponse(data.response || '');
-    setSearching(false);
-  };
-
-  // Load reading list — direct Supabase query (fast, no AIR overhead)
+  // Direct Supabase for reading list (no AIR overhead)
   const loadList = async () => {
     setListLoading(true);
     try {
       const res = await fetch(
-        'https://htlxjkbrstpwwtzsbyvb.supabase.co/rest/v1/aba_memory?memory_type=eq.page_reading_list&user_id=eq.' + encodeURIComponent(userId) + '&order=updated_at.desc&limit=50',
-        { headers: { 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw' }}
+        `${SUPABASE_URL}/rest/v1/aba_memory?memory_type=eq.page_reading_list&user_id=eq.${encodeURIComponent(userId)}&order=updated_at.desc&limit=20`,
+        { headers: { apikey: SUPABASE_ANON } }
       );
       const rows = await res.json();
       const books = (rows || []).map(r => {
@@ -84,14 +55,36 @@ export default function ReadingView({ userId }) {
         catch { return null; }
       }).filter(Boolean);
       setReadingList(books);
-    } catch (e) {
-      console.error('[PAGE] Reading list fetch failed:', e);
-      setReadingList([]);
-    }
+    } catch { setReadingList([]); }
     setListLoading(false);
   };
 
-  // Open reader
+  const doSearch = async () => {
+    if (!query.trim()) return;
+    setSearching(true);
+    setResults({ audiobooks: [], ebooks: [], openLibrary: [] });
+    const data = await callAIR(`use page_search to find books about ${query}`);
+    const searchTools = (data.toolsExecuted || []).filter(t => t.tool_name === 'page_search');
+    let allAudio = [], allEbooks = [], allOL = [];
+    for (const t of searchTools) {
+      if (t.result?.audiobooks) allAudio.push(...t.result.audiobooks);
+      if (t.result?.ebooks) allEbooks.push(...t.result.ebooks);
+      if (t.result?.openLibrary) allOL.push(...t.result.openLibrary);
+    }
+    setResults({ audiobooks: allAudio, ebooks: allEbooks, openLibrary: allOL });
+    setAbaResponse(data.response || '');
+    setSearching(false);
+  };
+
+  // START READING PLAN — triggers Gemini chapter generation
+  const startReadingPlan = async (title, author) => {
+    setPlanLoading(title);
+    const data = await callAIR(`add ${title} by ${author || 'unknown'} to my daily reading plan`);
+    setPlanLoading(null);
+    setAbaResponse(data.response || 'Reading plan created.');
+    loadList(); // Refresh list
+  };
+
   const openBook = async (bookId, source, chapter = 1) => {
     setTab('reader');
     setChapterLoading(true);
@@ -100,304 +93,299 @@ export default function ReadingView({ userId }) {
     const chTool = (data.toolsExecuted || []).find(t => t.tool_name === 'page_get_chapter');
     if (chTool?.result) {
       setChapterText(chTool.result.text || '');
-      setChapterMeta({
-        title: chTool.result.title,
-        author: chTool.result.author,
-        chapterTitle: chTool.result.chapter_title,
-        chapterNumber: chTool.result.chapter_number,
-        totalChapters: chTool.result.total_chapters,
-        toc: chTool.result.table_of_contents || [],
-        listenUrl: chTool.result.listen_url
-      });
+      setChapterMeta({ title: chTool.result.title, author: chTool.result.author, chapterTitle: chTool.result.chapter_title, chapterNumber: chTool.result.chapter_number, totalChapters: chTool.result.total_chapters, toc: chTool.result.table_of_contents || [], listenUrl: chTool.result.listen_url });
       setReaderBook({ id: bookId, source });
     }
     setAbaResponse(data.response || '');
     setChapterLoading(false);
   };
 
-  // Add to list
-  const addBook = async (book) => {
-    await callAIR(`add "${book.title}" by ${book.author || 'unknown'} to my reading list. Source: ${book.source}, id: ${book.id}`);
-    loadList();
-  };
-
-
-  // Import pasted text as a book
   const importPastedText = async () => {
     if (!pasteText.trim() || !pasteTitle.trim()) return;
     setImporting(true);
-    setImportResult('');
     const bookId = pasteTitle.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40).toLowerCase();
-    // Split into chapters by common markers or just store as one chapter
-    const chapters = pasteText.split(/\n\s*(?:CHAPTER|Chapter)\s+[IVXLCDM\d]+/gi).filter(c => c.trim().length > 100);
-    const chapterCount = Math.max(chapters.length, 1);
-    
-    // Store via AIR
-    const data = await callAIR(
-      `Save this book to my reading list and brain. Title: "${pasteTitle}", Author: "${pasteAuthor || 'Unknown'}". ` +
-      `Store it with book_id "${bookId}" and source "brain". It has ${chapterCount} chapter(s). ` +
-      `Here is the text for chapter 1:\n\n${pasteText.substring(0, 7000)}`
-    );
-    setImportResult(data.response || 'Saved to your library.');
-    setPasteText('');
-    setPasteTitle('');
-    setPasteAuthor('');
+    await callAIR(`Save this book to my reading list and brain. Title: "${pasteTitle}", Author: "${pasteAuthor || 'Unknown'}". Store it with book_id "${bookId}" and source "brain". Here is the text for chapter 1:\n\n${pasteText.substring(0, 7000)}`);
+    setImportResult('Saved to your library.');
+    setPasteText(''); setPasteTitle(''); setPasteAuthor('');
     setImporting(false);
+    loadList();
   };
 
-  // Import EPUB file
-  const handleEpubUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImporting(true);
-    setImportResult('');
-    
-    // For now, upload EPUB via URL isn't possible from file input
-    // We need to read the file and send it to ABA for processing
-    // Since page_upload_epub expects a URL, we'll use a workaround:
-    // Read as text if possible, or prompt user for URL
-    if (file.name.endsWith('.epub')) {
-      setImportResult('EPUB files need to be uploaded via URL. Go to amazon.com/mycd, right-click the EPUB download link, copy the URL, and paste it below.');
-      setImportMode('epub_url');
-    } else if (file.name.endsWith('.txt') || file.name.endsWith('.html') || file.name.endsWith('.htm')) {
-      const text = await file.text();
-      setPasteText(text);
-      setPasteTitle(file.name.replace(/\.[^.]+$/, ''));
-      setImportMode('paste');
-      setImportResult('Text loaded. Enter a title and tap Import.');
-    }
-    setImporting(false);
-  };
-
-  // Import EPUB from URL
-  const [epubUrl, setEpubUrl] = useState('');
   const importEpubFromUrl = async () => {
     if (!epubUrl.trim()) return;
     setImporting(true);
-    setImportResult('');
     const data = await callAIR(`download and import this epub to my reading library: ${epubUrl}`);
     setImportResult(data.response || 'Processing...');
-    setEpubUrl('');
-    setImporting(false);
+    setEpubUrl(''); setImporting(false); loadList();
   };
 
-  // Import highlights
-  const [highlightsText, setHighlightsText] = useState('');
-  const [highlightsBook, setHighlightsBook] = useState('');
   const importHighlights = async () => {
     if (!highlightsText.trim() || !highlightsBook.trim()) return;
     setImporting(true);
-    const data = await callAIR(
-      `Save these Kindle highlights from "${highlightsBook}" to my brain. These are passages I highlighted while reading:\n\n${highlightsText.substring(0, 8000)}`
+    await callAIR(`Save these Kindle highlights from "${highlightsBook}" to my brain. These are passages I highlighted while reading:\n\n${highlightsText.substring(0, 8000)}`);
+    setImportResult('Highlights saved.');
+    setHighlightsText(''); setHighlightsBook(''); setImporting(false);
+  };
+
+  useEffect(() => { loadList(); }, []);
+
+  const c = {
+    bg: '#0d0d0d', card: '#1a1a1a', cardHover: '#222', border: '#2a2a2a',
+    accent: '#d4a574', accentLight: '#e8c9a0', accentDim: 'rgba(212,165,116,0.15)',
+    text: '#e8e0d8', textDim: '#8a7f74', textMuted: '#5a524a',
+    green: '#6db070', blue: '#6ba3d4', purple: '#9b8ec4',
+    font: "'Georgia', 'Palatino Linotype', serif",
+    sans: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+  };
+
+  const Progress = ({ current, total }) => {
+    const pct = total ? Math.min((current / total) * 100, 100) : 0;
+    return (
+      <div style={{ height: 4, borderRadius: 2, background: c.border, overflow: 'hidden', marginTop: 6 }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${c.accent}, ${c.accentLight})`, borderRadius: 2, transition: 'width 0.5s' }} />
+      </div>
     );
-    setImportResult(data.response || 'Highlights saved.');
-    setHighlightsText('');
-    setHighlightsBook('');
-    setImporting(false);
   };
 
-    useEffect(() => { if (tab === 'list') loadList(); }, [tab]);
-
-  const sty = {
-    container: { padding: '12px', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', maxWidth: '100%' },
-    tabs: { display: 'flex', gap: '8px', marginBottom: '16px' },
-    tab: (active) => ({ padding: '8px 16px', borderRadius: '20px', border: 'none', background: active ? '#1a1a2e' : '#f0f0f0', color: active ? '#fff' : '#333', fontWeight: active ? '600' : '400', cursor: 'pointer', fontSize: '14px' }),
-    searchBox: { display: 'flex', gap: '8px', marginBottom: '16px' },
-    input: { flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '15px', outline: 'none' },
-    btn: { padding: '10px 18px', borderRadius: '8px', border: 'none', background: '#1a1a2e', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '14px' },
-    card: { background: '#fff', borderRadius: '10px', padding: '14px', marginBottom: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid #eee' },
-    title: { fontSize: '15px', fontWeight: '600', color: '#1a1a2e', marginBottom: '4px' },
-    subtitle: { fontSize: '13px', color: '#666', marginBottom: '6px' },
-    badge: (bg, color) => ({ display: 'inline-block', padding: '2px 8px', borderRadius: '10px', background: bg, color, fontSize: '11px', fontWeight: '600' }),
-    section: { fontSize: '13px', fontWeight: '600', color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', marginTop: '16px' },
-    chapterText: { fontSize: '15px', lineHeight: '1.7', color: '#333', whiteSpace: 'pre-wrap', padding: '16px', background: '#fafafa', borderRadius: '8px', maxHeight: '60vh', overflowY: 'auto' },
-    abaResp: { fontSize: '14px', color: '#555', lineHeight: '1.5', padding: '12px', background: '#f8f8ff', borderRadius: '8px', marginTop: '12px', borderLeft: '3px solid #1a1a2e' },
-    smallBtn: { padding: '4px 10px', borderRadius: '6px', border: '1px solid #ddd', background: '#fff', color: '#333', fontSize: '12px', cursor: 'pointer' },
-    listenBtn: { padding: '6px 12px', borderRadius: '6px', border: 'none', background: '#4CAF50', color: '#fff', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }
+  const BookCover = ({ url, title, size = 'md' }) => {
+    const sizes = { sm: { w: 48, h: 72 }, md: { w: 64, h: 96 }, lg: { w: 80, h: 120 } };
+    const s = sizes[size];
+    return url ? (
+      <img src={url} alt={title} style={{ width: s.w, height: s.h, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} onError={e => { e.target.style.display = 'none'; }} />
+    ) : (
+      <div style={{ width: s.w, height: s.h, borderRadius: 4, background: c.accentDim, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 20 }}>
+        📖
+      </div>
+    );
   };
+
+  const tabStyle = (active) => ({
+    padding: '8px 18px', borderRadius: 20, border: 'none', fontFamily: c.sans, fontSize: 13, fontWeight: active ? 600 : 400,
+    background: active ? c.accent : 'transparent', color: active ? '#0d0d0d' : c.textDim, cursor: 'pointer', transition: 'all 0.2s'
+  });
+
+  const btnPrimary = { padding: '10px 20px', borderRadius: 8, border: 'none', background: c.accent, color: '#0d0d0d', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: c.sans };
+  const btnSecondary = { padding: '6px 12px', borderRadius: 6, border: `1px solid ${c.border}`, background: 'transparent', color: c.textDim, fontSize: 12, cursor: 'pointer', fontFamily: c.sans };
+  const inputStyle = { width: '100%', padding: '12px 16px', borderRadius: 8, border: `1px solid ${c.border}`, background: c.card, color: c.text, fontSize: 15, fontFamily: c.sans, outline: 'none', boxSizing: 'border-box' };
 
   return (
-    <div style={sty.container}>
-      <div style={sty.tabs}>
-        <button style={sty.tab(tab === 'search')} onClick={() => setTab('search')}>Search</button>
-        <button style={sty.tab(tab === 'list')} onClick={() => setTab('list')}>My Books</button>
-        <button style={sty.tab(tab === 'import')} onClick={() => setTab('import')}>Import</button>
-        {readerBook && <button style={sty.tab(tab === 'reader')} onClick={() => setTab('reader')}>Reader</button>}
+    <div style={{ padding: '12px', fontFamily: c.font, color: c.text, maxWidth: '100%', minHeight: '70vh' }}>
+      {/* TABS */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
+        {['library', 'search', 'import', ...(readerBook ? ['reader'] : [])].map(t => (
+          <button key={t} onClick={() => setTab(t)} style={tabStyle(tab === t)}>
+            {t === 'library' ? 'My Library' : t === 'search' ? 'Discover' : t === 'import' ? 'Import' : 'Reader'}
+          </button>
+        ))}
       </div>
 
+      {/* MY LIBRARY */}
+      {tab === 'library' && (
+        <div>
+          {listLoading ? (
+            <div style={{ textAlign: 'center', padding: 40, color: c.textMuted }}>Loading your library...</div>
+          ) : readingList.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>📚</div>
+              <div style={{ fontSize: 18, color: c.text, marginBottom: 8, fontFamily: c.font }}>Your library is empty</div>
+              <div style={{ fontSize: 14, color: c.textDim, marginBottom: 24, lineHeight: 1.6 }}>
+                Search for a book in Discover, or tell ABA in chat:<br/>
+                <span style={{ color: c.accent, fontStyle: 'italic' }}>"Add Purpose Driven Life to my reading plan"</span>
+              </div>
+              <button onClick={() => setTab('search')} style={btnPrimary}>Discover Books</button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {readingList.map((b, i) => {
+                const pct = b.total_chapters ? Math.round((b.current_chapter / b.total_chapters) * 100) : 0;
+                return (
+                  <div key={i} style={{ display: 'flex', gap: 14, padding: 14, background: c.card, borderRadius: 12, border: `1px solid ${c.border}`, alignItems: 'flex-start' }}>
+                    <BookCover url={b.cover_url} title={b.book_title} size="md" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: c.text, marginBottom: 2 }}>{b.book_title}</div>
+                      <div style={{ fontSize: 13, color: c.textDim, marginBottom: 6 }}>{b.author}</div>
+                      {b.total_chapters && (
+                        <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 4 }}>
+                          Chapter {b.current_chapter || 1} of {b.total_chapters} · {pct}% complete
+                        </div>
+                      )}
+                      <Progress current={b.current_chapter || 1} total={b.total_chapters} />
+                      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                        {b.book_id && b.source && (
+                          <button onClick={() => openBook(b.book_id, b.source, b.current_chapter || 1)} style={{ ...btnPrimary, padding: '6px 14px', fontSize: 12 }}>
+                            {(b.current_chapter || 1) > 1 ? 'Continue Reading' : 'Start Reading'}
+                          </button>
+                        )}
+                        {b.status === 'finished' && <span style={{ fontSize: 12, color: c.green, fontWeight: 600, padding: '6px 0' }}>✓ Finished</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* DISCOVER / SEARCH */}
       {tab === 'search' && (
         <div>
-          <div style={sty.searchBox}>
-            <input style={sty.input} placeholder="Search books, authors, topics..." value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && doSearch()} />
-            <button style={sty.btn} onClick={doSearch} disabled={searching}>{searching ? '...' : 'Search'}</button>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            <input style={inputStyle} placeholder="Search books, authors, topics..." value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && doSearch()} />
+            <button style={btnPrimary} onClick={doSearch} disabled={searching}>{searching ? '...' : 'Search'}</button>
           </div>
 
-          {results.audiobooks.length > 0 && (
+          {/* Open Library results (with covers) */}
+          {results.openLibrary?.length > 0 && (
             <div>
-              <div style={sty.section}>Audiobooks ({results.audiobooks.length})</div>
+              <div style={{ fontSize: 12, color: c.textMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, fontFamily: c.sans }}>Open Library · {results.openLibrary.length} results</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {results.openLibrary.map((b, i) => (
+                  <div key={`ol-${i}`} style={{ display: 'flex', gap: 12, padding: 12, background: c.card, borderRadius: 10, border: `1px solid ${c.border}` }}>
+                    <BookCover url={b.cover_url} title={b.title} size="md" />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: c.text }}>{b.title}</div>
+                      <div style={{ fontSize: 13, color: c.textDim, marginBottom: 4 }}>{b.author} {b.year ? `(${b.year})` : ''}</div>
+                      {b.subjects?.length > 0 && (
+                        <div style={{ fontSize: 11, color: c.textMuted, marginBottom: 8 }}>{b.subjects.slice(0, 4).join(' · ')}</div>
+                      )}
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button onClick={() => startReadingPlan(b.title, b.author)} disabled={planLoading === b.title} style={{ ...btnPrimary, padding: '6px 14px', fontSize: 12 }}>
+                          {planLoading === b.title ? 'Creating Plan...' : '📖 Start Reading Plan'}
+                        </button>
+                        {b.readable && <button style={btnSecondary} onClick={() => window.open(`https://archive.org/details/${b.ia_id}`, '_blank')}>Read on Archive.org</button>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Audiobooks */}
+          {results.audiobooks?.length > 0 && (
+            <div style={{ marginTop: 20 }}>
+              <div style={{ fontSize: 12, color: c.textMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, fontFamily: c.sans }}>Audiobooks · {results.audiobooks.length} free</div>
               {results.audiobooks.map((ab, i) => (
-                <div key={`audio-${i}`} style={sty.card}>
-                  <div style={sty.title}>{ab.title}</div>
-                  <div style={sty.subtitle}>{ab.author} {ab.totaltime ? `· ${formatDuration(ab.totaltime)}` : ''} {ab.num_sections ? `· ${ab.num_sections} sections` : ''}</div>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    <span style={sty.badge('#E8F5E9', '#2E7D32')}>Free Audiobook</span>
-                    {ab.url_librivox && <button style={sty.listenBtn} onClick={() => window.open(ab.url_librivox, '_blank')}>Listen on LibriVox</button>}
-                    <button style={sty.smallBtn} onClick={() => openBook(ab.id, 'librivox', 1)}>Chapters</button>
-                    <button style={sty.smallBtn} onClick={() => addBook({ title: ab.title, author: ab.author, id: ab.id, source: 'librivox' })}>+ List</button>
+                <div key={`au-${i}`} style={{ display: 'flex', gap: 12, padding: 12, background: c.card, borderRadius: 10, border: `1px solid ${c.border}`, marginBottom: 8 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 24, background: c.accentDim, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 20 }}>🎧</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: c.text }}>{ab.title}</div>
+                    <div style={{ fontSize: 12, color: c.textDim }}>{ab.author} {ab.totaltime ? `· ${ab.totaltime}` : ''}</div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                      <button onClick={() => startReadingPlan(ab.title, ab.author)} disabled={planLoading === ab.title} style={{ ...btnPrimary, padding: '4px 10px', fontSize: 11 }}>
+                        {planLoading === ab.title ? 'Creating...' : '📖 Reading Plan'}
+                      </button>
+                      {ab.url_librivox && <button style={btnSecondary} onClick={() => window.open(ab.url_librivox, '_blank')}>Listen Free</button>}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
           )}
 
-          {results.ebooks.length > 0 && (
-            <div>
-              <div style={sty.section}>Ebooks ({results.ebooks.length})</div>
+          {/* Ebooks */}
+          {results.ebooks?.length > 0 && (
+            <div style={{ marginTop: 20 }}>
+              <div style={{ fontSize: 12, color: c.textMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, fontFamily: c.sans }}>Free Ebooks · {results.ebooks.length}</div>
               {results.ebooks.map((eb, i) => (
-                <div key={`ebook-${i}`} style={sty.card}>
-                  <div style={sty.title}>{eb.title}</div>
-                  <div style={sty.subtitle}>{eb.author} {eb.download_count ? `· ${eb.download_count.toLocaleString()} downloads` : ''}</div>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {eb.has_text && <span style={sty.badge('#E3F2FD', '#1565C0')}>Full Text</span>}
-                    {eb.has_audio && <span style={sty.badge('#E8F5E9', '#2E7D32')}>+ Audio</span>}
-                    {eb.has_text && <button style={sty.smallBtn} onClick={() => openBook(eb.id, 'gutenberg', 1)}>Read</button>}
-                    {eb.epub_url && <button style={sty.smallBtn} onClick={() => window.open(eb.epub_url, '_blank')}>EPUB</button>}
-                    <button style={sty.smallBtn} onClick={() => addBook({ title: eb.title, author: eb.author, id: eb.id, source: 'gutenberg' })}>+ List</button>
+                <div key={`eb-${i}`} style={{ padding: 12, background: c.card, borderRadius: 10, border: `1px solid ${c.border}`, marginBottom: 8 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: c.text }}>{eb.title}</div>
+                  <div style={{ fontSize: 12, color: c.textDim, marginBottom: 6 }}>{eb.author}</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {eb.has_text && <button onClick={() => openBook(eb.id, 'gutenberg', 1)} style={{ ...btnPrimary, padding: '4px 10px', fontSize: 11 }}>Read Full Text</button>}
+                    <button onClick={() => startReadingPlan(eb.title, eb.author)} disabled={planLoading === eb.title} style={btnSecondary}>
+                      {planLoading === eb.title ? '...' : 'Reading Plan'}
+                    </button>
                   </div>
                 </div>
               ))}
             </div>
           )}
 
-          {abaResponse && <div style={sty.abaResp}>{abaResponse}</div>}
-          {!searching && results.audiobooks.length === 0 && results.ebooks.length === 0 && query && <div style={{ color: '#999', textAlign: 'center', padding: '20px' }}>No results yet. Try searching for a title or author.</div>}
-        </div>
-      )}
-
-      {tab === 'list' && (
-        <div>
-          <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
-            {['all', 'reading', 'want_to_read', 'finished'].map(s => (
-              <button key={s} style={sty.tab(statusFilter === s)} onClick={() => setStatusFilter(s)}>
-                {s === 'all' ? 'All' : READING_STATUS[s]?.label || s}
-              </button>
-            ))}
-          </div>
-          {listLoading ? <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>Loading...</div> : (
-            readingList.length === 0 ? <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>Your reading list is empty. Search for books to get started.</div> :
-            readingList.filter(b => statusFilter === 'all' || b.status === statusFilter).map((b, i) => {
-              const st = READING_STATUS[b.status] || READING_STATUS.reading;
-              return (
-                <div key={i} style={sty.card}>
-                  <div style={sty.title}>{b.book_title}</div>
-                  <div style={sty.subtitle}>{b.author || ''} {b.current_chapter && b.total_chapters ? `· Ch. ${b.current_chapter}/${b.total_chapters}` : ''}</div>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <span style={sty.badge(st.bg, st.color)}>{st.label}</span>
-                    {b.book_id && b.source && <button style={sty.smallBtn} onClick={() => openBook(b.book_id, b.source, b.current_chapter || 1)}>Continue</button>}
-                  </div>
-                </div>
-              );
-            })
+          {abaResponse && <div style={{ fontSize: 14, color: c.textDim, lineHeight: 1.6, padding: 14, background: c.accentDim, borderRadius: 8, marginTop: 16, borderLeft: `3px solid ${c.accent}` }}>{abaResponse}</div>}
+          {!searching && !results.openLibrary?.length && !results.audiobooks?.length && !results.ebooks?.length && query && (
+            <div style={{ textAlign: 'center', padding: 40, color: c.textMuted }}>No results. Try a different search.</div>
           )}
         </div>
       )}
 
-
+      {/* IMPORT */}
       {tab === 'import' && (
         <div>
-          <div style={{display:'flex',gap:'6px',marginBottom:'16px',flexWrap:'wrap'}}>
-            <button style={sty.tab(importMode==='paste')} onClick={()=>setImportMode('paste')}>Paste Text</button>
-            <button style={sty.tab(importMode==='epub_url')} onClick={()=>setImportMode('epub_url')}>EPUB Link</button>
-            <button style={sty.tab(importMode==='highlights')} onClick={()=>setImportMode('highlights')}>Highlights</button>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+            {['paste', 'epub', 'highlights'].map(m => (
+              <button key={m} onClick={() => setImportMode(m)} style={tabStyle(importMode === m)}>
+                {m === 'paste' ? 'Paste Text' : m === 'epub' ? 'EPUB Link' : 'Highlights'}
+              </button>
+            ))}
           </div>
 
           {importMode === 'paste' && (
             <div>
-              <div style={{fontSize:'13px',color:'#888',marginBottom:'12px',lineHeight:'1.5'}}>
-                Copy text from Kindle Cloud Reader (read.amazon.com), a PDF, or any source. Paste it here and ABA will store it in your personal library.
-              </div>
-              <input style={sty.input} placeholder="Book title (required)" value={pasteTitle} onChange={e=>setPasteTitle(e.target.value)} />
-              <input style={{...sty.input,marginTop:'8px'}} placeholder="Author (optional)" value={pasteAuthor} onChange={e=>setPasteAuthor(e.target.value)} />
-              <textarea style={{...sty.input,marginTop:'8px',minHeight:'200px',resize:'vertical',fontFamily:'Georgia, serif',lineHeight:'1.6'}} placeholder="Paste chapter text here..." value={pasteText} onChange={e=>setPasteText(e.target.value)} />
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'10px'}}>
-                <span style={{fontSize:'12px',color:'#999'}}>{pasteText.length > 0 ? `${pasteText.split(/\s+/).length} words` : ''}</span>
-                <button style={sty.btn} onClick={importPastedText} disabled={importing || !pasteText.trim() || !pasteTitle.trim()}>
+              <div style={{ fontSize: 13, color: c.textDim, marginBottom: 12, lineHeight: 1.5 }}>Paste chapter text from Kindle Cloud Reader, a PDF, or any source. ABA stores it in your personal library.</div>
+              <input style={{ ...inputStyle, marginBottom: 8 }} placeholder="Book title" value={pasteTitle} onChange={e => setPasteTitle(e.target.value)} />
+              <input style={{ ...inputStyle, marginBottom: 8 }} placeholder="Author (optional)" value={pasteAuthor} onChange={e => setPasteAuthor(e.target.value)} />
+              <textarea style={{ ...inputStyle, minHeight: 180, resize: 'vertical', fontFamily: c.font, lineHeight: 1.7 }} placeholder="Paste chapter text here..." value={pasteText} onChange={e => setPasteText(e.target.value)} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+                <span style={{ fontSize: 12, color: c.textMuted }}>{pasteText.length > 0 ? `${pasteText.split(/\s+/).length} words` : ''}</span>
+                <button style={btnPrimary} onClick={importPastedText} disabled={importing || !pasteText.trim() || !pasteTitle.trim()}>
                   {importing ? 'Saving...' : 'Import to Library'}
                 </button>
               </div>
             </div>
           )}
 
-          {importMode === 'epub_url' && (
+          {importMode === 'epub' && (
             <div>
-              <div style={{fontSize:'13px',color:'#888',marginBottom:'12px',lineHeight:'1.5'}}>
-                <strong>Step 1:</strong> Go to <span style={{color:'#1a1a2e',fontWeight:'600'}}>amazon.com/mycd</span> on your computer<br/>
-                <strong>Step 2:</strong> Click Content tab, find your book<br/>
-                <strong>Step 3:</strong> Click three dots (...) → "Download and transfer via USB"<br/>
-                <strong>Step 4:</strong> If EPUB format appears, the book is DRM-free<br/>
-                <strong>Step 5:</strong> Right-click the download link → Copy Link Address<br/>
-                <strong>Step 6:</strong> Paste the link below
+              <div style={{ fontSize: 13, color: c.textDim, marginBottom: 12, lineHeight: 1.6 }}>
+                Go to <span style={{ color: c.accent }}>amazon.com/mycd</span> → Content tab → find book → three dots → "Download and transfer via USB." If EPUB format appears, copy the link and paste below.
               </div>
-              <div style={{display:'flex',gap:'8px'}}>
-                <input style={sty.input} placeholder="Paste EPUB download URL here..." value={epubUrl} onChange={e=>setEpubUrl(e.target.value)} />
-                <button style={sty.btn} onClick={importEpubFromUrl} disabled={importing || !epubUrl.trim()}>
-                  {importing ? '...' : 'Import'}
-                </button>
-              </div>
-              <div style={{fontSize:'12px',color:'#999',marginTop:'8px'}}>
-                Works with Gutenberg EPUBs too — search a book, copy the EPUB link, paste here.
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input style={inputStyle} placeholder="Paste EPUB URL..." value={epubUrl} onChange={e => setEpubUrl(e.target.value)} />
+                <button style={btnPrimary} onClick={importEpubFromUrl} disabled={importing || !epubUrl.trim()}>{importing ? '...' : 'Import'}</button>
               </div>
             </div>
           )}
 
           {importMode === 'highlights' && (
             <div>
-              <div style={{fontSize:'13px',color:'#888',marginBottom:'12px',lineHeight:'1.5'}}>
-                <strong>Step 1:</strong> Go to <span style={{color:'#1a1a2e',fontWeight:'600'}}>read.amazon.com/notebook</span><br/>
-                <strong>Step 2:</strong> Click a book on the left sidebar<br/>
-                <strong>Step 3:</strong> Select all highlights (Ctrl+A) and copy (Ctrl+C)<br/>
-                <strong>Step 4:</strong> Paste below — ABA saves them to your brain
+              <div style={{ fontSize: 13, color: c.textDim, marginBottom: 12, lineHeight: 1.6 }}>
+                Go to <span style={{ color: c.accent }}>read.amazon.com/notebook</span> → select a book → copy your highlights → paste below.
               </div>
-              <input style={sty.input} placeholder="Book title (required)" value={highlightsBook} onChange={e=>setHighlightsBook(e.target.value)} />
-              <textarea style={{...sty.input,marginTop:'8px',minHeight:'150px',resize:'vertical',lineHeight:'1.6'}} placeholder="Paste your highlights and notes here..." value={highlightsText} onChange={e=>setHighlightsText(e.target.value)} />
-              <div style={{display:'flex',justifyContent:'flex-end',marginTop:'10px'}}>
-                <button style={sty.btn} onClick={importHighlights} disabled={importing || !highlightsText.trim() || !highlightsBook.trim()}>
+              <input style={{ ...inputStyle, marginBottom: 8 }} placeholder="Book title" value={highlightsBook} onChange={e => setHighlightsBook(e.target.value)} />
+              <textarea style={{ ...inputStyle, minHeight: 140, resize: 'vertical', lineHeight: 1.6 }} placeholder="Paste highlights here..." value={highlightsText} onChange={e => setHighlightsText(e.target.value)} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+                <button style={btnPrimary} onClick={importHighlights} disabled={importing || !highlightsText.trim() || !highlightsBook.trim()}>
                   {importing ? 'Saving...' : 'Save Highlights'}
                 </button>
               </div>
             </div>
           )}
 
-          {importResult && <div style={sty.abaResp}>{importResult}</div>}
+          {importResult && <div style={{ padding: 12, background: c.accentDim, borderRadius: 8, marginTop: 12, borderLeft: `3px solid ${c.accent}`, color: c.text, fontSize: 14 }}>{importResult}</div>}
         </div>
       )}
 
-            {tab === 'reader' && (
+      {/* READER */}
+      {tab === 'reader' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <button style={sty.smallBtn} onClick={() => setTab('search')}>Back</button>
-            <div style={{ fontSize: '13px', color: '#888' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <button onClick={() => setTab('library')} style={btnSecondary}>← Back</button>
+            <span style={{ fontSize: 13, color: c.textMuted, fontFamily: c.sans }}>
               {chapterMeta.chapterNumber && chapterMeta.totalChapters ? `Chapter ${chapterMeta.chapterNumber} of ${chapterMeta.totalChapters}` : ''}
-            </div>
+            </span>
           </div>
-          {chapterMeta.title && <div style={sty.title}>{chapterMeta.title}</div>}
-          {chapterMeta.author && <div style={sty.subtitle}>{chapterMeta.author}</div>}
-          {chapterMeta.chapterTitle && <div style={{ ...sty.subtitle, fontWeight: '600', marginBottom: '12px' }}>{chapterMeta.chapterTitle}</div>}
-
-          {chapterMeta.listenUrl && (
-            <div style={{ marginBottom: '12px' }}>
-              <audio controls src={chapterMeta.listenUrl} style={{ width: '100%' }} />
-            </div>
-          )}
-
-          {chapterLoading ? <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>Loading chapter...</div> :
-            chapterText ? <div style={sty.chapterText}>{chapterText}</div> :
-            abaResponse ? <div style={sty.abaResp}>{abaResponse}</div> : null
-          }
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px' }}>
-            <button style={sty.smallBtn} disabled={chapterNum <= 1} onClick={() => readerBook && openBook(readerBook.id, readerBook.source, chapterNum - 1)}>Previous</button>
-            <button style={sty.btn} disabled={chapterMeta.totalChapters && chapterNum >= chapterMeta.totalChapters} onClick={() => readerBook && openBook(readerBook.id, readerBook.source, chapterNum + 1)}>Next Chapter</button>
+          {chapterMeta.title && <div style={{ fontSize: 20, fontWeight: 600, marginBottom: 2 }}>{chapterMeta.title}</div>}
+          {chapterMeta.author && <div style={{ fontSize: 14, color: c.textDim, marginBottom: 6 }}>{chapterMeta.author}</div>}
+          {chapterMeta.chapterTitle && <div style={{ fontSize: 16, fontWeight: 600, color: c.accent, marginBottom: 16 }}>{chapterMeta.chapterTitle}</div>}
+          {chapterMeta.listenUrl && <audio controls src={chapterMeta.listenUrl} style={{ width: '100%', marginBottom: 16 }} />}
+          {chapterLoading ? <div style={{ textAlign: 'center', padding: 40, color: c.textMuted }}>Loading chapter...</div> :
+            chapterText ? <div style={{ fontSize: 16, lineHeight: 1.8, color: c.text, whiteSpace: 'pre-wrap', padding: 20, background: c.card, borderRadius: 10, maxHeight: '60vh', overflowY: 'auto', fontFamily: c.font }}>{chapterText}</div> :
+            abaResponse ? <div style={{ padding: 16, background: c.accentDim, borderRadius: 8, borderLeft: `3px solid ${c.accent}`, lineHeight: 1.6 }}>{abaResponse}</div> : null}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16 }}>
+            <button style={btnSecondary} disabled={chapterNum <= 1} onClick={() => readerBook && openBook(readerBook.id, readerBook.source, chapterNum - 1)}>← Previous</button>
+            <button style={btnPrimary} disabled={chapterMeta.totalChapters && chapterNum >= chapterMeta.totalChapters} onClick={() => readerBook && openBook(readerBook.id, readerBook.source, chapterNum + 1)}>Next Chapter →</button>
           </div>
         </div>
       )}
