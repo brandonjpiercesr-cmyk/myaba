@@ -54,24 +54,9 @@ export function getConnectUrl(api, userId, provider = 'google') {
   return 'https://api.us.nylas.com/v3/connect/auth?' + params.toString();
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// LEGACY ACCOUNT LOADING (backwards compat with existing EmailView)
-// ═══════════════════════════════════════════════════════════════════════════
-
-export async function loadAccounts(api) {
-  try {
-    const result = await api('/api/team');
-    if (result.success && result.members) {
-      return result.members.filter(m => m.has_nylas).map(m => ({
-        id: m.id, label: m.name, email: m.email, grant: '', color: m.color?.replace('#', '') || 'purple',
-      }));
-    }
-    return [];
-  } catch (err) {
-    console.error('[EMAIL] Account load error:', err);
-    return [];
-  }
-}
+// ⬡B:911.ham_isolation:REMOVED:loadAccounts_api_team:20260413⬡
+// REMOVED: loadAccounts called /api/team which returned ALL HAMs.
+// Brandon's email leaked to BJ. Use fetchAccounts (HAM-isolated) only.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EMAIL FETCHING — Per-account isolation
