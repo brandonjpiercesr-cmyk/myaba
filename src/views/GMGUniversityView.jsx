@@ -211,31 +211,29 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
           const nlRes = await fetch(ABABASE+"/api/gmg-university/next-lessons?email="+encodeURIComponent(userEmail));
           if (!nlRes.ok) throw new Error('next-lessons failed');
           const nl = await nlRes.json();
+          // ⬡B:GMGU.ux:FIX:no_system_terms_in_ui:20260414⬡
+          // ABA never reveals block numbers, cohort types, assessment labels, or system internals.
+          // Just show the lesson title naturally and let the user pick voice or chat.
           if (nl.mode === 'paired' && nl.nextLessons.length > 1) {
-            const b0 = nl.nextLessons.find(l => l.block === 0);
+            const b0 = nl.nextLessons.find(l => l.block === 0 || l.block === '0.5');
             const b1 = nl.nextLessons.find(l => l.block === 1);
-            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. Day ${nl.currentPair} has two tracks.\n\n**🧬 LAYERED Assessment** — Day ${b0?.day}: ${b0?.title}\n\n**📚 Nonprofit Foundations** — Day ${b1?.day}: ${b1?.title}\n\nBoth must be done before Day ${nl.currentPair+1}. Which first?` }]);
+            setCurrentLesson(b0 ? { block: b0.block, day: b0.day, title: b0.title } : { block: b1.block, day: b1.day, title: b1.title });
+            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. You have two sessions today.\n\n**${b0?.title || 'Session 1'}**\n**${b1?.title || 'Session 2'}**\n\nWhich one first?` }]);
             return;
           }
-          if (nl.mode === 'paired' && nl.nextLessons.length === 1) {
+          if ((nl.mode === 'paired' && nl.nextLessons.length === 1) || (nl.mode === 'single' && nl.nextLessons.length > 0)) {
             const lesson = nl.nextLessons[0];
             setCurrentLesson({ block:lesson.block, day:lesson.day, title:lesson.title });
-            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. You're up for Block ${lesson.block} Day ${lesson.day}: "${lesson.title}". How do you want to do this?` }]);
+            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. Today we are covering "${lesson.title}." Ready when you are.` }]);
             return;
           }
-          if (nl.mode === 'single' && nl.nextLessons.length > 0) {
-            const lesson = nl.nextLessons[0];
-            setCurrentLesson({ block:lesson.block, day:lesson.day, title:lesson.title });
-            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. Your next ${lesson.type==='assessment'?'assessment':'lesson'} is Block ${lesson.block} Day ${lesson.day}: "${lesson.title}". How do you want to do this?` }]);
-            return;
-          }
-          setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. You have completed all ${curriculum?.totalDays||'?'} days. Congratulations.` }]);
+          setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. You have completed everything so far. Congratulations.` }]);
         } catch(e) {
           console.error('[GMG-U] Next lessons:', e.message);
           const next = getNextBlockLesson(profile?.completedDays, curriculum);
           if (next) {
             setCurrentLesson(next);
-            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. Your next lesson is Block ${next.block} Day ${next.day}: "${next.title}". How do you want to do this?` }]);
+            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. Your next session is "${next.title}." Ready when you are.` }]);
           } else {
             setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. Welcome to GMG University.` }]);
           }
@@ -256,7 +254,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
     setCurrentLesson({block:blockNum,day:dayNum,title,blockName});
     setMsgs([]); setInitDone(false); setInteractionMode(null);
     setTimeout(() => { setInitDone(true);
-      setMsgs([{ role:'aba', text:`Block ${blockNum} Day ${dayNum}: "${title}". How do you want to do this?` }]);
+      setMsgs([{ role:'aba', text:`"${title}" — ready when you are.` }]);
     }, 100);
   };
   const resetProgress = async () => {
@@ -291,11 +289,13 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
   };
 
   // Start a chat session (user picked "Chat" mode)
+  // ⬡B:GMGU.ux:FIX:natural_chat_init:20260414⬡
+  // Message to AIR is natural language, not system terms. AIR already knows
+  // the user's cohort, block, and day from FCW. Don't feed it back.
   const startChatMode = () => {
     setInteractionMode('chat');
     if (currentLesson) {
-      const isA = currentLesson.block === 0;
-      streamFromAIR(firstName + ' here. I want to do Block ' + currentLesson.block + ' Day ' + currentLesson.day + ': "' + currentLesson.title + '". Proceed with my ' + (isA ? 'assessment' : 'lesson') + '.', true);
+      streamFromAIR(firstName + ' here, ready to go. Today is "' + currentLesson.title + '."', true);
     }
   };
 
@@ -313,13 +313,13 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
   const c = VOICE_CONFIG.orbColors[orbState] || VOICE_CONFIG.orbColors.idle;
   const isVoiceActive = orbState !== 'idle' && orbState !== 'error';
 
-  return (<div style={{flex:1,display:"flex",flexDirection:"column",position:"relative",background:"rgba(10,10,15,.95)",overflow:"hidden"}}>
+  return (<div style={{flex:1,display:"flex",flexDirection:"column",position:"relative",background:"rgba(10,10,15,.95)",overflow:"hidden",paddingTop:"env(safe-area-inset-top, 0px)"}}>
     <style>{"@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}@keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes micPulse{0%,100%{box-shadow:0 0 0 0 rgba(124,58,237,.4)}50%{box-shadow:0 0 0 10px rgba(124,58,237,0)}}@keyframes dotBounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}@keyframes orbPulse{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.08);opacity:1}}@keyframes orbGlow{0%,100%{box-shadow:0 0 20px rgba(var(--orb-c),.3)}50%{box-shadow:0 0 40px rgba(var(--orb-c),.6)}}"}</style>
     <audio ref={audioRef}/>
     {/* HEADER */}
     <div style={{padding:"8px 12px",display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid rgba(255,255,255,.06)",background:"rgba(10,10,15,.95)",flexShrink:0}}>
       <ABAConsciousness size={28}/>
-      <div style={{flex:1,minWidth:0}}><p style={{color:"white",fontSize:14,fontWeight:600,margin:0}}>ABA</p><p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentLesson?"Day "+currentLesson.day+" · "+currentLesson.title:totalDone+"/"+(curriculum?.totalDays||"?")+" lessons"}</p></div>
+      <div style={{flex:1,minWidth:0}}><p style={{color:"white",fontSize:14,fontWeight:600,margin:0}}>ABA</p><p style={{color:"rgba(255,255,255,.3)",fontSize:10,margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentLesson?currentLesson.title:totalDone+"/"+(curriculum?.totalDays||"?")+" sessions"}</p></div>
       <button onClick={()=>setShowSidebar(true)} style={{background:"none",border:"none",color:"rgba(255,255,255,.4)",fontSize:18,cursor:"pointer",padding:"0 4px"}}>≡</button>
       {interactionMode === 'voice' && <button onClick={()=>{ if(conversation.status==='connected') conversation.endSession(); setInteractionMode('chat'); setOrbState('idle'); }} style={{background:"rgba(124,58,237,.12)",border:"1px solid rgba(124,58,237,.25)",borderRadius:6,padding:"4px 8px",cursor:"pointer",color:"#a78bfa",fontSize:11}}>Switch to Chat</button>}
       {interactionMode === 'chat' && <button onClick={()=>startVoiceMode()} style={{background:"rgba(124,58,237,.12)",border:"1px solid rgba(124,58,237,.25)",borderRadius:6,padding:"4px 8px",cursor:"pointer",color:"#a78bfa",fontSize:11}}>Switch to Voice</button>}
