@@ -113,6 +113,8 @@ export default function InterviewModeView({ userId }) {
   const lastTimFire_iv = useRef(0);
   const lastCookFire_iv = useRef(0);
   const dualAudioRef_iv = useRef(null);
+  const cookOverrideRef = useRef('');
+  const micOnlyRef = useRef(false);
 
   useEffect(() => {
     (async () => {
