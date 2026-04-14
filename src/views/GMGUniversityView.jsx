@@ -215,10 +215,11 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
           // ABA never reveals block numbers, cohort types, assessment labels, or system internals.
           // Just show the lesson title naturally and let the user pick voice or chat.
           if (nl.mode === 'paired' && nl.nextLessons.length > 1) {
-            const b0 = nl.nextLessons.find(l => l.block === 0 || l.block === '0.5');
-            const b1 = nl.nextLessons.find(l => l.block === 1);
-            setCurrentLesson(b0 ? { block: b0.block, day: b0.day, title: b0.title } : { block: b1.block, day: b1.day, title: b1.title });
-            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. You have two sessions today.\n\n**${b0?.title || 'Session 1'}**\n**${b1?.title || 'Session 2'}**\n\nWhich one first?` }]);
+            // ⬡B:GMGU.ux:FIX:paired_any_blocks:20260414⬡
+            const first = nl.nextLessons[0];
+            const second = nl.nextLessons[1];
+            setCurrentLesson({ block: first.block, day: first.day, title: first.title });
+            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. You have two sessions today.\n\n**${first.title}**\n**${second.title}**\n\nWhich one first?` }]);
             return;
           }
           if ((nl.mode === 'paired' && nl.nextLessons.length === 1) || (nl.mode === 'single' && nl.nextLessons.length > 0)) {
