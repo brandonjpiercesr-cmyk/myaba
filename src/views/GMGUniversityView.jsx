@@ -289,11 +289,13 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
   };
 
   // Start a chat session (user picked "Chat" mode)
-  // ⬡B:GMGU.ux:FIX:natural_chat_init:20260414⬡
-  // Message to AIR is natural language, not system terms. AIR already knows
-  // the user's cohort, block, and day from FCW. Don't feed it back.
+  // ⬡B:GMGU.ux:FIX:speak_greeting_on_chat:20260414⬡
+  // Speak the init greeting when user taps Chat. Browser audio is unlocked
+  // by the tap itself, so TTS will fire. For Voice, ElevenLabs handles it.
   const startChatMode = () => {
     setInteractionMode('chat');
+    const greeting = msgs.length > 0 ? (msgs[msgs.length - 1]?.text || '') : '';
+    if (greeting) speak(greeting.replace(/\*\*/g, '').substring(0, 500));
     if (currentLesson) {
       streamFromAIR(firstName + ' here, ready to go. Today is "' + currentLesson.title + '."', true);
     }
