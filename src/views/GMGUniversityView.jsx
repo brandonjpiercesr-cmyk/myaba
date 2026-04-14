@@ -211,30 +211,30 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
           const nlRes = await fetch(ABABASE+"/api/gmg-university/next-lessons?email="+encodeURIComponent(userEmail));
           if (!nlRes.ok) throw new Error('next-lessons failed');
           const nl = await nlRes.json();
-          // ⬡B:GMGU.ux:FIX:no_system_terms_in_ui:20260414⬡
-          // ABA never reveals block numbers, cohort types, assessment labels, or system internals.
-          // Just show the lesson title naturally and let the user pick voice or chat.
+          // ⬡B:GMGU.ux:FEAT:streamed_greeting_from_air:20260414⬡
+          // Single-lesson: stream from AIR so ABA greets with full personality.
+          // Paired-2: richer static since ABA needs to present both options.
+          // Mode selector appears AFTER streaming finishes.
           if (nl.mode === 'paired' && nl.nextLessons.length > 1) {
-            // ⬡B:GMGU.ux:FIX:paired_any_blocks:20260414⬡
             const first = nl.nextLessons[0];
             const second = nl.nextLessons[1];
             setCurrentLesson({ block: first.block, day: first.day, title: first.title });
-            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. You have two sessions today.\n\n**${first.title}**\n**${second.title}**\n\nWhich one first?` }]);
+            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. You have two sessions lined up today, and I want to get through both if we can.\n\n**${first.title}**\n**${second.title}**\n\nWhich one do you want to knock out first?` }]);
             return;
           }
           if ((nl.mode === 'paired' && nl.nextLessons.length === 1) || (nl.mode === 'single' && nl.nextLessons.length > 0)) {
             const lesson = nl.nextLessons[0];
             setCurrentLesson({ block:lesson.block, day:lesson.day, title:lesson.title });
-            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. Today we are covering "${lesson.title}." Ready when you are.` }]);
+            streamFromAIR(firstName + ' just opened GMG University. Today\'s session is "' + lesson.title + '." Greet ' + firstName + ' warmly and set up what today\'s session is about, then wait for them to start.', true);
             return;
           }
-          setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. You have completed everything so far. Congratulations.` }]);
+          setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. You have completed everything so far. That is a serious accomplishment, and I hope you know that.` }]);
         } catch(e) {
           console.error('[GMG-U] Next lessons:', e.message);
           const next = getNextBlockLesson(profile?.completedDays, curriculum);
           if (next) {
             setCurrentLesson(next);
-            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. Your next session is "${next.title}." Ready when you are.` }]);
+            streamFromAIR(firstName + ' just opened GMG University. Today\'s session is "' + next.title + '." Greet ' + firstName + ' warmly and set up what today\'s session is about, then wait for them to start.', true);
           } else {
             setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. Welcome to GMG University.` }]);
           }
@@ -290,16 +290,10 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
   };
 
   // Start a chat session (user picked "Chat" mode)
-  // ⬡B:GMGU.ux:FIX:speak_greeting_on_chat:20260414⬡
-  // Speak the init greeting when user taps Chat. Browser audio is unlocked
-  // by the tap itself, so TTS will fire. For Voice, ElevenLabs handles it.
+  // ⬡B:GMGU.ux:FEAT:streamed_greeting_from_air:20260414⬡
+  // ABA already greeted via init stream. Chat mode just activates the input bar.
   const startChatMode = () => {
     setInteractionMode('chat');
-    const greeting = msgs.length > 0 ? (msgs[msgs.length - 1]?.text || '') : '';
-    if (greeting) speak(greeting.replace(/\*\*/g, '').substring(0, 500));
-    if (currentLesson) {
-      streamFromAIR(firstName + ' here, ready to go. Today is "' + currentLesson.title + '."', true);
-    }
   };
 
   // Start a voice session (user picked "Voice" mode)
