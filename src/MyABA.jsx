@@ -1266,9 +1266,15 @@ function TalkToABA({userId}){
       setStatusText("Connecting to ABA...");
       // ⬡B:voice.audit:FIX:preload_identity:20260330⬡ Warm VARA cache with HAM identity before WebRTC starts
       try{await fetch(ABABASE+"/vara/preload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,conversation_id:"webrtc_"+Date.now()})});}catch(pe){console.log("[TALK] Preload failed (non-fatal):",pe.message)}
+      // ⬡B:911:webrtc_pass_userId:FIX:20260415⬡
+      // April 15: BJ's calls all showed ham=unknown because startSession didn't pass userId.
+      // ElevenLabs creates its own conv_id, init-context fires with no identity.
+      // Fix: Pass userId via overrides so init-context webhook can extract it.
       await conversation.startSession({
         agentId:"agent_0601khe2q0gben08ws34bzf7a0sa",
-        connectionType:"webrtc"
+        connectionType:"webrtc",
+        overrides:{agent:{prompt:{prompt:""}},conversation_initiation_client_data:{dynamic_variables:{user_id:userId||"unknown"}}},
+        dynamicVariables:{user_id:userId||"unknown"}
       });
     }catch(err){
       console.error("[TALK] Start failed:",err);
