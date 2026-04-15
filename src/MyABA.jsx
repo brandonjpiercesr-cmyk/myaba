@@ -1591,8 +1591,9 @@ function Sidebar({open,convos,activeId,onSelect,onCreate,onClose,onDelete,onArch
       {projects&&projects.length>0?projects.map(p=>(<div key={p.id} style={{padding:"10px 12px",borderRadius:10,background:p.id===activeProject?"rgba(139,92,246,.15)":"transparent",marginBottom:4}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <div style={{flex:1,cursor:"pointer",display:"flex",alignItems:"center",gap:8}} onClick={()=>{onSelectProject(p.id);onClose()}}>
-            <FileText size={14} style={{color:"rgba(139,92,246,.6)"}}/>
+            {p.isEbc?<Shield size={14} style={{color:p.color||"rgba(139,92,246,.6)"}}/>:<FileText size={14} style={{color:"rgba(139,92,246,.6)"}}/>}
             <span style={{color:"rgba(255,255,255,.8)",fontSize:13,fontWeight:500}}>{p.name}</span>
+            {p.isEbc&&<span style={{fontSize:9,color:p.color||"#E65100",background:(p.color||"#E65100")+"18",padding:"2px 6px",borderRadius:4,fontWeight:700,letterSpacing:.5}}>EBC</span>}
           </div>
           <button onClick={(e)=>{e.stopPropagation();onProjectDetail&&onProjectDetail(p)}} style={{background:"none",border:"none",cursor:"pointer",color:"rgba(255,255,255,.3)",padding:4,minWidth:28,minHeight:28,display:"flex",alignItems:"center",justifyContent:"center"}}><MoreVertical size={14}/></button>
         </div>
@@ -1732,7 +1733,7 @@ function NewChatModal({ open, onClose, onCreate, projects, onCreateProject }) {
           <>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 180, overflowY: "auto", marginBottom: 12 }}>
               {projects?.length > 0 ? projects.map(p => (
-                <button key={p.id} onClick={() => setSelectedProject(p.id)} style={{ padding: "12px 16px", borderRadius: 10, border: `1px solid ${selectedProject === p.id ? "rgba(59,130,246,.4)" : "rgba(255,255,255,.1)"}`, background: selectedProject === p.id ? "rgba(59,130,246,.15)" : "transparent", color: "white", cursor: "pointer", textAlign: "left", fontSize: 13 }}>{p.name}</button>
+                <button key={p.id} onClick={() => setSelectedProject(p.id)} style={{ padding: "12px 16px", borderRadius: 10, border: `1px solid ${selectedProject === p.id ? "rgba(59,130,246,.4)" : p.isEbc ? (p.color||"#E65100")+"40" : "rgba(255,255,255,.1)"}`, background: selectedProject === p.id ? "rgba(59,130,246,.15)" : p.isEbc ? (p.color||"#E65100")+"0D" : "transparent", color: "white", cursor: "pointer", textAlign: "left", fontSize: 13, display:"flex", alignItems:"center", gap:10 }}>{p.isEbc?<Shield size={14} style={{color:p.color||"#E65100",flexShrink:0}}/>:null}<div><div>{p.name}</div>{p.isEbc&&<div style={{fontSize:10,color:p.color||"#E65100",marginTop:2}}>Client Firewalled</div>}</div></button>
               )) : <p style={{ color: "rgba(255,255,255,.4)", fontSize: 12, textAlign: "center", padding: 16 }}>No projects yet</p>}
             </div>
             <button onClick={() => setShowNewProject(true)} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "1px dashed rgba(139,92,246,.3)", background: "transparent", color: "rgba(139,92,246,.7)", cursor: "pointer", fontSize: 13, marginBottom: 16 }}>+ Create New Project</button>
