@@ -58,7 +58,12 @@ export default function MockInterviewVARA({ job, userId, onClose }) {
           })
         });
       } catch (pe) { console.log("[MOCK] Preload failed (non-fatal):", pe.message); }
-      await conversation.startSession({ agentId: "agent_0601khe2q0gben08ws34bzf7a0sa", connectionType: "webrtc" });
+      await conversation.startSession({
+        agentId: "agent_0601khe2q0gben08ws34bzf7a0sa",
+        connectionType: "webrtc",
+        overrides: { agent: { prompt: { prompt: "" } }, conversation_initiation_client_data: { dynamic_variables: { user_id: userId || "unknown" } } },
+        dynamicVariables: { user_id: userId || "unknown" }
+      });
     } catch (err) {
       setOrbState("error"); setErrorMsg(err.message || "Failed to connect");
       setStatusText(err.name === "NotAllowedError" ? "Microphone access denied." : "Connection failed. Tap to retry.");
