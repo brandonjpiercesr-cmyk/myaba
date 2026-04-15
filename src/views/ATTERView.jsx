@@ -8,7 +8,8 @@ const api = async (path, opts = {}) => {
   return resp.json();
 };
 
-export default function ATTERView({ userId = 'brandon' }) {
+// ⬡B:911.no_brandon_fallback:FIX:atter_view:20260415⬡ Was 'brandon' — 911 Rule violation
+export default function ATTERView({ userId = 'unknown' }) {
   const { isRecording, transcript, segments, sessionId, corrections, loading, start, stop, addCorrection, editSegment, setTranscript } = useRecording(api, userId);
   const [result, setResult] = useState(null);
   const [correctionModal, setCorrectionModal] = useState(null);
