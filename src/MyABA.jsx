@@ -82,7 +82,6 @@ import CommandCenterView from "./views/CommandCenterView.jsx";
 import SettingsDrawer from "./views/SettingsDrawer.jsx";
 import MeetingModeView from "./views/MeetingModeView.jsx";
 import InterviewModeView from "./views/InterviewModeView.jsx";
-import DialModeView from "./views/DialModeView.jsx"; // ⬡B:ccwa.aba_dials:PHASE5:cip_wire:20260414⬡
 import JobsView from "./views/JobsView.jsx";
 import ReadingView from "./views/ReadingView.jsx";
 import SoulView from "./views/SoulView.jsx";
@@ -644,7 +643,7 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
   const APP_COLORS = {
     chat: "#a78bfa", briefing: "#f59e0b", jobs: "#f97316", email: "#3b82f6",
     memos: "#84cc16", nura: "#06b6d4", guide: "#10b981", approve: "#8b5cf6",
-    phone: "#22c55e", dial: "#F59E0B", settings: "#6b7280", gmg_university: "#ec4899", incidents: "#ef4444",
+    phone: "#22c55e", settings: "#6b7280", gmg_university: "#ec4899", incidents: "#ef4444",
     journal: "#818cf8", tasks: "#f472b6", notes: "#fbbf24", calendar: "#2dd4bf",
     crm: "#fb923c", ccwa: "#a78bfa", aoa: "#64748b", reading: "#8b5cf6"
   };
@@ -1266,10 +1265,6 @@ function TalkToABA({userId}){
       setStatusText("Connecting to ABA...");
       // ⬡B:voice.audit:FIX:preload_identity:20260330⬡ Warm VARA cache with HAM identity before WebRTC starts
       try{await fetch(ABABASE+"/vara/preload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,conversation_id:"webrtc_"+Date.now()})});}catch(pe){console.log("[TALK] Preload failed (non-fatal):",pe.message)}
-      // ⬡B:911:webrtc_pass_userId:FIX:20260415⬡
-      // April 15: BJ's calls all showed ham=unknown because startSession didn't pass userId.
-      // ElevenLabs creates its own conv_id, init-context fires with no identity.
-      // Fix: Pass userId via overrides so init-context webhook can extract it.
       await conversation.startSession({
         agentId:"agent_0601khe2q0gben08ws34bzf7a0sa",
         connectionType:"webrtc",
@@ -2607,7 +2602,12 @@ function MyABAInner(){
       {/* App title bar — only shows when NOT on home */}
       {mainTab!=="home"&&mainTab!=="apps"&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 12px 4px",flexShrink:0}}>
         <button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ChevronLeft size={18}/></button>
-        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"Talk to ABA":mainTab==="briefing"?"Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"Command Center":mainTab==="nura"?"Nutrition":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"ABA Guides":mainTab==="sports"?"Scoreboard":mainTab==="music"?"Music":mainTab==="reading"?"Reading":mainTab==="ccwa"?"Come Code with ABA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"MESA":mainTab==="interview"?"IRIS":mainTab==="dial"?"ABA Dials":mainTab.replace(/_/g," ")}</span>
+        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"Talk to ABA":mainTab==="briefing"?"Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"Command Center":mainTab==="nura"?"Nutrition":mainTab==="phone"?"ABA Dials":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"ABA Guides":mainTab==="sports"?"Scoreboard":mainTab==="music"?"Music":mainTab==="reading"?"Reading":mainTab==="ccwa"?"Come Code with ABA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"MESA":mainTab==="interview"?"IRIS":mainTab.replace(/_/g," ")}</span>
+              {mainTab==="soul"&&<SoulView userId={user?.email||user?.uid||"unknown"}/>}
+              {mainTab==="atter"&&<ATTERView userId={user?.email||user?.uid||"unknown"}/>}
+              {mainTab==="logful"&&<LogfulView userId={user?.email||user?.uid||"unknown"}/>}
+              {mainTab==="writes"&&<WritesView userId={user?.email||user?.uid||"unknown"}/>}
+              {mainTab==="seed"&&<SeedView userId={user?.email||user?.uid||"unknown"}/>}
         <div style={{display:"flex",gap:4}}>
           {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:lastABAResponse?"rgba(34,197,94,.1)":"rgba(255,255,255,.04)",color:lastABAResponse?"rgba(34,197,94,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}><Activity size={14}/></button>}
           <button onClick={()=>setVoiceOut(!voiceOut)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:voiceOut?"rgba(139,92,246,.1)":"rgba(255,255,255,.04)",color:voiceOut?"rgba(139,92,246,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={13}/>:<VolumeX size={13}/>}</button>
@@ -2634,7 +2634,7 @@ function MyABAInner(){
           onAppSelect={(app)=>{
             setAppScope(app.app_scope||null);
             // ⬡B:FIX:dismiss_chat_on_switch:20260324⬡ Reset voice/chat state when leaving chat
-            if(app.id!=="chat"&&app.id!=="incidents"){
+            if(app.id!=="chat"&&app.id!=="phone"&&app.id!=="incidents"){
               if(voiceMode==="talk")setVoiceMode("chat");
               setSnapOpen(false);setClipboardOpen(false);
             }
@@ -2651,7 +2651,7 @@ function MyABAInner(){
             else if(app.id==="ccwa"){setMainTab("ccwa")}
             else if(app.id==="aoa"){setMainTab("aoa")}
             else if(app.id==="gmg_university"){setMainTab("gmg_university")}
-            else if(app.id==="phone"){setMainTab("dial")} // ⬡B:ccwa.aba_dials:FIX:phone_opens_dial:20260415⬡
+            else if(app.id==="phone"){setMainTab("chat");setVoiceMode("talk")}
             else if(app.id==="nura"){setMainTab("nura")}
             else if(app.id==="incidents"){setMainTab("chat");setInput("I want to report a bug: ")}
             else if(app.id==="tasks"){setMainTab("tasks")}
@@ -2664,7 +2664,6 @@ function MyABAInner(){
             else if(app.id==="music"){setMainTab("music")}
             else if(app.id==="meeting"){setMainTab("meeting")}
             else if(app.id==="interview"){setMainTab("interview")}
-            else if(app.id==="dial"){setMainTab("dial")} // ⬡B:ccwa.aba_dials:20260414⬡
             else{setMainTab(app.id)}
           }}
         />
@@ -2700,7 +2699,7 @@ function MyABAInner(){
           <button onClick={()=>fileInputRef.current?.click()} style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:"rgba(255,255,255,.05)",color:"rgba(255,255,255,.4)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Paperclip size={16}/></button>
           <button onClick={()=>setScannerOpen(true)} title="Scan food barcode" style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:"rgba(255,255,255,.05)",color:"rgba(139,92,246,.5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Camera size={16}/></button>
           <div style={{flex:1,display:"flex",alignItems:"flex-end",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:20,padding:"6px 6px 6px 16px",minHeight:44}}><textarea value={input} onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,200)+"px"}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage(input)}}} onFocus={scrollInputIntoView} placeholder="Message ABA..." rows={1} style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.9)",fontSize:16,padding:"8px 0",WebkitAppearance:"none",resize:"none",overflow:"hidden",lineHeight:"1.4",maxHeight:200,minHeight:20,fontFamily:"inherit"}}/><button onClick={()=>{if(!isListening)startListening();else stopListening()}} style={{width:36,height:36,borderRadius:99,border:"none",cursor:"pointer",background:isListening?"rgba(6,182,212,.2)":"rgba(255,255,255,.05)",color:isListening?"rgba(6,182,212,.95)":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{isListening?<MicOff size={14}/>:<Mic size={14}/>}</button></div>
-          <button onClick={()=>sendMessage(input)} disabled={!input.trim()&&attachments.length===0} style={{width:48,height:48,borderRadius:99,border:"1px solid rgba(255,255,255,.1)",cursor:(input.trim()||attachments.length>0)?"pointer":"default",background:(input.trim()||attachments.length>0)?"rgba(139,92,246,.4)":"rgba(255,255,255,.08)",color:(input.trim()||attachments.length>0)?"white":"rgba(255,255,255,.4)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:(input.trim()||attachments.length>0)?"0 0 16px rgba(139,92,246,.25)":"none",transition:"all .2s"}}><Send size={18}/></button>
+          <button onClick={()=>sendMessage(input)} disabled={!input.trim()&&attachments.length===0} style={{width:48,height:48,borderRadius:99,border:"none",cursor:(input.trim()||attachments.length>0)?"pointer":"default",background:(input.trim()||attachments.length>0)?"rgba(139,92,246,.4)":"rgba(255,255,255,.04)",color:(input.trim()||attachments.length>0)?"white":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:(input.trim()||attachments.length>0)?"0 0 16px rgba(139,92,246,.25)":"none"}}><Send size={18}/></button>
         </div>}
         
         {/* ⬡B:roadmap.tier3:RENDER:barcode_scanner:20260323⬡ */}
@@ -2745,18 +2744,12 @@ function MyABAInner(){
       {mainTab==="guide"&&<GuideView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="sports"&&<SportsView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="music"&&<MusicView userId={user?.email||user?.uid||"unknown"}/>}
-              {mainTab==="soul"&&<SoulView userId={user?.email||user?.uid||"unknown"}/>}
-              {mainTab==="atter"&&<ATTERView userId={user?.email||user?.uid||"unknown"}/>}
-              {mainTab==="logful"&&<LogfulView userId={user?.email||user?.uid||"unknown"}/>}
-              {mainTab==="writes"&&<WritesView userId={user?.email||user?.uid||"unknown"}/>}
-              {mainTab==="seed"&&<SeedView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="reading"&&<ReadingView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="ccwa"&&<CCWAView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="aoa"&&<AOAView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="shadow"&&<ShadowView/>}
       {mainTab==="meeting"&&<MeetingModeView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="interview"&&<InterviewModeView userId={user?.email||user?.uid||"unknown"}/>}
-      {mainTab==="dial"&&<DialModeView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="nura"&&<NURAView userId={user?.email||user?.uid||"unknown"} onScan={()=>setScannerOpen(true)}/>}
       {mainTab==="briefing"&&<BriefingView data={briefingData} loading={briefingLoading} userId={user?.email||user?.uid||"unknown"} onRefresh={async()=>{
         setBriefingLoading(true);const data=await fetchBriefing(user?.email||user?.uid||"unknown");setBriefingData(data);setBriefingLoading(false);
@@ -2814,7 +2807,7 @@ function MyABAInner(){
     <Queue open={queueOpen} onToggle={()=>setQueueOpen(!queueOpen)} items={proactiveItems}/>
     <ClosedCaptions text={captionText} visible={captionVisible} />
     {editorDoc&&<MobileDocEditor content={editorDoc.content} docType={editorDoc.type} onClose={()=>setEditorDoc(null)} onSave={(text)=>{setOutput&&setOutput(text);setEditorDoc(null)}}/>}
-    <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} voiceOut={voiceOut} setVoiceOut={setVoiceOut} user={user} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
+    <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} BG={BG} voiceOut={voiceOut} setVoiceOut={setVoiceOut} user={user} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
     {/* ⬡B:snap.quick_question:FAB_AND_PANEL:20260317⬡ */}
     {/* ⬡B:clipboard.history:FAB:20260320⬡ Clipboard History Button */}
     {!clipboardOpen&&!snapOpen&&mainTab==="chat"&&<button onClick={()=>setClipboardOpen(true)} style={{
