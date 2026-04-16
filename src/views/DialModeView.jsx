@@ -30,7 +30,7 @@ export default function DialModeView({ user, userId }) {
   const [livePanel, setLivePanel] = useState('transcript');
 
   const { status, callSid, transcript, seconds, error, errorCode, startCall, endCall } = useDialer(api, identity);
-  const { bridgeStatus, bridgeNumber, hamPhone, loading: bridgeLoading, error: bridgeError, errorCode: bridgeErrorCode, verificationCode, setup: setupBridge, verify: verifyCallerId } = useBridge(api, identity);
+  const { bridgeStatus, bridgeNumber, hamPhone, loading: bridgeLoading, error: bridgeError, errorCode: bridgeErrorCode, verificationCode, callerIdVerified, pollingVerification, setup: setupBridge, verify: verifyCallerId } = useBridge(api, identity);
   const { calls, total, page, loading: historyLoading, search, nextPage, prevPage } = useCallHistory(api, identity);
 
   const [searchInput, setSearchInput] = useState('');
@@ -154,74 +154,69 @@ export default function DialModeView({ user, userId }) {
         {/* === DIALER TAB === */}
         {tab === 'dialer' && (
           <div>
-            {/* Bridge setup card with state-aware UI */}
+            {/* Unified onboarding card — bridge + caller ID in one flow */}
             <div style={{ marginBottom: 20, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', marginBottom: 8 }}>YOUR ABA DIALS BRIDGE</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', marginBottom: 8 }}>ABA DIALS</div>
               
-              {bridgeStatus === BRIDGE_STATUS.ACTIVE && (
-                <div>
-                  <div style={{ fontSize: 13, color: '#22c55e', marginBottom: 4 }}>✓ Bridge Active</div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>Bridge #: <span style={{ fontFamily: 'monospace' }}>{bridgeNumber}</span></div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>Your #: <span style={{ fontFamily: 'monospace' }}>{hamPhone}</span></div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 6, lineHeight: 1.5 }}>
-                    To forward incoming calls to ABA Dials, dial <span style={{ color: accent, fontFamily: 'monospace' }}>*72{bridgeNumber?.replace(/\D/g, '')}</span> from your phone, then hang up.
-                  </div>
-                </div>
-              )}
-
-              {bridgeStatus === BRIDGE_STATUS.NO_PHONE && (
-                <div>
-                  <div style={{ fontSize: 13, color: '#ef4444', marginBottom: 6 }}>Phone number required</div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>Add your phone number to your HAM profile before setting up ABA Dials. Your phone is needed for ringing and caller ID.</div>
-                </div>
-              )}
-
               {bridgeStatus === BRIDGE_STATUS.NOT_SET && (
                 <div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginBottom: 8, lineHeight: 1.5 }}>
-                    Provision a dedicated Twilio bridge number for your HAM. Incoming calls forwarded through it will ring your phone and be transcribed.
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', marginBottom: 4, fontWeight: 600 }}>Set up your line</div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 12, lineHeight: 1.5 }}>
+                    One tap. We provision your private bridge number, and Twilio will call you with a 6-digit code so you can keep your real number as caller ID.
                   </div>
                   <button onClick={setupBridge} disabled={bridgeLoading}
-                    style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: accent, color: '#000', fontWeight: 700, fontSize: 12, cursor: 'pointer', opacity: bridgeLoading ? 0.5 : 1 }}>
-                    {bridgeLoading ? 'Provisioning...' : 'Set Up Bridge'}
+                    style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: accent, color: '#000', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: bridgeLoading ? 0.5 : 1 }}>
+                    {bridgeLoading ? 'Setting up...' : 'Set Up ABA Dials'}
                   </button>
                 </div>
               )}
-
+              
               {bridgeStatus === BRIDGE_STATUS.PROVISIONING && (
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>Buying your bridge number from Twilio...</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>Provisioning bridge and starting verification...</div>
               )}
-
+              
+              {bridgeStatus === BRIDGE_STATUS.NO_PHONE && (
+                <div>
+                  <div style={{ fontSize: 13, color: '#ef4444', marginBottom: 6 }}>Phone number required on HAM profile</div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>Add your phone number to your profile before setting up ABA Dials. Your phone is needed for ringing and caller ID.</div>
+                </div>
+              )}
+              
               {bridgeStatus === BRIDGE_STATUS.ERROR && (
                 <div>
-                  <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 4 }}>Error: {bridgeError}</div>
+                  <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 6 }}>Error: {bridgeError}</div>
                   <button onClick={setupBridge} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#fff', fontSize: 11, cursor: 'pointer' }}>Retry</button>
                 </div>
               )}
-            </div>
-
-            {/* Caller ID Verification (for outbound calls) */}
-            <div style={{ marginBottom: 20, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', marginBottom: 8 }}>OUTBOUND CALLER ID</div>
               
-              {errorCode === 'CALLER_ID_NOT_VERIFIED' && (
-                <div style={{ padding: 10, borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', marginBottom: 8 }}>
-                  <div style={{ fontSize: 11, color: '#fca5a5', marginBottom: 4 }}>Your phone isn't verified as a caller ID yet.</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: 1.4 }}>Until verified, outgoing calls show the bridge number, not your real number. Verify below.</div>
+              {bridgeStatus === BRIDGE_STATUS.ACTIVE && (
+                <div>
+                  {/* Caller ID verification state */}
+                  {verificationCode && !callerIdVerified && (
+                    <div style={{ marginBottom: 12, padding: 12, borderRadius: 10, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                      <div style={{ fontSize: 11, color: '#86efac', marginBottom: 4, fontWeight: 600 }}>Twilio is calling {hamPhone}</div>
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>When you answer, enter this code on your keypad:</div>
+                      <div style={{ fontSize: 32, fontFamily: 'monospace', fontWeight: 700, color: '#22c55e', letterSpacing: '0.2em', textAlign: 'center', padding: '8px 0' }}>{verificationCode}</div>
+                      {pollingVerification && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: 4 }}>Waiting for you to enter the code...</div>}
+                    </div>
+                  )}
+                  
+                  {/* Active bridge summary */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <span style={{ color: '#22c55e' }}>✓</span>
+                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>Bridge <span style={{ fontFamily: 'monospace', color: 'rgba(255,255,255,0.9)' }}>{bridgeNumber}</span></span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                    <span style={{ color: callerIdVerified ? '#22c55e' : 'rgba(255,255,255,0.3)' }}>{callerIdVerified ? '✓' : '○'}</span>
+                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>Caller ID <span style={{ fontFamily: 'monospace', color: 'rgba(255,255,255,0.9)' }}>{hamPhone}</span> {callerIdVerified ? <span style={{ color: '#22c55e' }}>verified</span> : <span style={{ color: 'rgba(255,255,255,0.4)' }}>pending</span>}</span>
+                  </div>
+                  
+                  {callerIdVerified && (
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', lineHeight: 1.5 }}>
+                      To forward incoming calls: dial <span style={{ color: accent, fontFamily: 'monospace' }}>*72{bridgeNumber?.replace(/\D/g, '')}</span> from your phone.
+                    </div>
+                  )}
                 </div>
-              )}
-              
-              {verificationCode ? (
-                <div style={{ padding: 12, borderRadius: 8, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
-                  <div style={{ fontSize: 12, color: '#86efac', marginBottom: 4 }}>Twilio will call {hamPhone || 'you'} shortly.</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>When prompted, enter this code on the keypad:</div>
-                  <div style={{ fontSize: 28, fontFamily: 'monospace', fontWeight: 700, color: '#22c55e', letterSpacing: '0.15em', textAlign: 'center' }}>{verificationCode}</div>
-                </div>
-              ) : (
-                <button onClick={verifyCallerId} disabled={bridgeLoading}
-                  style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', color: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
-                  Verify My Phone for Outbound Caller ID
-                </button>
               )}
             </div>
 
@@ -234,12 +229,12 @@ export default function DialModeView({ user, userId }) {
               <input value={purposeInput} onChange={e => setPurposeInput(e.target.value)} placeholder="Purpose (optional)"
                 style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)', color: 'rgba(255,255,255,0.7)', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
-            <button onClick={handleDial} disabled={!phoneInput.trim() || status === CALL_STATUS.CONNECTING || bridgeStatus !== BRIDGE_STATUS.ACTIVE}
-              style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none', background: accent, color: '#000', fontWeight: 700, fontSize: 15, cursor: 'pointer', opacity: (!phoneInput.trim() || bridgeStatus !== BRIDGE_STATUS.ACTIVE) ? 0.4 : 1 }}>
+            <button onClick={handleDial} disabled={!phoneInput.trim() || status === CALL_STATUS.CONNECTING || bridgeStatus !== BRIDGE_STATUS.ACTIVE || !callerIdVerified}
+              style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none', background: accent, color: '#000', fontWeight: 700, fontSize: 15, cursor: 'pointer', opacity: (!phoneInput.trim() || bridgeStatus !== BRIDGE_STATUS.ACTIVE || !callerIdVerified) ? 0.4 : 1 }}>
               {status === CALL_STATUS.CONNECTING ? 'Ringing your phone...' : 'CALL'}
             </button>
             {error && <div style={{ marginTop: 8, fontSize: 12, color: '#ef4444' }}>{error}</div>}
-            {bridgeStatus !== BRIDGE_STATUS.ACTIVE && <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Set up your bridge first to place calls.</div>}
+            {(bridgeStatus !== BRIDGE_STATUS.ACTIVE || !callerIdVerified) && <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{bridgeStatus !== BRIDGE_STATUS.ACTIVE ? 'Set up ABA Dials first to place calls.' : 'Finish caller ID verification to place outbound calls.'}</div>}
           </div>
         )}
 
