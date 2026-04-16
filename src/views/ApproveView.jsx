@@ -104,7 +104,7 @@ export default function ApproveView({userId,onAction}){
           <div style={{flex:1,textAlign:"center"}}><p style={{color:"rgba(255,255,255,.8)",fontSize:20,fontWeight:700,margin:0}}>{velocityData.avgResponseMins}m</p><p style={{color:"rgba(255,255,255,.3)",fontSize:9,margin:0}}>avg time</p></div>
           <div style={{flex:1,textAlign:"center"}}><p style={{color:"rgba(255,255,255,.8)",fontSize:20,fontWeight:700,margin:0}}>{velocityData.approvalRate}%</p><p style={{color:"rgba(255,255,255,.3)",fontSize:9,margin:0}}>approval rate</p></div>
         </div>
-        {velocityData.autoApprovalCandidates&&velocityData.autoApprovalCandidates.length>0&&(
+        {/* ⬡B:approve:FIX:null_guard_candidates:20260416⬡ Was crashing if autoApprovalCandidates missing */ velocityData?.autoApprovalCandidates?.length>0&&(
           <div style={{marginTop:8,padding:8,borderRadius:8,background:"rgba(16,185,129,.08)",border:"1px solid rgba(16,185,129,.15)"}}>
             <p style={{color:"#10B981",fontSize:10,fontWeight:600,margin:"0 0 4px"}}>AUTO-APPROVAL CANDIDATES</p>
             {velocityData.autoApprovalCandidates.map((c,i)=>(
