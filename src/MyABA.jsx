@@ -82,7 +82,6 @@ import CommandCenterView from "./views/CommandCenterView.jsx";
 import SettingsDrawer from "./views/SettingsDrawer.jsx";
 import MeetingModeView from "./views/MeetingModeView.jsx";
 import InterviewModeView from "./views/InterviewModeView.jsx";
-import DialModeView from "./views/DialModeView.jsx"; // ⬡B:ccwa.aba_dials:PHASE5:cip_wire:20260414⬡
 import JobsView from "./views/JobsView.jsx";
 import ReadingView from "./views/ReadingView.jsx";
 import SoulView from "./views/SoulView.jsx";
@@ -644,7 +643,7 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
   const APP_COLORS = {
     chat: "#a78bfa", briefing: "#f59e0b", jobs: "#f97316", email: "#3b82f6",
     memos: "#84cc16", nura: "#06b6d4", guide: "#10b981", approve: "#8b5cf6",
-    phone: "#22c55e", dial: "#F59E0B", settings: "#6b7280", gmg_university: "#ec4899", incidents: "#ef4444",
+    phone: "#22c55e", settings: "#6b7280", gmg_university: "#ec4899", incidents: "#ef4444",
     journal: "#818cf8", tasks: "#f472b6", notes: "#fbbf24", calendar: "#2dd4bf",
     crm: "#fb923c", ccwa: "#a78bfa", aoa: "#64748b", reading: "#8b5cf6"
   };
@@ -1201,26 +1200,49 @@ function Typing(){return(<div style={{display:"flex",justifyContent:"flex-start"
 // ⬡B:MYABA:TALK_TO_ABA:ELEVENLABS_SDK:20260321⬡
 // Same agent as VARA phone calls. WebRTC audio. Full custom UI. No widget.
 // ═══════════════════════════════════════════════════════════════════════════
-function TalkToABA({userId}){
+function TalkToABA({userId, conversationId, onTranscriptSaved}){
   const[orbState,setOrbState]=useState("idle"); // idle | connecting | listening | thinking | speaking | error
   const[statusText,setStatusText]=useState("Tap the orb to start talking");
   const[lastMsg,setLastMsg]=useState("");
   const[errorMsg,setErrorMsg]=useState("");
   const thinkTimerRef=useRef(null);
   // ⬡B:911.fix_voice_interruption:FIX:speaking_duration_guard:20260413⬡
-  // Track when ABA started speaking. Don't yield turn until she's spoken for at least 1.5s.
-  // Without this, echo/noise detection causes immediate yield → Brandon hears nothing.
   const speakingStartRef=useRef(0);
+  // ⬡B:ui.fix:voice_transcript_to_chat:20260415⬡
+  // Accumulate full conversation transcript during Talk session
+  const transcriptRef=useRef([]); // [{role:'user'|'aba', text, ts}]
+  const currentUserTurnRef=useRef(""); // buffer user speech chunks
+  const currentAiTurnRef=useRef("");   // buffer ABA speech chunks
 
   const conversation=useConversation({
-    onConnect:()=>{setOrbState("listening");setStatusText("Listening...");setErrorMsg("")},
-    onDisconnect:()=>{setOrbState("idle");setStatusText("Tap the orb to start talking")},
+    onConnect:()=>{setOrbState("listening");setStatusText("Listening...");setErrorMsg("");transcriptRef.current=[];currentUserTurnRef.current="";currentAiTurnRef.current=""},
+    onDisconnect:()=>{
+      setOrbState("idle");setStatusText("Tap the orb to start talking");
+      // ⬡B:ui.fix:voice_transcript_to_chat:SAVE_ON_DISCONNECT:20260415⬡
+      // Flush any pending turns then save transcript as chat messages
+      if(currentUserTurnRef.current.trim()){transcriptRef.current.push({role:"user",text:currentUserTurnRef.current.trim(),ts:Date.now()});currentUserTurnRef.current=""}
+      if(currentAiTurnRef.current.trim()){transcriptRef.current.push({role:"aba",text:currentAiTurnRef.current.trim(),ts:Date.now()});currentAiTurnRef.current=""}
+      const transcript=transcriptRef.current;
+      if(transcript.length>0){
+        // Fire event so parent chat view inserts messages and saves to backend
+        window.dispatchEvent(new CustomEvent("talk-transcript-ready",{detail:{transcript,conversationId,userId}}));
+        if(onTranscriptSaved) onTranscriptSaved(transcript);
+        transcriptRef.current=[];
+      }
+    },
     onError:(msg)=>{console.error("[TALK] ElevenLabs error:",msg);setOrbState("error");setErrorMsg(String(msg));setStatusText("Error. Tap to retry.")},
     onMessage:({message,source})=>{
-      if(source==="user"){setOrbState("thinking");setStatusText("ABA is thinking...");setLastMsg("")}
+      if(source==="user"){
+        // Flush previous ABA turn if any
+        if(currentAiTurnRef.current.trim()){transcriptRef.current.push({role:"aba",text:currentAiTurnRef.current.trim(),ts:Date.now()});currentAiTurnRef.current=""}
+        currentUserTurnRef.current+=" "+message;
+        setOrbState("thinking");setStatusText("ABA is thinking...");setLastMsg("")
+      }
       if(source==="ai"){
+        // Flush previous user turn if any
+        if(currentUserTurnRef.current.trim()){transcriptRef.current.push({role:"user",text:currentUserTurnRef.current.trim(),ts:Date.now()});currentUserTurnRef.current=""}
+        currentAiTurnRef.current+=" "+message;
         setLastMsg(prev=>{const next=prev+message;
-          // Fire real-time caption event so ClosedCaptions overlay shows during speech
           window.dispatchEvent(new CustomEvent("vara-caption",{detail:{text:next.slice(-150),source:"ABA"}}));
           return next;
         });
@@ -1266,10 +1288,6 @@ function TalkToABA({userId}){
       setStatusText("Connecting to ABA...");
       // ⬡B:voice.audit:FIX:preload_identity:20260330⬡ Warm VARA cache with HAM identity before WebRTC starts
       try{await fetch(ABABASE+"/vara/preload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,conversation_id:"webrtc_"+Date.now()})});}catch(pe){console.log("[TALK] Preload failed (non-fatal):",pe.message)}
-      // ⬡B:911:webrtc_pass_userId:FIX:20260415⬡
-      // April 15: BJ's calls all showed ham=unknown because startSession didn't pass userId.
-      // ElevenLabs creates its own conv_id, init-context fires with no identity.
-      // Fix: Pass userId via overrides so init-context webhook can extract it.
       await conversation.startSession({
         agentId:"agent_0601khe2q0gben08ws34bzf7a0sa",
         connectionType:"webrtc",
@@ -1836,6 +1854,7 @@ function MyABAInner(){
   const activeConv=convos.find(c=>c.id===activeId);const messages=activeConv?.messages||[];
   const[input,setInput]=useState("");const[abaState,setAbaState]=useState("idle");
   const[attachments,setAttachments]=useState([]); // SPURT 5: files attached to message
+  const[attachMenuOpen,setAttachMenuOpen]=useState(false); // ⬡B:ui.fix:attach_menu:20260415⬡
   const fileInputRef=useRef(null);
   const [scannerOpen,setScannerOpen]=useState(false);
   const[isTyping,setIsTyping]=useState(false);
@@ -2607,7 +2626,12 @@ function MyABAInner(){
       {/* App title bar — only shows when NOT on home */}
       {mainTab!=="home"&&mainTab!=="apps"&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 12px 4px",flexShrink:0}}>
         <button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ChevronLeft size={18}/></button>
-        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"Talk to ABA":mainTab==="briefing"?"Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"Command Center":mainTab==="nura"?"Nutrition":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"ABA Guides":mainTab==="sports"?"Scoreboard":mainTab==="music"?"Music":mainTab==="reading"?"Reading":mainTab==="ccwa"?"Come Code with ABA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"MESA":mainTab==="interview"?"IRIS":mainTab==="dial"?"ABA Dials":mainTab.replace(/_/g," ")}</span>
+        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"Talk to ABA":mainTab==="briefing"?"Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"Command Center":mainTab==="nura"?"Nutrition":mainTab==="phone"?"ABA Dials":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"ABA Guides":mainTab==="sports"?"Scoreboard":mainTab==="music"?"Music":mainTab==="reading"?"Reading":mainTab==="ccwa"?"Come Code with ABA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"MESA":mainTab==="interview"?"IRIS":mainTab.replace(/_/g," ")}</span>
+              {mainTab==="soul"&&<SoulView userId={user?.email||user?.uid||"unknown"}/>}
+              {mainTab==="atter"&&<ATTERView userId={user?.email||user?.uid||"unknown"}/>}
+              {mainTab==="logful"&&<LogfulView userId={user?.email||user?.uid||"unknown"}/>}
+              {mainTab==="writes"&&<WritesView userId={user?.email||user?.uid||"unknown"}/>}
+              {mainTab==="seed"&&<SeedView userId={user?.email||user?.uid||"unknown"}/>}
         <div style={{display:"flex",gap:4}}>
           {isHAM(user?.email)&&<button onClick={()=>setAdminPanelOpen(true)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:lastABAResponse?"rgba(34,197,94,.1)":"rgba(255,255,255,.04)",color:lastABAResponse?"rgba(34,197,94,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}><Activity size={14}/></button>}
           <button onClick={()=>setVoiceOut(!voiceOut)} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:voiceOut?"rgba(139,92,246,.1)":"rgba(255,255,255,.04)",color:voiceOut?"rgba(139,92,246,.7)":"rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center"}}>{voiceOut?<Volume2 size={13}/>:<VolumeX size={13}/>}</button>
@@ -2634,7 +2658,7 @@ function MyABAInner(){
           onAppSelect={(app)=>{
             setAppScope(app.app_scope||null);
             // ⬡B:FIX:dismiss_chat_on_switch:20260324⬡ Reset voice/chat state when leaving chat
-            if(app.id!=="chat"&&app.id!=="incidents"){
+            if(app.id!=="chat"&&app.id!=="phone"&&app.id!=="incidents"){
               if(voiceMode==="talk")setVoiceMode("chat");
               setSnapOpen(false);setClipboardOpen(false);
             }
@@ -2651,7 +2675,7 @@ function MyABAInner(){
             else if(app.id==="ccwa"){setMainTab("ccwa")}
             else if(app.id==="aoa"){setMainTab("aoa")}
             else if(app.id==="gmg_university"){setMainTab("gmg_university")}
-            else if(app.id==="phone"){setMainTab("dial")} // ⬡B:ccwa.aba_dials:FIX:phone_opens_dial:20260415⬡
+            else if(app.id==="phone"){setMainTab("chat");setVoiceMode("talk")}
             else if(app.id==="nura"){setMainTab("nura")}
             else if(app.id==="incidents"){setMainTab("chat");setInput("I want to report a bug: ")}
             else if(app.id==="tasks"){setMainTab("tasks")}
@@ -2664,7 +2688,6 @@ function MyABAInner(){
             else if(app.id==="music"){setMainTab("music")}
             else if(app.id==="meeting"){setMainTab("meeting")}
             else if(app.id==="interview"){setMainTab("interview")}
-            else if(app.id==="dial"){setMainTab("dial")} // ⬡B:ccwa.aba_dials:20260414⬡
             else{setMainTab(app.id)}
           }}
         />
@@ -2696,11 +2719,27 @@ function MyABAInner(){
           </div>))}
         </div>}
         
-        {voiceMode==="chat"&&<div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-          <button onClick={()=>fileInputRef.current?.click()} style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:"rgba(255,255,255,.05)",color:"rgba(255,255,255,.4)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Paperclip size={16}/></button>
-          <button onClick={()=>setScannerOpen(true)} title="Scan food barcode" style={{width:44,height:44,borderRadius:99,border:"none",cursor:"pointer",background:"rgba(255,255,255,.05)",color:"rgba(139,92,246,.5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Camera size={16}/></button>
-          <div style={{flex:1,display:"flex",alignItems:"flex-end",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:20,padding:"6px 6px 6px 16px",minHeight:44}}><textarea value={input} onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,200)+"px"}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage(input)}}} onFocus={scrollInputIntoView} placeholder="Message ABA..." rows={1} style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.9)",fontSize:16,padding:"8px 0",WebkitAppearance:"none",resize:"none",overflow:"hidden",lineHeight:"1.4",maxHeight:200,minHeight:20,fontFamily:"inherit"}}/><button onClick={()=>{if(!isListening)startListening();else stopListening()}} style={{width:36,height:36,borderRadius:99,border:"none",cursor:"pointer",background:isListening?"rgba(6,182,212,.2)":"rgba(255,255,255,.05)",color:isListening?"rgba(6,182,212,.95)":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:4}}>{isListening?<MicOff size={14}/>:<Mic size={14}/>}</button></div>
-          <button onClick={()=>sendMessage(input)} disabled={!input.trim()&&attachments.length===0} style={{width:48,height:48,borderRadius:99,border:"1px solid rgba(255,255,255,.1)",cursor:(input.trim()||attachments.length>0)?"pointer":"default",background:(input.trim()||attachments.length>0)?"rgba(139,92,246,.4)":"rgba(255,255,255,.08)",color:(input.trim()||attachments.length>0)?"white":"rgba(255,255,255,.4)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:(input.trim()||attachments.length>0)?"0 0 16px rgba(139,92,246,.25)":"none",transition:"all .2s"}}><Send size={18}/></button>
+        {/* ⬡B:ui.fix:input_bar_mobile:IMESSAGE_PATTERN:20260415⬡
+           iMessage/Claude.ai pattern: pill takes all width, right slot = mic OR send.
+           Single + collapses paperclip+camera — no overflow on any phone width. */}
+        {voiceMode==="chat"&&<div style={{display:"flex",gap:6,alignItems:"flex-end"}}>
+          {/* + button: tap opens attach sheet (file + camera) */}
+          <div style={{position:"relative"}}>
+            <button onClick={()=>setAttachMenuOpen(p=>!p)} style={{width:40,height:40,borderRadius:99,border:"none",cursor:"pointer",background:"rgba(255,255,255,.05)",color:"rgba(255,255,255,.4)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:22,fontWeight:300,lineHeight:1}}>+</button>
+            {attachMenuOpen&&<div style={{position:"absolute",bottom:48,left:0,background:"rgba(20,20,30,.96)",backdropFilter:"blur(16px)",border:"1px solid rgba(255,255,255,.1)",borderRadius:16,padding:"6px 0",minWidth:160,zIndex:100,boxShadow:"0 8px 32px rgba(0,0,0,.4)"}}>
+              <button onClick={()=>{fileInputRef.current?.click();setAttachMenuOpen(false)}} style={{width:"100%",padding:"12px 16px",background:"none",border:"none",color:"rgba(255,255,255,.85)",cursor:"pointer",display:"flex",alignItems:"center",gap:10,fontSize:14}}><Paperclip size={16}/>Attach file</button>
+              <button onClick={()=>{setScannerOpen(true);setAttachMenuOpen(false)}} style={{width:"100%",padding:"12px 16px",background:"none",border:"none",color:"rgba(139,92,246,.85)",cursor:"pointer",display:"flex",alignItems:"center",gap:10,fontSize:14}}><Camera size={16}/>Scan barcode</button>
+            </div>}
+          </div>
+          {/* Pill: textarea + right-slot button (mic ↔ send) */}
+          <div style={{flex:1,display:"flex",alignItems:"flex-end",background:"rgba(255,255,255,.05)",backdropFilter:"blur(12px)",border:"1px solid rgba(255,255,255,.08)",borderRadius:20,padding:"6px 6px 6px 14px",minHeight:44}}>
+            <textarea value={input} onChange={e=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,200)+"px"}} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage(input)}}} onFocus={scrollInputIntoView} placeholder="Message ABA..." rows={1} style={{flex:1,background:"none",border:"none",outline:"none",color:"rgba(255,255,255,.9)",fontSize:16,padding:"8px 0",WebkitAppearance:"none",resize:"none",overflow:"hidden",lineHeight:"1.4",maxHeight:200,minHeight:20,fontFamily:"inherit"}}/>
+            {/* Right slot: send when text, mic when empty */}
+            {(input.trim()||attachments.length>0)
+              ?<button onClick={()=>sendMessage(input)} style={{width:34,height:34,borderRadius:99,border:"none",cursor:"pointer",background:"rgba(139,92,246,.7)",color:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:6,boxShadow:"0 0 12px rgba(139,92,246,.4)"}}><Send size={15}/></button>
+              :<button onClick={()=>{if(!isListening)startListening();else stopListening()}} style={{width:34,height:34,borderRadius:99,border:"none",cursor:"pointer",background:isListening?"rgba(6,182,212,.2)":"rgba(255,255,255,.05)",color:isListening?"rgba(6,182,212,.95)":"rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginLeft:6}}>{isListening?<MicOff size={14}/>:<Mic size={14}/>}</button>
+            }
+          </div>
         </div>}
         
         {/* ⬡B:roadmap.tier3:RENDER:barcode_scanner:20260323⬡ */}
@@ -2714,7 +2753,23 @@ function MyABAInner(){
           </button>
           
           {/* Talk to ABA - ElevenLabs voice conversation */}
-          <TalkToABA userId={user?.email||user?.uid||"unknown"}/>
+          <TalkToABA 
+              userId={user?.email||user?.uid||"unknown"}
+              conversationId={activeId}
+              onTranscriptSaved={(transcript)=>{
+                // ⬡B:ui.fix:voice_transcript_to_chat:RENDER_HOOK:20260415⬡
+                // Insert transcript as real chat messages so voice calls show in history
+                const now=Date.now();
+                transcript.forEach((turn,i)=>{
+                  const msg={id:`talk-${now}-${i}`,role:turn.role,content:turn.text,timestamp:turn.ts,isVoice:true};
+                  addMsg(msg);
+                  // Save to backend
+                  if(activeId) airAddMessage(activeId,turn.role,turn.text).catch(()=>{});
+                });
+                // Add a divider note
+                addMsg({id:`talk-divider-${now}`,role:"aba",content:"_Voice conversation ended_",timestamp:now+1});
+              }}
+            />
         </div>}
       </div>
       </div>}
@@ -2745,18 +2800,12 @@ function MyABAInner(){
       {mainTab==="guide"&&<GuideView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="sports"&&<SportsView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="music"&&<MusicView userId={user?.email||user?.uid||"unknown"}/>}
-              {mainTab==="soul"&&<SoulView userId={user?.email||user?.uid||"unknown"}/>}
-              {mainTab==="atter"&&<ATTERView userId={user?.email||user?.uid||"unknown"}/>}
-              {mainTab==="logful"&&<LogfulView userId={user?.email||user?.uid||"unknown"}/>}
-              {mainTab==="writes"&&<WritesView userId={user?.email||user?.uid||"unknown"}/>}
-              {mainTab==="seed"&&<SeedView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="reading"&&<ReadingView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="ccwa"&&<CCWAView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="aoa"&&<AOAView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="shadow"&&<ShadowView/>}
       {mainTab==="meeting"&&<MeetingModeView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="interview"&&<InterviewModeView userId={user?.email||user?.uid||"unknown"}/>}
-      {mainTab==="dial"&&<DialModeView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="nura"&&<NURAView userId={user?.email||user?.uid||"unknown"} onScan={()=>setScannerOpen(true)}/>}
       {mainTab==="briefing"&&<BriefingView data={briefingData} loading={briefingLoading} userId={user?.email||user?.uid||"unknown"} onRefresh={async()=>{
         setBriefingLoading(true);const data=await fetchBriefing(user?.email||user?.uid||"unknown");setBriefingData(data);setBriefingLoading(false);
@@ -2814,7 +2863,7 @@ function MyABAInner(){
     <Queue open={queueOpen} onToggle={()=>setQueueOpen(!queueOpen)} items={proactiveItems}/>
     <ClosedCaptions text={captionText} visible={captionVisible} />
     {editorDoc&&<MobileDocEditor content={editorDoc.content} docType={editorDoc.type} onClose={()=>setEditorDoc(null)} onSave={(text)=>{setOutput&&setOutput(text);setEditorDoc(null)}}/>}
-    <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} voiceOut={voiceOut} setVoiceOut={setVoiceOut} user={user} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
+    <SettingsDrawer open={settingsOpen} onClose={()=>setSettingsOpen(false)} bg={bg} setBg={setBg} BG={BG} voiceOut={voiceOut} setVoiceOut={setVoiceOut} user={user} onLogout={async()=>{await signOutUser();setUser(null);setConvos([]);setActiveId(null)}}/>
     {/* ⬡B:snap.quick_question:FAB_AND_PANEL:20260317⬡ */}
     {/* ⬡B:clipboard.history:FAB:20260320⬡ Clipboard History Button */}
     {!clipboardOpen&&!snapOpen&&mainTab==="chat"&&<button onClick={()=>setClipboardOpen(true)} style={{
