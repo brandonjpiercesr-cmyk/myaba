@@ -6,7 +6,30 @@ import { X, Bell, Volume2, VolumeX, LogOut, User, Mail, ChevronRight, Loader2, E
 import { ABABASE, subscribeToPush, unsubscribeFromPush } from "../utils/api.js";
 import { resolveHamId } from "../utils/ham.js";
 
-export default function SettingsDrawer({open,onClose,bg,setBg,BG,voiceOut,setVoiceOut,onLogout,user}){
+// ⬡B:settings:FIX:BG_not_defined:20260416⬡
+// BG was defined only in MyABA.jsx (parent) but SettingsDrawer is an extracted file.
+// When SettingsDrawer renders standalone, BG is undefined → crash: "BG is not defined".
+// Fix: inline the same BG constant here. Single source of truth should eventually move
+// to src/utils/constants.js but inlining is the safe fix that doesn't touch MyABA.jsx.
+const BG = {
+  blackLandscape: { u: "https://i.imgur.com/ZwVdgzN.jpeg", l: "Dark Horizon" },
+  eventHorizon:   { u: "https://i.imgur.com/A44TxCq.jpeg", l: "Event Horizon" },
+  nebula:         { u: "https://i.imgur.com/nLBRQ82.jpeg", l: "Nebula" },
+  stormClouds:    { u: "https://i.imgur.com/RRKjvgR.jpeg", l: "Storm Clouds" },
+  wetCity:        { u: "https://i.imgur.com/h8zNCw1.jpeg", l: "Wet City" },
+  embers:         { u: "https://i.imgur.com/9HZYnlX.png",  l: "Embers" },
+  earth:          { u: "https://i.imgur.com/NOXQ3aM.png",  l: "Earth" },
+  pinkSmoke:      { u: "https://i.imgur.com/3RkebB2.jpeg", l: "Pink Smoke" },
+  mountainSnow:   { u: "https://i.imgur.com/7Ffjcy2.png",  l: "Mountain Snow" },
+  motion:         { u: "https://i.imgur.com/3hG18cp.jpeg", l: "Motion" },
+  glassWindows:   { u: "https://i.imgur.com/Kjjs7nt.jpeg", l: "Glass Windows" },
+  particleLights: { u: "https://i.imgur.com/wLi9sGD.jpeg", l: "Particle Lights" },
+  beach:          { u: "https://i.imgur.com/YaH4lbp.jpeg", l: "Beach" },
+  unity:          { u: "https://i.imgur.com/IJAeq7t.png",  l: "Unity" },
+  threeGoats:     { u: "https://i.imgur.com/jNJUq4u.png",  l: "Three Goats" }
+};
+
+export default function SettingsDrawer({open,onClose,bg,setBg,voiceOut,setVoiceOut,onLogout,user}){
   const[notifyBriefing,setNotifyBriefing]=useState(()=>{try{return localStorage.getItem("myaba_notifyBriefing")!=="false"}catch{return true}});
   const[notifyUrgent,setNotifyUrgent]=useState(()=>{try{return localStorage.getItem("myaba_notifyUrgent")!=="false"}catch{return true}});
   const[autoSpeak,setAutoSpeak]=useState(()=>{try{return localStorage.getItem("myaba_autoSpeak")==="true"}catch{return false}});
