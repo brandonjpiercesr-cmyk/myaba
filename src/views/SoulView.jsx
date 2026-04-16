@@ -121,24 +121,66 @@ export default function SoulView({ userId = 'brandon' }) {
                     </div>
                   )}
 
-                  {/* Foundation & Declarations */}
+                  {/* Foundation & Declarations — ⬡B:SOUL:empty_state_onboarding:20260415⬡ */}
                   {sectionKey === 'foundationDeclarations' && (
                     <>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#c4a265', marginBottom: 8 }}>Daily Declarations</div>
-                      {section.declarations?.map((d, i) => (
-                        <div key={i} style={{ padding: '8px 0', fontSize: 14, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{i + 1}. {d}</div>
-                      ))}
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#c4a265', marginTop: 16, marginBottom: 8 }}>Prayer Focus</div>
-                      {section.prayerFocus?.map((p, i) => (
-                        <div key={i} style={{ padding: '8px 0', fontSize: 14 }}>
-                          <span style={{ fontWeight: 600 }}>{p.focus}</span> {p.scripture && <span style={{ color: '#a89cc8' }}>= {p.scripture}</span>}
-                          {p.text && <span style={{ color: '#f5d99a' }}> {p.text}</span>}
+                      {section.empty ? (
+                        <div style={{ padding: 24, background: 'rgba(245,217,154,0.08)', borderRadius: 12, borderLeft: '3px solid #c4a265' }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#f5d99a', marginBottom: 8 }}>Make this your own</div>
+                          <div style={{ fontSize: 13, lineHeight: 1.6, color: '#c8c0d8' }}>{section.emptyMessage}</div>
+                          <div style={{ fontSize: 12, color: '#a89cc8', marginTop: 12, fontStyle: 'italic' }}>
+                            Try: "add declaration: I am covered by the blood", "my foundation scripture is Romans 8:28 for identity", "I'm praying about my marriage"
+                          </div>
                         </div>
-                      ))}
+                      ) : (
+                        <>
+                          {section.foundationScriptures && section.foundationScriptures.length > 0 && (
+                            <>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: '#c4a265', marginBottom: 8 }}>Foundation Scriptures</div>
+                              {section.foundationScriptures.map((s, i) => (
+                                <div key={i} style={{ padding: '8px 0', fontSize: 14, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                  <span style={{ fontWeight: 600, color: '#f5d99a' }}>{s.ref}</span>
+                                  {s.theme && <span style={{ color: '#a89cc8', fontSize: 13 }}> — {s.theme}</span>}
+                                </div>
+                              ))}
+                            </>
+                          )}
+                          {section.declarations && section.declarations.length > 0 && (
+                            <>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: '#c4a265', marginTop: 16, marginBottom: 8 }}>Daily Declarations</div>
+                              {section.declarations.map((d, i) => (
+                                <div key={i} style={{ padding: '8px 0', fontSize: 14, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>{i + 1}. {d}</div>
+                              ))}
+                            </>
+                          )}
+                          {section.prayerFocus && section.prayerFocus.length > 0 && (
+                            <>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: '#c4a265', marginTop: 16, marginBottom: 8 }}>Prayer Focus</div>
+                              {section.prayerFocus.map((p, i) => (
+                                <div key={i} style={{ padding: '8px 0', fontSize: 14 }}>
+                                  <span style={{ fontWeight: 600 }}>{p.focus}</span> {p.scripture && <span style={{ color: '#a89cc8' }}>= {p.scripture}</span>}
+                                  {p.text && <span style={{ color: '#f5d99a' }}> {p.text}</span>}
+                                </div>
+                              ))}
+                            </>
+                          )}
+                        </>
+                      )}
                     </>
                   )}
 
-                  {/* Daily Prophecy */}
+                  {/* Daily Prophecy — ⬡B:SOUL:empty_prophecy:20260415⬡ */}
+                  {sectionKey === 'dailyProphecy' && !section.prophecy && (
+                    <div style={{ padding: 24, background: 'rgba(245,217,154,0.08)', borderRadius: 12, borderLeft: '3px solid #c4a265' }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#f5d99a', marginBottom: 8 }}>Add your prophecies</div>
+                      <div style={{ fontSize: 13, lineHeight: 1.6, color: '#c8c0d8' }}>
+                        Prophetic words spoken over you are meant to be remembered. Talk to ABA and share them.
+                      </div>
+                      <div style={{ fontSize: 12, color: '#a89cc8', marginTop: 12, fontStyle: 'italic' }}>
+                        Try: "log a prophecy from Pastor Q on July 30 2025: you haven't scratched the surface"
+                      </div>
+                    </div>
+                  )}
                   {sectionKey === 'dailyProphecy' && section.prophecy && (
                     <div style={{ padding: 16, background: 'rgba(196,162,101,0.08)', borderRadius: 12, borderLeft: '3px solid #c4a265' }}>
                       <div style={{ fontSize: 13, color: '#c4a265', marginBottom: 8 }}>{section.prophecy.speaker} — {section.prophecy.date} — to {section.prophecy.recipient}</div>
