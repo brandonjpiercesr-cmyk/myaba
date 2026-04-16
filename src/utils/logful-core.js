@@ -114,9 +114,8 @@ export function formatEntryDate(dateStr) {
 }
 
 export function getSourceIcon(source) {
+  // ⬡B:LOGFUL:FIX:single_icons_map:20260416⬡ duplicate const caused build fail
   const icons = { journal: '📓', prayer: '🙏', sermon: '🕊️', soul: '✝️', logful: '📓', atter: '🎤', iris: '🎙️', mesa: '💬', taste: '🍽️', omi: '📡', manual: '✍️', chat: '💭', email: '📧', phone: '📞' };
-  if (icons[source]) return icons[source];
-  const icons = { atter: '🎙️', iris: '🎯', mesa: '📋', taste: '👂', omi: '📿', manual: '✍️', chat: '💬', email: '📧', phone: '📞' };
   return icons[source] || '📝';
 }
 
