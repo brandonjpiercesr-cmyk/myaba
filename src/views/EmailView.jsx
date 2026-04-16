@@ -1,5 +1,5 @@
 // ⬡B:iman.processor:VIEW:email_v2_multiaccount_digest:20260413⬡
-// ⬡B:iman.view:FIX:no_native_dialogs+dismiss_brain_id:20260415⬡
+// ⬡B:iman.view:FIX:glass_modal_no_window_prompt:20260415⬡
 // EmailView v2 — Multi-account, ABA cooked section, per-account isolation
 // Uses email-core.js shared hooks: useAccounts, useInbox, useDigest
 
@@ -22,18 +22,35 @@ const api = async (path, opts = {}) => {
 };
 
 // ═══════════════════════════════════════════════════════════
-// GLASS MODAL — Replaces window.prompt() and window.confirm()
-// ⬡B:iman.view:FIX:glass_modal_no_native_dialogs:20260415⬡
+// GLASS MODAL — replaces window.prompt() and window.confirm()
+// ⬡B:iman.view:FIX:glass_modal_component:20260415⬡
 // ═══════════════════════════════════════════════════════════
-function GlassModal({ title, children, onConfirm, onCancel, confirmLabel = "OK", confirmColor = "rgba(139,92,246,.2)", confirmTextColor = "#a78bfa" }) {
+function GlassModal({ title, children, onConfirm, onCancel, confirmLabel = "Confirm", confirmColor = "rgba(139,92,246,.25)", confirmTextColor = "#c4b5fd" }) {
   return (
-    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.6)",backdropFilter:"blur(4px)",padding:20}}>
-      <div style={{width:"100%",maxWidth:400,borderRadius:16,background:"rgba(18,18,30,.96)",border:"1px solid rgba(139,92,246,.2)",padding:20,boxShadow:"0 24px 64px rgba(0,0,0,.5)"}}>
-        <p style={{color:"rgba(255,255,255,.9)",fontSize:13,fontWeight:600,margin:"0 0 14px"}}>{title}</p>
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 999,
+      background: "rgba(0,0,0,.65)", backdropFilter: "blur(6px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: 16
+    }}>
+      <div style={{
+        width: "100%", maxWidth: 420,
+        background: "rgba(14,14,22,.95)",
+        border: "1px solid rgba(139,92,246,.2)",
+        borderRadius: 18, padding: 20,
+        display: "flex", flexDirection: "column", gap: 14
+      }}>
+        <p style={{ color: "rgba(255,255,255,.85)", fontSize: 13, fontWeight: 600, margin: 0 }}>{title}</p>
         {children}
-        <div style={{display:"flex",gap:8,marginTop:14}}>
-          <button onClick={onCancel} style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid rgba(255,255,255,.08)",background:"transparent",color:"rgba(255,255,255,.4)",fontSize:12,cursor:"pointer"}}>Cancel</button>
-          <button onClick={onConfirm} style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:confirmColor,color:confirmTextColor,fontSize:12,fontWeight:600,cursor:"pointer"}}>{confirmLabel}</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={onCancel}
+            style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid rgba(255,255,255,.08)", background: "transparent", color: "rgba(255,255,255,.4)", cursor: "pointer", fontSize: 12 }}
+          >Cancel</button>
+          <button
+            onClick={onConfirm}
+            style={{ flex: 2, padding: "10px", borderRadius: 10, border: "none", background: confirmColor, color: confirmTextColor, cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+          >{confirmLabel}</button>
         </div>
       </div>
     </div>
@@ -68,11 +85,13 @@ function CookedCard({ item, onApprove, onEdit, onDismiss }) {
         <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid rgba(255,255,255,.06)"}}>
           {item.draft && (
             <div style={{padding:10,borderRadius:8,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",marginBottom:8}}>
-              <p style={{fontSize:10,color:"rgba(139,92,246,.6)",margin:"0 0 4px",fontWeight:600}}>ABA's Draft Response:</p>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                <p style={{fontSize:10,color:"rgba(139,92,246,.6)",margin:0,fontWeight:600}}>ABA's Draft Response:</p>
+                {item.draft.writ_applied && (
+                  <span style={{fontSize:9,color:"rgba(34,197,94,.5)",background:"rgba(34,197,94,.08)",padding:"1px 6px",borderRadius:4}}>WRIT ✓</span>
+                )}
+              </div>
               <p style={{fontSize:12,color:"rgba(255,255,255,.7)",margin:0,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{item.draft.body}</p>
-              {item.draft.writ_applied && (
-                <p style={{fontSize:9,color:"rgba(139,92,246,.35)",margin:"4px 0 0"}}>✓ WRIT reviewed</p>
-              )}
             </div>
           )}
           {item.assignment && (
@@ -164,12 +183,12 @@ export default function EmailView({userId}){
   const [showCooked, setShowCooked] = useState(true);
 
   // ⬡B:iman.view:FIX:glass_modal_state:20260415⬡
-  // Replace window.prompt() / window.confirm() with inline glass modals
-  const [editingItem, setEditingItem] = useState(null);   // item being edited
-  const [editBody, setEditBody] = useState("");            // current edit text
-  const [confirmSendItem, setConfirmSendItem] = useState(null); // item pending send confirm
-  const [sendingId, setSendingId] = useState(null);       // message_id being sent
-  const [toastMsg, setToastMsg] = useState(null);         // inline toast
+  // All native browser dialogs replaced with inline glass modals
+  const [editingItem, setEditingItem] = useState(null);
+  const [editBody, setEditBody] = useState("");
+  const [confirmSendItem, setConfirmSendItem] = useState(null);
+  const [sendingId, setSendingId] = useState(null);
+  const [toastMsg, setToastMsg] = useState(null);
 
   const showToast = (msg, ms = 2500) => {
     setToastMsg(msg);
@@ -207,10 +226,9 @@ export default function EmailView({userId}){
   };
 
   // ── DISMISS ─────────────────────────────────────────────
+  // ⬡B:iman.view:FIX:dismiss_uses_brain_id:20260415⬡
   const handleDismiss = async (it) => {
     try {
-      // ⬡B:iman.view:FIX:dismiss_uses_brain_id:20260415⬡
-      // Previously sent message_id — endpoint expects brain_id
       await api('/api/iman/digest/dismiss', {
         method: 'POST',
         body: { brain_id: it.brain_id, userId }
@@ -230,7 +248,7 @@ export default function EmailView({userId}){
       </div>
     )}
 
-    {/* EDIT DRAFT MODAL — replaces window.prompt() */}
+    {/* EDIT DRAFT MODAL — glass, no window.prompt() */}
     {editingItem && (
       <GlassModal
         title={`Edit draft — reply to ${editingItem.from}`}
@@ -238,9 +256,12 @@ export default function EmailView({userId}){
           if (editBody.trim()) editingItem.draft.body = editBody.trim();
           setEditingItem(null);
           setEditBody("");
+          showToast("Draft updated");
         }}
         onCancel={() => { setEditingItem(null); setEditBody(""); }}
         confirmLabel="Save Edit"
+        confirmColor="rgba(139,92,246,.25)"
+        confirmTextColor="#c4b5fd"
       >
         <textarea
           autoFocus
@@ -252,7 +273,7 @@ export default function EmailView({userId}){
       </GlassModal>
     )}
 
-    {/* CONFIRM SEND MODAL — replaces window.confirm() */}
+    {/* CONFIRM SEND MODAL — glass, no window.confirm() */}
     {confirmSendItem && (
       <GlassModal
         title={`Send draft to ${confirmSendItem.from}?`}
@@ -284,7 +305,7 @@ export default function EmailView({userId}){
     {/* FOLDER TABS + REFRESH */}
     <div style={{display:"flex",gap:4,padding:"2px 0",flexShrink:0}}>
       {["inbox","sent"].map(f=>(
-        <button key={f} onClick={()=>{changeFolder(f);}} style={{flex:1,padding:"7px",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:folder===f?600:400,background:folder===f?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",color:folder===f?"rgba(139,92,246,.9)":"rgba(255,255,255,.35)",textTransform:"capitalize"}}>{f}</button>
+        <button key={f} onClick={()=>changeFolder(f)} style={{flex:1,padding:"7px",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:folder===f?600:400,background:folder===f?"rgba(139,92,246,.15)":"rgba(255,255,255,.03)",color:folder===f?"rgba(139,92,246,.9)":"rgba(255,255,255,.35)",textTransform:"capitalize"}}>{f}</button>
       ))}
       <button onClick={()=>{processNow();load(folder);}} style={{padding:"7px 10px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(255,255,255,.04)",color:"rgba(255,255,255,.4)",fontSize:11}}><RefreshCw size={13}/></button>
     </div>
@@ -338,6 +359,9 @@ export default function EmailView({userId}){
         const from=em.from?.[0]?.name||em.from?.[0]?.email||"Unknown";
         const unread=em.unread!==false;
         return(
+        // ⬡B:iman.view:FIX:mark_read_on_tap:20260415⬡
+        // markEmailRead fires after 2s of viewing (inside EmailDetail already).
+        // Row tap just opens detail — mark-read is handled inside EmailDetail useEffect.
         <div key={em.id||i} onClick={()=>setSelectedEmail(em)} style={{padding:"12px 10px",borderRadius:10,background:unread?"rgba(139,92,246,.06)":"rgba(255,255,255,.02)",border:`1px solid ${unread?"rgba(139,92,246,.12)":"rgba(255,255,255,.04)"}`,cursor:"pointer",display:"flex",gap:10,alignItems:"flex-start"}}>
           <div style={{width:32,height:32,borderRadius:99,background:"linear-gradient(135deg,rgba(139,92,246,.3),rgba(99,102,241,.2))",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             <span style={{color:"white",fontSize:13,fontWeight:600}}>{from.charAt(0).toUpperCase()}</span>
