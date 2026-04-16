@@ -1,3 +1,4 @@
+SHA: 801f337ca5c8
 // ⬡B:myaba.genesis:APP:v2.17.0:20260313⬡
 // MyABA v2.17.0 - AWA v2 Backend Integration + Ghost Mode
 // ════════════════════════════════════════════════════════════════════════════
@@ -2612,18 +2613,11 @@ function MyABAInner(){
     <div style={{position:"absolute",inset:"-10%",zIndex:0,backgroundImage:`url(${bgUrl})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(.4) saturate(.7)",animation:"kenBurns 30s ease-in-out infinite",willChange:"transform",WebkitBackfaceVisibility:"hidden"}}/>
     <div style={{position:"absolute",inset:0,zIndex:1,background:"radial-gradient(ellipse at center,rgba(0,0,0,0) 0%,rgba(0,0,0,.55) 100%)"}}/>
     <div style={{position:"relative",zIndex:2,display:"flex",flexDirection:"column",height:"100%",maxWidth:480,margin:"0 auto",padding:"0 14px"}}>
-      {/* ⬡B:CIP:STATUS_BAR:phone_like:20260324⬡ Phone status bar */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 16px 2px",flexShrink:0,height:28}}>
-        <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <span style={{color:"rgba(255,255,255,.75)",fontSize:12,fontWeight:600}}>{new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</span>
-          <div style={{width:6,height:6,borderRadius:99,background:`rgba(${sc},.8)`,boxShadow:`0 0 6px rgba(${sc},.5)`}}/>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          {liveActive&&<span style={{background:"rgba(239,68,68,.2)",color:"#EF4444",fontSize:8,fontWeight:700,padding:"1px 6px",borderRadius:99,letterSpacing:1}}>LIVE</span>}
-          <div style={{display:"flex",gap:2,alignItems:"flex-end"}}>{[3,5,7,9].map((h,i)=><div key={i} style={{width:3,height:h,borderRadius:1,background:"rgba(255,255,255,.4)"}}/>)}</div>
-          <svg width="18" height="10" viewBox="0 0 18 10"><rect x="0" y="0" width="15" height="10" rx="2" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="1"/><rect x="16" y="3" width="2" height="4" rx="1" fill="rgba(255,255,255,.3)"/><rect x="1" y="1" width="10" height="8" rx="1" fill="rgba(34,197,94,.7)"/></svg>
-        </div>
-      </div>
+      {/* ⬡B:CIP:FIX:remove_duplicate_status_bar:20260416⬡
+          Removed the fake phone status bar (time, signal bars, battery icon).
+          Brandon's real device already shows this natively.
+          ABA's duplicate version was redundant and cluttered the top of every screen.
+          The LIVE indicator is preserved inline in the app title bar below when needed. */}
       {/* App title bar — only shows when NOT on home */}
       {mainTab!=="home"&&mainTab!=="apps"&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 12px 4px",flexShrink:0}}>
         <button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ChevronLeft size={18}/></button>
