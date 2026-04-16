@@ -1,31 +1,39 @@
-// ⬡B:ccwa.aba_dials:PHASE7:cip_skin_with_coaching:20260414⬡
-// ABA Dials — CIP Mobile Skin (MyABA)
-// Imports all logic from dial-core.js + TIM/COOK from mesa-core via dial-core
+// ⬡B:ccwa.aba_dials:V2:proper_identity_and_verification:20260416⬡
+// ABA Dials — CIP Mobile Skin V2
+// Accepts user object, shows bridge + caller ID verification flow,
+// handles HAM_UNRESOLVED, NO_HAM_PHONE, CALLER_ID_NOT_VERIFIED errors.
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   useDialer, useBridge, useCallHistory,
   DIAL_TABS, CALL_STATUS, BRIDGE_STATUS,
-  formatDuration, formatTranscript,
+  formatDuration, buildIdentity,
   fetchTimCue, fetchCookAnswer, isQuestion,
 } from '../utils/dial-core';
 
 const ABABASE = import.meta.env.VITE_ABABASE_URL || 'https://abacia-services.onrender.com';
 const api = (path, opts) => fetch(ABABASE + path, opts).then(r => r.json());
 
-export default function DialModeView({ userId = 'brandon' }) {
+export default function DialModeView({ user, userId }) {
+  // Build identity from user object. If only legacy userId string passed, wrap it.
+  const identity = useMemo(() => {
+    if (user && typeof user === 'object') return buildIdentity(user);
+    if (userId && userId !== 'unknown') return { email: userId.includes('@') ? userId : null, user_id: userId };
+    return {};
+  }, [user, userId]);
+  
+  const identityResolved = !!(identity.email || identity.phone || identity.user_id);
+  
   const [tab, setTab] = useState('dialer');
   const [phoneInput, setPhoneInput] = useState('');
   const [purposeInput, setPurposeInput] = useState('');
-  const [livePanel, setLivePanel] = useState('transcript'); // transcript | coaching | glossary
+  const [livePanel, setLivePanel] = useState('transcript');
 
-  const { status, callSid, transcript, seconds, error, startCall, endCall, addTranscriptSegment } = useDialer(api, userId);
-  const { bridgeStatus, bridgeNumber, loading: bridgeLoading, error: bridgeError, setup: setupBridge } = useBridge(api, userId);
-  const { calls, total, page, loading: historyLoading, search, nextPage, prevPage, refresh } = useCallHistory(api, userId);
+  const { status, callSid, transcript, seconds, error, errorCode, startCall, endCall } = useDialer(api, identity);
+  const { bridgeStatus, bridgeNumber, hamPhone, loading: bridgeLoading, error: bridgeError, errorCode: bridgeErrorCode, verificationCode, setup: setupBridge, verify: verifyCallerId } = useBridge(api, identity);
+  const { calls, total, page, loading: historyLoading, search, nextPage, prevPage } = useCallHistory(api, identity);
 
   const [searchInput, setSearchInput] = useState('');
-
-  // TIM/COOK state
   const [timCue, setTimCue] = useState(null);
   const [timFading, setTimFading] = useState(false);
   const [cookAnswers, setCookAnswers] = useState([]);
@@ -33,89 +41,80 @@ export default function DialModeView({ userId = 'brandon' }) {
   const cookCooldown = useRef(null);
   const transcriptRef = useRef([]);
 
-  // Keep transcript ref in sync
   useEffect(() => { transcriptRef.current = transcript; }, [transcript]);
 
-  // TIM: Fire every 8 seconds on new transcript segments
+  // TIM cues
   useEffect(() => {
     if (status !== CALL_STATUS.ACTIVE || transcript.length === 0) return;
-    const lastSeg = transcript[transcript.length - 1];
-    if (!lastSeg || timCooldown.current) return;
-
+    const last = transcript[transcript.length - 1];
+    if (!last || timCooldown.current) return;
     timCooldown.current = setTimeout(async () => {
       timCooldown.current = null;
       try {
-        const cue = await fetchTimCue(api, lastSeg.text, userId, {
-          mode: 'dial',
-          callSid,
+        const cue = await fetchTimCue(api, last.text, identity.user_id || identity.email, {
+          mode: 'dial', callSid,
           recentTranscript: transcriptRef.current.slice(-5).map(t => t.text).join(' '),
         });
-        if (cue && cue.cue) {
-          setTimCue(cue.cue);
-          setTimFading(false);
+        if (cue?.cue) {
+          setTimCue(cue.cue); setTimFading(false);
           setTimeout(() => setTimFading(true), 6000);
           setTimeout(() => setTimCue(null), 8000);
         }
       } catch {}
     }, 8000);
-
     return () => { if (timCooldown.current) clearTimeout(timCooldown.current); };
   }, [transcript.length, status]);
 
-  // COOK: Fire on detected questions
+  // COOK answers
   useEffect(() => {
     if (status !== CALL_STATUS.ACTIVE || transcript.length === 0) return;
-    const lastSeg = transcript[transcript.length - 1];
-    if (!lastSeg || !isQuestion(lastSeg.text) || cookCooldown.current) return;
-
+    const last = transcript[transcript.length - 1];
+    if (!last || !isQuestion(last.text) || cookCooldown.current) return;
     cookCooldown.current = setTimeout(async () => {
       cookCooldown.current = null;
-      const questionText = lastSeg.text;
-      const newAnswer = { q: questionText, text: '', streaming: true, time: lastSeg.time };
-      setCookAnswers(prev => [newAnswer, ...prev].slice(0, 10));
-
+      const qText = last.text;
+      const entry = { q: qText, text: '', streaming: true, time: last.time };
+      setCookAnswers(prev => [entry, ...prev].slice(0, 10));
       try {
-        await fetchCookAnswer(api, questionText, userId, {
-          mode: 'dial',
-          callSid,
+        await fetchCookAnswer(api, qText, identity.user_id || identity.email, {
+          mode: 'dial', callSid,
           recentTranscript: transcriptRef.current.slice(-8).map(t => t.text).join(' '),
         }, (chunk) => {
-          setCookAnswers(prev => {
-            const updated = [...prev];
-            if (updated[0]) { updated[0] = { ...updated[0], text: (updated[0].text || '') + chunk }; }
-            return updated;
-          });
+          setCookAnswers(prev => { const u = [...prev]; if (u[0]) u[0] = { ...u[0], text: (u[0].text || '') + chunk }; return u; });
         });
-        setCookAnswers(prev => {
-          const updated = [...prev];
-          if (updated[0]) { updated[0] = { ...updated[0], streaming: false }; }
-          return updated;
-        });
+        setCookAnswers(prev => { const u = [...prev]; if (u[0]) u[0] = { ...u[0], streaming: false }; return u; });
       } catch {}
     }, 2000);
-
     return () => { if (cookCooldown.current) clearTimeout(cookCooldown.current); };
   }, [transcript.length, status]);
 
   const handleDial = useCallback(() => {
     if (!phoneInput.trim()) return;
     startCall(phoneInput.trim(), purposeInput.trim() || 'outbound call');
-    setTab('live');
-    setCookAnswers([]);
-    setTimCue(null);
+    setTab('live'); setCookAnswers([]); setTimCue(null);
   }, [phoneInput, purposeInput, startCall]);
 
-  const handleSetupBridge = useCallback(() => {
-    setupBridge(phoneInput.trim() || undefined);
-  }, [phoneInput, setupBridge]);
-
-  useEffect(() => {
-    if (status === CALL_STATUS.ACTIVE) setTab('live');
-  }, [status]);
+  useEffect(() => { if (status === CALL_STATUS.ACTIVE) setTab('live'); }, [status]);
 
   const accent = '#F59E0B';
   const dimColor = 'rgba(245,158,11,0.15)';
-  const cookColor = 'rgba(139,92,246,0.4)';
+
+  // ═══════════════════════════════════════════════════
+  // NOT SIGNED IN STATE
+  // ═══════════════════════════════════════════════════
+  if (!identityResolved) {
+    return (
+      <div style={{ padding: 24, color: '#fff', background: '#0a0a0a', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+        <div>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>📞</div>
+          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>ABA Dials</div>
+          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', maxWidth: 280 }}>
+            Sign in to set up your per-HAM call recording bridge.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#0a0a0a', color: '#fff' }}>
@@ -123,20 +122,14 @@ export default function DialModeView({ userId = 'brandon' }) {
       <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <div style={{ width: 8, height: 8, borderRadius: '50%', background: status === CALL_STATUS.ACTIVE ? '#22c55e' : accent }} />
         <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: '0.1em', color: accent }}>ABA DIALS</span>
-        {status === CALL_STATUS.ACTIVE && (
-          <span style={{ marginLeft: 'auto', fontSize: 12, color: '#22c55e', fontFamily: 'monospace' }}>{formatDuration(seconds)}</span>
-        )}
+        {status === CALL_STATUS.ACTIVE && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#22c55e', fontFamily: 'monospace' }}>{formatDuration(seconds)}</span>}
       </div>
 
-      {/* TIM Cue Banner — shows at top during live calls */}
+      {/* TIM Cue */}
       {timCue && status === CALL_STATUS.ACTIVE && (
-        <div style={{
-          padding: '8px 16px', background: 'linear-gradient(90deg, rgba(34,211,238,0.12), rgba(34,211,238,0.04))',
-          borderBottom: '1px solid rgba(34,211,238,0.15)',
-          opacity: timFading ? 0.3 : 1, transition: 'opacity 2s ease',
-        }}>
+        <div style={{ padding: '8px 16px', background: 'linear-gradient(90deg, rgba(34,211,238,0.12), rgba(34,211,238,0.04))', borderBottom: '1px solid rgba(34,211,238,0.15)', opacity: timFading ? 0.3 : 1, transition: 'opacity 2s ease' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#22d3ee', animation: 'pulse 1.5s infinite' }} />
+            <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#22d3ee' }} />
             <span style={{ fontSize: 9, fontWeight: 700, color: 'rgba(34,211,238,0.6)', letterSpacing: '0.1em' }}>TIM</span>
           </div>
           <div style={{ fontSize: 13, color: 'rgba(34,211,238,0.9)', marginTop: 2 }}>{timCue}</div>
@@ -147,42 +140,92 @@ export default function DialModeView({ userId = 'brandon' }) {
       <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         {DIAL_TABS.map(t => (
           <button key={t} onClick={() => setTab(t)}
-            style={{
-              flex: 1, padding: '10px 0', border: 'none', cursor: 'pointer',
+            style={{ flex: 1, padding: '10px 0', border: 'none', cursor: 'pointer',
               background: tab === t ? dimColor : 'transparent',
               color: tab === t ? accent : 'rgba(255,255,255,0.4)',
               fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
-              borderBottom: tab === t ? `2px solid ${accent}` : '2px solid transparent',
-            }}>
+              borderBottom: tab === t ? `2px solid ${accent}` : '2px solid transparent' }}>
             {t === 'dialer' ? 'DIAL' : t === 'live' ? 'LIVE' : 'HISTORY'}
           </button>
         ))}
       </div>
 
-      {/* Content */}
       <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
         {/* === DIALER TAB === */}
         {tab === 'dialer' && (
           <div>
+            {/* Bridge setup card with state-aware UI */}
             <div style={{ marginBottom: 20, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', marginBottom: 8 }}>CALL FORWARDING BRIDGE</div>
-              {bridgeStatus === BRIDGE_STATUS.ACTIVE ? (
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', marginBottom: 8 }}>YOUR ABA DIALS BRIDGE</div>
+              
+              {bridgeStatus === BRIDGE_STATUS.ACTIVE && (
                 <div>
-                  <div style={{ fontSize: 13, color: '#22c55e', marginBottom: 4 }}>Bridge Active</div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>Bridge #: {bridgeNumber}</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>Dial *72{bridgeNumber} from your phone to forward calls</div>
+                  <div style={{ fontSize: 13, color: '#22c55e', marginBottom: 4 }}>✓ Bridge Active</div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>Bridge #: <span style={{ fontFamily: 'monospace' }}>{bridgeNumber}</span></div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>Your #: <span style={{ fontFamily: 'monospace' }}>{hamPhone}</span></div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 6, lineHeight: 1.5 }}>
+                    To forward incoming calls to ABA Dials, dial <span style={{ color: accent, fontFamily: 'monospace' }}>*72{bridgeNumber?.replace(/\D/g, '')}</span> from your phone, then hang up.
+                  </div>
                 </div>
-              ) : (
+              )}
+
+              {bridgeStatus === BRIDGE_STATUS.NO_PHONE && (
                 <div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginBottom: 8 }}>Set up a bridge to auto-record all incoming calls</div>
-                  <button onClick={handleSetupBridge} disabled={bridgeLoading}
+                  <div style={{ fontSize: 13, color: '#ef4444', marginBottom: 6 }}>Phone number required</div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>Add your phone number to your HAM profile before setting up ABA Dials. Your phone is needed for ringing and caller ID.</div>
+                </div>
+              )}
+
+              {bridgeStatus === BRIDGE_STATUS.NOT_SET && (
+                <div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginBottom: 8, lineHeight: 1.5 }}>
+                    Provision a dedicated Twilio bridge number for your HAM. Incoming calls forwarded through it will ring your phone and be transcribed.
+                  </div>
+                  <button onClick={setupBridge} disabled={bridgeLoading}
                     style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: accent, color: '#000', fontWeight: 700, fontSize: 12, cursor: 'pointer', opacity: bridgeLoading ? 0.5 : 1 }}>
-                    {bridgeLoading ? 'Setting up...' : 'Set Up Bridge'}
+                    {bridgeLoading ? 'Provisioning...' : 'Set Up Bridge'}
                   </button>
-                  {bridgeError && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 6 }}>{bridgeError}</div>}
+                </div>
+              )}
+
+              {bridgeStatus === BRIDGE_STATUS.PROVISIONING && (
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>Buying your bridge number from Twilio...</div>
+              )}
+
+              {bridgeStatus === BRIDGE_STATUS.ERROR && (
+                <div>
+                  <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 4 }}>Error: {bridgeError}</div>
+                  <button onClick={setupBridge} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#fff', fontSize: 11, cursor: 'pointer' }}>Retry</button>
                 </div>
               )}
             </div>
+
+            {/* Caller ID Verification (for outbound calls) */}
+            <div style={{ marginBottom: 20, padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', marginBottom: 8 }}>OUTBOUND CALLER ID</div>
+              
+              {errorCode === 'CALLER_ID_NOT_VERIFIED' && (
+                <div style={{ padding: 10, borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, color: '#fca5a5', marginBottom: 4 }}>Your phone isn't verified as a caller ID yet.</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: 1.4 }}>Until verified, outgoing calls show the bridge number, not your real number. Verify below.</div>
+                </div>
+              )}
+              
+              {verificationCode ? (
+                <div style={{ padding: 12, borderRadius: 8, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                  <div style={{ fontSize: 12, color: '#86efac', marginBottom: 4 }}>Twilio will call {hamPhone || 'you'} shortly.</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>When prompted, enter this code on the keypad:</div>
+                  <div style={{ fontSize: 28, fontFamily: 'monospace', fontWeight: 700, color: '#22c55e', letterSpacing: '0.15em', textAlign: 'center' }}>{verificationCode}</div>
+                </div>
+              ) : (
+                <button onClick={verifyCallerId} disabled={bridgeLoading}
+                  style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', color: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+                  Verify My Phone for Outbound Caller ID
+                </button>
+              )}
+            </div>
+
+            {/* Dialer */}
             <div style={{ marginBottom: 12 }}>
               <input value={phoneInput} onChange={e => setPhoneInput(e.target.value)} placeholder="+1 (555) 123-4567"
                 style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#fff', fontSize: 18, fontFamily: 'monospace', boxSizing: 'border-box' }} />
@@ -191,90 +234,65 @@ export default function DialModeView({ userId = 'brandon' }) {
               <input value={purposeInput} onChange={e => setPurposeInput(e.target.value)} placeholder="Purpose (optional)"
                 style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)', color: 'rgba(255,255,255,0.7)', fontSize: 13, boxSizing: 'border-box' }} />
             </div>
-            <button onClick={handleDial} disabled={!phoneInput.trim() || status === CALL_STATUS.CONNECTING}
-              style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none', background: accent, color: '#000', fontWeight: 700, fontSize: 15, cursor: 'pointer', opacity: !phoneInput.trim() ? 0.4 : 1 }}>
-              {status === CALL_STATUS.CONNECTING ? 'Connecting...' : 'CALL'}
+            <button onClick={handleDial} disabled={!phoneInput.trim() || status === CALL_STATUS.CONNECTING || bridgeStatus !== BRIDGE_STATUS.ACTIVE}
+              style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none', background: accent, color: '#000', fontWeight: 700, fontSize: 15, cursor: 'pointer', opacity: (!phoneInput.trim() || bridgeStatus !== BRIDGE_STATUS.ACTIVE) ? 0.4 : 1 }}>
+              {status === CALL_STATUS.CONNECTING ? 'Ringing your phone...' : 'CALL'}
             </button>
             {error && <div style={{ marginTop: 8, fontSize: 12, color: '#ef4444' }}>{error}</div>}
+            {bridgeStatus !== BRIDGE_STATUS.ACTIVE && <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Set up your bridge first to place calls.</div>}
           </div>
         )}
 
         {/* === LIVE TAB === */}
         {tab === 'live' && (
           <div>
-            {status === CALL_STATUS.IDLE && (
-              <div style={{ textAlign: 'center', padding: 40, color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>No active call. Go to Dial tab to start one.</div>
-            )}
+            {status === CALL_STATUS.IDLE && <div style={{ textAlign: 'center', padding: 40, color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>No active call. Go to Dial tab to start one.</div>}
             {(status === CALL_STATUS.ACTIVE || status === CALL_STATUS.ENDED) && (
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, color: status === CALL_STATUS.ACTIVE ? '#22c55e' : 'rgba(255,255,255,0.4)' }}>
-                    {status === CALL_STATUS.ACTIVE ? 'LIVE' : 'ENDED'} — {formatDuration(seconds)}
-                  </span>
-                  {status === CALL_STATUS.ACTIVE && (
-                    <button onClick={endCall} style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #ef4444', background: 'transparent', color: '#ef4444', fontSize: 11, cursor: 'pointer' }}>End Call</button>
-                  )}
+                  <span style={{ fontSize: 12, color: status === CALL_STATUS.ACTIVE ? '#22c55e' : 'rgba(255,255,255,0.4)' }}>{status === CALL_STATUS.ACTIVE ? 'LIVE' : 'ENDED'} — {formatDuration(seconds)}</span>
+                  {status === CALL_STATUS.ACTIVE && <button onClick={endCall} style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #ef4444', background: 'transparent', color: '#ef4444', fontSize: 11, cursor: 'pointer' }}>End Call</button>}
                 </div>
 
-                {/* Live sub-panel tabs: Transcript | Coaching */}
                 <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
                   {['transcript', 'coaching'].map(p => (
                     <button key={p} onClick={() => setLivePanel(p)}
-                      style={{
-                        flex: 1, padding: '6px 0', border: 'none', borderRadius: 6, cursor: 'pointer',
+                      style={{ flex: 1, padding: '6px 0', border: 'none', borderRadius: 6, cursor: 'pointer',
                         background: livePanel === p ? (p === 'coaching' ? 'rgba(139,92,246,0.12)' : 'rgba(34,211,238,0.1)') : 'rgba(255,255,255,0.03)',
                         color: livePanel === p ? (p === 'coaching' ? 'rgba(139,92,246,0.8)' : 'rgba(34,211,238,0.8)') : 'rgba(255,255,255,0.3)',
-                        fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
-                      }}>
+                        fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                       {p === 'transcript' ? `TRANSCRIPT (${transcript.length})` : `COACHING (${cookAnswers.length})`}
                     </button>
                   ))}
                 </div>
 
-                {/* Transcript Panel */}
                 {livePanel === 'transcript' && (
-                  <div>
-                    {transcript.length === 0 ? (
-                      <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12, fontStyle: 'italic' }}>Listening...</div>
-                    ) : (
-                      transcript.slice(-15).map((t, i) => (
-                        <div key={i} style={{ padding: '6px 10px', marginBottom: 4, borderRadius: 8, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}>
-                          <span style={{ fontSize: 9, color: accent, fontWeight: 600, marginRight: 6, fontFamily: 'monospace' }}>{t.time}</span>
-                          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginRight: 6 }}>[{t.speaker || '?'}]</span>
-                          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', lineHeight: 1.5 }}>{t.text}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
+                  transcript.length === 0
+                    ? <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12, fontStyle: 'italic' }}>Listening...</div>
+                    : transcript.slice(-15).map((t, i) => (
+                      <div key={i} style={{ padding: '6px 10px', marginBottom: 4, borderRadius: 8, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                        <span style={{ fontSize: 9, color: accent, fontWeight: 600, marginRight: 6, fontFamily: 'monospace' }}>{t.time}</span>
+                        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginRight: 6 }}>[{t.speaker || '?'}]</span>
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', lineHeight: 1.5 }}>{t.text}</span>
+                      </div>
+                    ))
                 )}
 
-                {/* Coaching Panel (COOK answers) */}
                 {livePanel === 'coaching' && (
-                  <div>
-                    {cookAnswers.length === 0 ? (
-                      <div style={{ color: 'rgba(139,92,246,0.3)', fontSize: 12, fontStyle: 'italic', textAlign: 'center', padding: 20 }}>
-                        COOK will suggest answers when questions are detected in the call.
-                      </div>
-                    ) : (
-                      cookAnswers.map((a, i) => (
-                        <div key={i} style={{
-                          padding: 12, marginBottom: 6, borderRadius: 12,
-                          background: 'linear-gradient(135deg, rgba(139,92,246,0.08), rgba(139,92,246,0.02))',
-                          border: '1px solid rgba(139,92,246,0.12)',
-                          boxShadow: a.streaming ? '0 0 12px rgba(139,92,246,0.08)' : 'none',
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
-                            <div style={{ width: 5, height: 5, borderRadius: '50%', background: a.streaming ? '#a78bfa' : 'rgba(139,92,246,0.3)' }} />
-                            <span style={{ fontSize: 9, fontWeight: 700, color: 'rgba(139,92,246,0.5)', letterSpacing: '0.5px' }}>{a.streaming ? 'THINKING...' : 'COOK'}</span>
-                            <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.12)', marginLeft: 'auto' }}>{a.time}</span>
-                            {!a.streaming && <button onClick={() => navigator.clipboard.writeText(a.text || '')} style={{ padding: '2px 6px', borderRadius: 4, fontSize: 8, background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.1)', color: 'rgba(139,92,246,0.4)', cursor: 'pointer' }}>Copy</button>}
-                          </div>
-                          {a.q && <p style={{ color: 'rgba(139,92,246,0.4)', fontSize: 10, margin: '0 0 4px', fontStyle: 'italic' }}>Re: {a.q.substring(0, 80)}</p>}
-                          <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{a.text}</p>
+                  cookAnswers.length === 0
+                    ? <div style={{ color: 'rgba(139,92,246,0.3)', fontSize: 12, fontStyle: 'italic', textAlign: 'center', padding: 20 }}>COOK will suggest answers when questions are detected.</div>
+                    : cookAnswers.map((a, i) => (
+                      <div key={i} style={{ padding: 12, marginBottom: 6, borderRadius: 12, background: 'linear-gradient(135deg, rgba(139,92,246,0.08), rgba(139,92,246,0.02))', border: '1px solid rgba(139,92,246,0.12)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+                          <div style={{ width: 5, height: 5, borderRadius: '50%', background: a.streaming ? '#a78bfa' : 'rgba(139,92,246,0.3)' }} />
+                          <span style={{ fontSize: 9, fontWeight: 700, color: 'rgba(139,92,246,0.5)', letterSpacing: '0.5px' }}>{a.streaming ? 'THINKING...' : 'COOK'}</span>
+                          <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.12)', marginLeft: 'auto' }}>{a.time}</span>
+                          {!a.streaming && <button onClick={() => navigator.clipboard.writeText(a.text || '')} style={{ padding: '2px 6px', borderRadius: 4, fontSize: 8, background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.1)', color: 'rgba(139,92,246,0.4)', cursor: 'pointer' }}>Copy</button>}
                         </div>
-                      ))
-                    )}
-                  </div>
+                        {a.q && <p style={{ color: 'rgba(139,92,246,0.4)', fontSize: 10, margin: '0 0 4px', fontStyle: 'italic' }}>Re: {a.q.substring(0, 80)}</p>}
+                        <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{a.text}</p>
+                      </div>
+                    ))
                 )}
               </div>
             )}
@@ -285,44 +303,24 @@ export default function DialModeView({ userId = 'brandon' }) {
         {tab === 'history' && (
           <div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-              <input value={searchInput} onChange={e => setSearchInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && search(searchInput)}
-                placeholder="Search transcripts..."
+              <input value={searchInput} onChange={e => setSearchInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && search(searchInput)} placeholder="Search transcripts..."
                 style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)', color: '#fff', fontSize: 12, boxSizing: 'border-box' }} />
-              <button onClick={() => search(searchInput)}
-                style={{ padding: '8px 12px', borderRadius: 8, border: 'none', background: accent, color: '#000', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Search</button>
+              <button onClick={() => search(searchInput)} style={{ padding: '8px 12px', borderRadius: 8, border: 'none', background: accent, color: '#000', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Search</button>
             </div>
             {historyLoading && <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>Loading...</div>}
-            {!historyLoading && calls.length === 0 && (
-              <div style={{ textAlign: 'center', padding: 30, color: 'rgba(255,255,255,0.2)', fontSize: 13 }}>No call transcripts yet. Make a call to get started.</div>
-            )}
+            {!historyLoading && calls.length === 0 && <div style={{ textAlign: 'center', padding: 30, color: 'rgba(255,255,255,0.2)', fontSize: 13 }}>No call transcripts yet.</div>}
             {calls.map((call, i) => {
-              let parsed = {};
-              try { parsed = JSON.parse(call.content); } catch {}
+              let parsed = {}; try { parsed = JSON.parse(call.content); } catch {}
               return (
                 <div key={call.id || i} style={{ padding: 12, marginBottom: 8, borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                     <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>{parsed.from || 'Unknown'} → {parsed.to || 'Unknown'}</span>
                     <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>{new Date(call.created_at).toLocaleDateString()}</span>
                   </div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
-                    {parsed.durationSecs ? formatDuration(parsed.durationSecs) : '—'} | {(parsed.transcript || []).length} segments
-                  </div>
-                  {parsed.fullText && (
-                    <div style={{ marginTop: 6, fontSize: 11, color: 'rgba(255,255,255,0.5)', maxHeight: 60, overflow: 'hidden', lineHeight: 1.4 }}>
-                      {parsed.fullText.substring(0, 200)}...
-                    </div>
-                  )}
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{parsed.durationSecs ? formatDuration(parsed.durationSecs) : '—'} | {(parsed.transcript || []).length} segments</div>
                 </div>
               );
             })}
-            {total > 20 && (
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 12 }}>
-                <button onClick={prevPage} disabled={page <= 1} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#fff', fontSize: 11, cursor: 'pointer' }}>Prev</button>
-                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', alignSelf: 'center' }}>Page {page}</span>
-                <button onClick={nextPage} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#fff', fontSize: 11, cursor: 'pointer' }}>Next</button>
-              </div>
-            )}
           </div>
         )}
       </div>
