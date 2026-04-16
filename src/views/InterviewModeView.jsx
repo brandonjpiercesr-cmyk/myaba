@@ -11,7 +11,8 @@ import {
   fetchTimCue as coreTimCue, cleanInterviewTitle,
   TIM_COOLDOWN, COOK_COOLDOWN, TIM_CUE_DURATION, TIM_CUE_MAX_AGE, TIM_CUE_MAX_VISIBLE,
 } from "../utils/iris-core.js";
-import { captureDualAudio } from "../utils/mesa-core.js";
+import { captureDualAudio   fireLiveCaptured, fireResubmit,
+} from "../utils/mesa-core.js" // ⬡B:MACE.cip:FIX:import_live:20260416⬡;
 
 // v3: Speaker modes for control panel
 const SPEAKER_MODES = { THEY: 'they_talking', ME: 'i_talking', TEAM: 'my_team', PAUSED: 'paused' };
@@ -189,9 +190,10 @@ export default function InterviewModeView({ userId }) {
     setCookStreaming(true);
     let fullText = "";
     try {
-      const res = await fetch(`${ABABASE}/api/cook/answer`, {
+      // ⬡B:MACE.cip:FIX:cook_air_live:20260416⬡
+      const res = await fetch(`${ABABASE}/api/air/live`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: 'Interviewer said: "' + question + '" — Give a STAR-method answer. Always answer.', transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, job_description: selectedJob?.description, userId, last_said_by_ham: lastSaidByHamRef_iv.current,
+        body: JSON.stringify({ message: 'Interviewer said: "' + question + '" — Give a STAR-method answer.', user_id: userId, channel: 'iris_live', transcript_context: transcriptRef.current.map(t=>t.text).join(" "), tim_cues: timCues.slice(-3).map(c=>c.text), mode: "interview", job_title: selectedJob?.title, job_org: selectedJob?.organization, last_said_by_ham: lastSaidByHamRef_iv.current,
           cook_style_override: cookOverrideRef.current || '', briefing_context: prepData ? JSON.stringify(prepData).substring(0, 3000) : '' })
       });
       const reader = res.body.getReader();
@@ -343,14 +345,15 @@ export default function InterviewModeView({ userId }) {
     if (segs.length === 0) return;
     const last60 = segs.slice(-20).map(s => s.text).join(' ');
     try {
-      const res = await fetch(apiBase + '/api/cook/answer', {
+      // ⬡B:MACE.cip:FIX:need_answer_air_live:20260416⬡
+      const res = await fetch(apiBase + '/api/air/live', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          question: 'Give me something to say right now',
-          user_id: user?.email || 'unknown', mode: 'interview',
+          message: 'Give me something to say right now',
+          user_id: user?.email || 'unknown', channel: 'iris_live', mode: 'interview',
           transcript_context: last60.substring(0, 2000),
           briefing_context: prepData ? JSON.stringify(prepData).substring(0, 3000) : '',
-          last_said_by_ham: '',
+          last_said_by_ham: lastSaidByHamRef_iv?.current || '',
           cook_style_override: cookOverrideRef.current || ''
         })
       });
