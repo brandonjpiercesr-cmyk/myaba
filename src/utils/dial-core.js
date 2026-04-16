@@ -1,14 +1,9 @@
-// ⬡B:ccwa.aba_dials:PHASE4:dial_core:20260414⬡
-// DIAL Shared Core Library — ABA Dials (Phone Call Mode)
-// Source of truth for all DIAL surfaces: CIP DialModeView, CIB DialApp, DIAL standalone
-// TIM/COOK imported from mesa-core for real-time coaching during calls
+// ⬡B:ccwa.aba_dials:V2:identity_signals:20260416⬡
+// DIAL Shared Core — passes identity signals (email, phone) not raw userId
+// Backend ham-service.resolveIdentity uses these to look up the canonical hamId.
 
 import { useState, useRef, useEffect, useCallback } from "react";
 export { fetchTimCue, fetchCookAnswer, isQuestion, formatTime } from "./mesa-core.js";
-
-// ═══════════════════════════════════════════════════════════════
-// CONSTANTS
-// ═══════════════════════════════════════════════════════════════
 
 export const DIAL_TABS = ['dialer', 'live', 'history'];
 
@@ -24,52 +19,74 @@ export const BRIDGE_STATUS = {
   NOT_SET: 'not_set',
   PROVISIONING: 'provisioning',
   ACTIVE: 'active',
+  NEEDS_VERIFICATION: 'needs_verification',
+  NO_PHONE: 'no_phone',
   ERROR: 'error',
 };
 
 // ═══════════════════════════════════════════════════════════════
-// API FUNCTIONS (all take apiAdapter as first argument)
+// Build identity payload from user auth object
+// ═══════════════════════════════════════════════════════════════
+export function buildIdentity(user) {
+  if (!user) return {};
+  return {
+    email: user.email || null,
+    phone: user.phoneNumber || user.phone || null,
+    user_id: user.uid || user.user_id || user.email || null,
+    firebase_uid: user.uid || null,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// API FUNCTIONS — all require identity object
 // ═══════════════════════════════════════════════════════════════
 
-export async function initiateCall(api, userId, toNumber, purpose) {
-  const result = await api('/api/dial/call', {
+export async function initiateCall(api, identity, toNumber, purpose) {
+  return api('/api/dial/call', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hamId: userId, to: toNumber, purpose }),
+    body: JSON.stringify({ ...identity, to: toNumber, purpose }),
   });
-  return result;
 }
 
-export async function setupBridge(api, userId, carrierNumber) {
-  const result = await api('/api/dial/bridge/setup', {
+export async function setupBridge(api, identity) {
+  return api('/api/dial/bridge/setup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hamId: userId, carrierNumber }),
+    body: JSON.stringify(identity),
   });
-  return result;
 }
 
-export async function teardownBridge(api, userId) {
-  const result = await api('/api/dial/bridge', {
+export async function teardownBridge(api, identity) {
+  return api('/api/dial/bridge', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hamId: userId }),
+    body: JSON.stringify(identity),
   });
-  return result;
 }
 
-export async function fetchCallHistory(api, userId, page = 1, limit = 20, query = '') {
-  const params = new URLSearchParams({ hamId: userId, page, limit });
+export async function verifyCallerId(api, identity) {
+  return api('/api/dial/verify-caller-id', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(identity),
+  });
+}
+
+export async function fetchCallHistory(api, identity, page = 1, limit = 20, query = '') {
+  const params = new URLSearchParams({
+    page, limit,
+    ...(identity.email && { email: identity.email }),
+    ...(identity.phone && { phone: identity.phone }),
+    ...(identity.user_id && { userId: identity.user_id }),
+  });
   if (query) params.set('query', query);
-  const result = await api(`/api/dial/history?${params}`);
-  return result;
+  return api(`/api/dial/history?${params}`);
 }
 
 export function formatTranscript(segments) {
   if (!segments || !Array.isArray(segments)) return '';
-  return segments
-    .map(s => `[${s.speaker || 'SPEAKER'}] ${s.text}`)
-    .join('\n');
+  return segments.map(s => `[${s.speaker || 'SPEAKER'}] ${s.text}`).join('\n');
 }
 
 export function formatDuration(seconds) {
@@ -83,35 +100,37 @@ export function formatDuration(seconds) {
 // HOOKS
 // ═══════════════════════════════════════════════════════════════
 
-// useDialer — manages call state, timer, transcript
-export function useDialer(api, userId) {
+export function useDialer(api, identity) {
   const [status, setStatus] = useState(CALL_STATUS.IDLE);
   const [callSid, setCallSid] = useState(null);
   const [transcript, setTranscript] = useState([]);
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState(null);
+  const [errorCode, setErrorCode] = useState(null);
   const timerRef = useRef(null);
 
   const startCall = useCallback(async (toNumber, purpose) => {
     try {
       setStatus(CALL_STATUS.CONNECTING);
       setError(null);
+      setErrorCode(null);
       setTranscript([]);
       setSeconds(0);
-      const result = await initiateCall(api, userId, toNumber, purpose);
+      const result = await initiateCall(api, identity, toNumber, purpose);
       if (result.success) {
-        setCallSid(result.callSid || result.conversation_id);
+        setCallSid(result.callSid);
         setStatus(CALL_STATUS.ACTIVE);
         timerRef.current = setInterval(() => setSeconds(s => s + 1), 1000);
       } else {
         setStatus(CALL_STATUS.ERROR);
         setError(result.error || 'Call failed');
+        setErrorCode(result.code || null);
       }
     } catch (err) {
       setStatus(CALL_STATUS.ERROR);
       setError(err.message);
     }
-  }, [api, userId]);
+  }, [api, identity]);
 
   const endCall = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -122,59 +141,69 @@ export function useDialer(api, userId) {
     setTranscript(prev => [...prev, { ...segment, time: formatDuration(seconds) }]);
   }, [seconds]);
 
-  useEffect(() => {
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, []);
+  useEffect(() => { return () => { if (timerRef.current) clearInterval(timerRef.current); }; }, []);
 
-  return { status, callSid, transcript, seconds, error, startCall, endCall, addTranscriptSegment };
+  return { status, callSid, transcript, seconds, error, errorCode, startCall, endCall, addTranscriptSegment };
 }
 
-// useBridge — manages bridge number setup
-export function useBridge(api, userId) {
+export function useBridge(api, identity) {
   const [bridgeStatus, setBridgeStatus] = useState(BRIDGE_STATUS.NOT_SET);
   const [bridgeNumber, setBridgeNumber] = useState(null);
+  const [hamPhone, setHamPhone] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [errorCode, setErrorCode] = useState(null);
+  const [verificationCode, setVerificationCode] = useState(null);
 
-  const setup = useCallback(async (carrierNumber) => {
+  const setup = useCallback(async () => {
     try {
       setLoading(true);
       setBridgeStatus(BRIDGE_STATUS.PROVISIONING);
       setError(null);
-      const result = await setupBridge(api, userId, carrierNumber);
+      setErrorCode(null);
+      const result = await setupBridge(api, identity);
       if (result.success) {
-        setBridgeNumber(result.bridgeNumber || result.phoneNumber);
+        setBridgeNumber(result.bridgeNumber);
+        setHamPhone(result.hamPhone);
         setBridgeStatus(BRIDGE_STATUS.ACTIVE);
       } else {
-        setBridgeStatus(BRIDGE_STATUS.ERROR);
         setError(result.error);
+        setErrorCode(result.code);
+        if (result.code === 'NO_HAM_PHONE') setBridgeStatus(BRIDGE_STATUS.NO_PHONE);
+        else setBridgeStatus(BRIDGE_STATUS.ERROR);
       }
     } catch (err) {
       setBridgeStatus(BRIDGE_STATUS.ERROR);
       setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, userId]);
+    } finally { setLoading(false); }
+  }, [api, identity]);
 
   const teardown = useCallback(async () => {
     try {
       setLoading(true);
-      await teardownBridge(api, userId);
+      await teardownBridge(api, identity);
       setBridgeNumber(null);
       setBridgeStatus(BRIDGE_STATUS.NOT_SET);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, userId]);
+    } catch (err) { setError(err.message); } finally { setLoading(false); }
+  }, [api, identity]);
 
-  return { bridgeStatus, bridgeNumber, loading, error, setup, teardown };
+  const verify = useCallback(async () => {
+    try {
+      setLoading(true);
+      const result = await verifyCallerId(api, identity);
+      if (result.success) {
+        setVerificationCode(result.verificationCode);
+        setBridgeStatus(BRIDGE_STATUS.NEEDS_VERIFICATION);
+      } else {
+        setError(result.error);
+      }
+    } catch (err) { setError(err.message); } finally { setLoading(false); }
+  }, [api, identity]);
+
+  return { bridgeStatus, bridgeNumber, hamPhone, loading, error, errorCode, verificationCode, setup, teardown, verify };
 }
 
-// useCallHistory — paginated transcript history with search
-export function useCallHistory(api, userId) {
+export function useCallHistory(api, identity) {
   const [calls, setCalls] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -184,24 +213,16 @@ export function useCallHistory(api, userId) {
   const load = useCallback(async (pg = 1, query = '') => {
     try {
       setLoading(true);
-      const result = await fetchCallHistory(api, userId, pg, 20, query);
+      const result = await fetchCallHistory(api, identity, pg, 20, query);
       if (result.success) {
         setCalls(result.transcripts || []);
         setTotal(result.total || 0);
         setPage(pg);
       }
-    } catch (err) {
-      console.error('[dial-core] History load error:', err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, userId]);
+    } catch (err) { console.error('[dial-core] History error:', err.message); } finally { setLoading(false); }
+  }, [api, identity]);
 
-  const search = useCallback((query) => {
-    setSearchQuery(query);
-    load(1, query);
-  }, [load]);
-
+  const search = useCallback((query) => { setSearchQuery(query); load(1, query); }, [load]);
   const nextPage = useCallback(() => load(page + 1, searchQuery), [load, page, searchQuery]);
   const prevPage = useCallback(() => load(Math.max(1, page - 1), searchQuery), [load, page, searchQuery]);
 
