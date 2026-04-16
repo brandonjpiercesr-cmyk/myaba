@@ -8,7 +8,7 @@ import { useState, useCallback, useEffect } from "react";
 // CONSTANTS
 // ═══════════════════════════════════════════════════════════════
 
-export const LOG_SOURCES = ['atter', 'iris', 'mesa', 'taste', 'omi', 'manual', 'chat', 'email', 'phone'];
+export const LOG_SOURCES = ['journal', 'prayer', 'atter', 'iris', 'mesa', 'taste', 'omi', 'manual', 'chat', 'email', 'phone', 'sermon']; // ⬡B:LOGFUL:sources:20260416⬡
 
 export const TAG_HIERARCHY = {
   level1: 'HAM Profile',    // Who submitted
@@ -114,6 +114,8 @@ export function formatEntryDate(dateStr) {
 }
 
 export function getSourceIcon(source) {
+  const icons = { journal: '📓', prayer: '🙏', sermon: '🕊️', soul: '✝️', logful: '📓', atter: '🎤', iris: '🎙️', mesa: '💬', taste: '🍽️', omi: '📡', manual: '✍️', chat: '💭', email: '📧', phone: '📞' };
+  if (icons[source]) return icons[source];
   const icons = { atter: '🎙️', iris: '🎯', mesa: '📋', taste: '👂', omi: '📿', manual: '✍️', chat: '💬', email: '📧', phone: '📞' };
   return icons[source] || '📝';
 }
