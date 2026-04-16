@@ -82,6 +82,7 @@ import CommandCenterView from "./views/CommandCenterView.jsx";
 import SettingsDrawer from "./views/SettingsDrawer.jsx";
 import MeetingModeView from "./views/MeetingModeView.jsx";
 import InterviewModeView from "./views/InterviewModeView.jsx";
+import DialModeView from "./views/DialModeView.jsx"; // ⬡B:ccwa.aba_dials:RESTORE:20260415⬡
 import JobsView from "./views/JobsView.jsx";
 import ReadingView from "./views/ReadingView.jsx";
 import SoulView from "./views/SoulView.jsx";
@@ -643,7 +644,7 @@ function AppLauncher({ userId, onAppSelect, currentApp }) {
   const APP_COLORS = {
     chat: "#a78bfa", briefing: "#f59e0b", jobs: "#f97316", email: "#3b82f6",
     memos: "#84cc16", nura: "#06b6d4", guide: "#10b981", approve: "#8b5cf6",
-    phone: "#22c55e", settings: "#6b7280", gmg_university: "#ec4899", incidents: "#ef4444",
+    phone: "#22c55e", dial: "#F59E0B", settings: "#6b7280", gmg_university: "#ec4899", incidents: "#ef4444",
     journal: "#818cf8", tasks: "#f472b6", notes: "#fbbf24", calendar: "#2dd4bf",
     crm: "#fb923c", ccwa: "#a78bfa", aoa: "#64748b", reading: "#8b5cf6"
   };
@@ -2626,7 +2627,7 @@ function MyABAInner(){
       {/* App title bar — only shows when NOT on home */}
       {mainTab!=="home"&&mainTab!=="apps"&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"6px 12px 4px",flexShrink:0}}>
         <button onClick={()=>{setMainTab("home");setAppScope(null)}} style={{width:32,height:32,borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ChevronLeft size={18}/></button>
-        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"Talk to ABA":mainTab==="briefing"?"Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"Command Center":mainTab==="nura"?"Nutrition":mainTab==="phone"?"ABA Dials":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"ABA Guides":mainTab==="sports"?"Scoreboard":mainTab==="music"?"Music":mainTab==="reading"?"Reading":mainTab==="ccwa"?"Come Code with ABA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"MESA":mainTab==="interview"?"IRIS":mainTab.replace(/_/g," ")}</span>
+        <span style={{fontSize:16,fontWeight:600,color:"rgba(255,255,255,.85)",flex:1}}>{mainTab==="chat"?"Talk to ABA":mainTab==="briefing"?"Briefing":mainTab==="jobs"?"Jobs":mainTab==="pipeline"?"Pipeline":mainTab==="memos"?"Memos":mainTab==="email"?"Email":mainTab==="approve"?"Command Center":mainTab==="nura"?"Nutrition":mainTab==="dial"?"ABA Dials":mainTab==="gmg_university"?"GMG University":mainTab==="tasks"?"Tasks":mainTab==="notes"?"Notes":mainTab==="calendar"?"Calendar":mainTab==="crm"?"Contacts":mainTab==="journal"?"Journal":mainTab==="incidents"?"Report Bug":mainTab==="guide"?"ABA Guides":mainTab==="sports"?"Scoreboard":mainTab==="music"?"Music":mainTab==="reading"?"Reading":mainTab==="ccwa"?"Come Code with ABA":mainTab==="aoa"?"AOA":mainTab==="meeting"?"MESA":mainTab==="interview"?"IRIS":mainTab.replace(/_/g," ")}</span>
               {mainTab==="soul"&&<SoulView userId={user?.email||user?.uid||"unknown"}/>}
               {mainTab==="atter"&&<ATTERView userId={user?.email||user?.uid||"unknown"}/>}
               {mainTab==="logful"&&<LogfulView userId={user?.email||user?.uid||"unknown"}/>}
@@ -2658,7 +2659,7 @@ function MyABAInner(){
           onAppSelect={(app)=>{
             setAppScope(app.app_scope||null);
             // ⬡B:FIX:dismiss_chat_on_switch:20260324⬡ Reset voice/chat state when leaving chat
-            if(app.id!=="chat"&&app.id!=="phone"&&app.id!=="incidents"){
+            if(app.id!=="chat"&&app.id!=="incidents"){
               if(voiceMode==="talk")setVoiceMode("chat");
               setSnapOpen(false);setClipboardOpen(false);
             }
@@ -2675,7 +2676,8 @@ function MyABAInner(){
             else if(app.id==="ccwa"){setMainTab("ccwa")}
             else if(app.id==="aoa"){setMainTab("aoa")}
             else if(app.id==="gmg_university"){setMainTab("gmg_university")}
-            else if(app.id==="phone"){setMainTab("chat");setVoiceMode("talk")}
+            else if(app.id==="phone"){setMainTab("dial")} // ⬡B:ccwa.aba_dials:FIX:phone_opens_dial:20260415⬡
+            else if(app.id==="dial"){setMainTab("dial")}
             else if(app.id==="nura"){setMainTab("nura")}
             else if(app.id==="incidents"){setMainTab("chat");setInput("I want to report a bug: ")}
             else if(app.id==="tasks"){setMainTab("tasks")}
@@ -2806,6 +2808,7 @@ function MyABAInner(){
       {mainTab==="shadow"&&<ShadowView/>}
       {mainTab==="meeting"&&<MeetingModeView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="interview"&&<InterviewModeView userId={user?.email||user?.uid||"unknown"}/>}
+      {mainTab==="dial"&&<DialModeView userId={user?.email||user?.uid||"unknown"}/>}
       {mainTab==="nura"&&<NURAView userId={user?.email||user?.uid||"unknown"} onScan={()=>setScannerOpen(true)}/>}
       {mainTab==="briefing"&&<BriefingView data={briefingData} loading={briefingLoading} userId={user?.email||user?.uid||"unknown"} onRefresh={async()=>{
         setBriefingLoading(true);const data=await fetchBriefing(user?.email||user?.uid||"unknown");setBriefingData(data);setBriefingLoading(false);
