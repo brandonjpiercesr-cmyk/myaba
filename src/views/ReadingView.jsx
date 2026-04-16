@@ -59,57 +59,28 @@ export default function ReadingView({ userId }) {
     setListLoading(false);
   };
 
-  // ⬡B:BIRTH.PAGE:FIX:direct_search_no_air:20260414⬡
-  // Search directly against free public APIs — no AIR, no Sonnet, no 30-second wait
-  // Open Library (4.8M books) + Gutendex (76K ebooks) + LibriVox (20K audiobooks)
+  // ⬡B:BIRTH.PAGE:FIX:backend_proxy_search:20260416⬡
+  // Browser cannot hit Open Library / Gutendex / LibriVox directly — CORS + egress proxy block.
+  // Route all searches through /api/page/search on the backend, which fans out to all three.
+  // No AIR. No Sonnet. Zero AI cost. Direct backend-to-API proxy.
   const doSearch = async () => {
     if (!query.trim()) return;
     setSearching(true);
     setResults({ audiobooks: [], ebooks: [], openLibrary: [] });
     setAbaResponse('');
-    const q = encodeURIComponent(query.trim());
 
-    // Fire all three searches in parallel
-    const [olRes, gutRes, lvRes] = await Promise.allSettled([
-      fetch(`https://openlibrary.org/search.json?q=${q}&limit=10&fields=key,title,author_name,first_publish_year,subject,cover_i,number_of_pages_median,edition_count,ia`)
-        .then(r => r.ok ? r.json() : { docs: [] }).catch(() => ({ docs: [] })),
-      fetch(`https://gutendex.com/books/?search=${q}`)
-        .then(r => r.ok ? r.json() : { results: [] }).catch(() => ({ results: [] })),
-      fetch(`https://librivox.org/api/feed/audiobooks/?title=${q}&format=json&limit=10`)
-        .then(r => r.ok ? r.json() : { books: [] }).catch(() => ({ books: [] }))
-    ]);
-
-    const olData = olRes.status === 'fulfilled' ? olRes.value : { docs: [] };
-    const gutData = gutRes.status === 'fulfilled' ? gutRes.value : { results: [] };
-    const lvData = lvRes.status === 'fulfilled' ? lvRes.value : { books: [] };
-
-    const openLibrary = (olData.docs || []).map(d => ({
-      source: 'openlibrary', key: d.key, title: d.title,
-      author: (d.author_name || []).join(', '), year: d.first_publish_year,
-      subjects: (d.subject || []).slice(0, 8), pages: d.number_of_pages_median,
-      editions: d.edition_count || 0,
-      cover_url: d.cover_i ? 'https://covers.openlibrary.org/b/id/' + d.cover_i + '-M.jpg' : null,
-      ia_id: (d.ia || [])[0] || null, readable: !!(d.ia && d.ia.length > 0)
-    }));
-
-    const ebooks = (gutData.results || []).slice(0, 10).map(b => {
-      const fmts = b.formats || {};
-      return {
-        source: 'gutenberg', id: b.id, title: b.title,
-        author: (b.authors || []).map(a => a.name).join(', '),
-        has_text: !!(fmts['text/plain; charset=utf-8'] || fmts['text/plain']),
-        has_audio: false, download_count: b.download_count
-      };
-    });
-
-    const audiobooks = (lvData.books || []).map(b => ({
-      source: 'librivox', id: b.id, title: b.title,
-      author: (b.authors || []).map(a => a.first_name + ' ' + a.last_name).join(', '),
-      totaltime: b.totaltime, num_sections: b.num_sections,
-      url_librivox: b.url_librivox
-    }));
-
-    setResults({ openLibrary, ebooks, audiobooks });
+    try {
+      const res = await fetch(`${API_BASE}/api/page/search?q=${encodeURIComponent(query.trim())}`);
+      const data = res.ok ? await res.json() : { openLibrary: [], ebooks: [], audiobooks: [] };
+      setResults({
+        openLibrary: data.openLibrary || [],
+        ebooks: data.ebooks || [],
+        audiobooks: data.audiobooks || []
+      });
+    } catch (err) {
+      console.error('[PAGE] Search failed:', err.message);
+      setResults({ openLibrary: [], ebooks: [], audiobooks: [] });
+    }
     setSearching(false);
   };
 
