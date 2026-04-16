@@ -230,7 +230,22 @@ export default function JobsView({userId, setEditorDoc}){
         
         {/* Apply method + requirements badges */}
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
-          {selectedJob.apply_method&&<span style={{padding:"3px 8px",borderRadius:6,fontSize:10,fontWeight:600,background:selectedJob.apply_method==="email"?"rgba(16,185,129,.15)":selectedJob.apply_method==="idealist_form"?"rgba(139,92,246,.15)":"rgba(245,158,11,.15)",color:selectedJob.apply_method==="email"?"#10B981":selectedJob.apply_method==="idealist_form"?"#8B5CF6":"#F59E0B"}}>{selectedJob.apply_method==="email"?"EMAIL":"IDEALIST FORM"}</span>}
+          {selectedJob.apply_method&&(()=>{
+            // ⬡B:AWA.frontend:FIX:apply_method_badge_email_form_unknown:20260416⬡
+            // Backend now emits: email (mailto / send-to-email), form (any form URL),
+            // idealist_form (legacy), unknown (no apply URL found). Map all four cleanly.
+            const m=selectedJob.apply_method;
+            const colors=m==="email"?{bg:"rgba(16,185,129,.15)",fg:"#10B981"}:
+                         m==="form"||m==="idealist_form"?{bg:"rgba(139,92,246,.15)",fg:"#8B5CF6"}:
+                         m==="unknown"?{bg:"rgba(156,163,175,.15)",fg:"#9CA3AF"}:
+                         {bg:"rgba(245,158,11,.15)",fg:"#F59E0B"};
+            const label=m==="email"?"📧 EMAIL APPLY":
+                        m==="form"?"🌐 FORM APPLY":
+                        m==="idealist_form"?"🌐 IDEALIST FORM":
+                        m==="unknown"?"❓ MANUAL REVIEW":
+                        m.toUpperCase();
+            return <span style={{padding:"3px 8px",borderRadius:6,fontSize:10,fontWeight:600,background:colors.bg,color:colors.fg}}>{label}</span>;
+          })()}
           <span style={{padding:"3px 8px",borderRadius:6,fontSize:10,fontWeight:600,background:"rgba(59,130,246,.12)",color:"rgba(96,165,250,.9)"}}>Resume</span>
           <span style={{padding:"3px 8px",borderRadius:6,fontSize:10,fontWeight:600,background:"rgba(139,92,246,.12)",color:"rgba(167,139,250,.9)"}}>Cover Letter</span>
           {selectedJob.application_requirements?.writing_sample&&<span style={{padding:"3px 8px",borderRadius:6,fontSize:10,fontWeight:600,background:"rgba(245,158,11,.15)",color:"#F59E0B"}}>Writing Sample</span>}
