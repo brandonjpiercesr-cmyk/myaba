@@ -154,18 +154,51 @@ export function useBridge(api, identity) {
   const [error, setError] = useState(null);
   const [errorCode, setErrorCode] = useState(null);
   const [verificationCode, setVerificationCode] = useState(null);
+  const [callerIdVerified, setCallerIdVerified] = useState(false);
+  const [pollingVerification, setPollingVerification] = useState(false);
+  const pollRef = useRef(null);
 
+  // Poll verification status every 3 seconds when waiting for HAM to enter code
+  useEffect(() => {
+    if (!pollingVerification) return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const params = new URLSearchParams({
+          ...(identity.email && { email: identity.email }),
+          ...(identity.phone && { phone: identity.phone }),
+          ...(identity.user_id && { userId: identity.user_id }),
+        });
+        const result = await api('/api/dial/verification-status?' + params);
+        if (result?.verified) {
+          setCallerIdVerified(true);
+          setVerificationCode(null);
+          setPollingVerification(false);
+          clearInterval(pollRef.current);
+        }
+      } catch {}
+    }, 3000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [pollingVerification, api, identity]);
+
+  // ONE TAP: provisions bridge AND triggers caller ID verification simultaneously.
+  // Backend returns { bridge, callerIdVerified, verificationCode }.
+  // If already verified, no code needed. Otherwise we show the code and poll.
   const setup = useCallback(async () => {
     try {
       setLoading(true);
       setBridgeStatus(BRIDGE_STATUS.PROVISIONING);
-      setError(null);
-      setErrorCode(null);
+      setError(null); setErrorCode(null);
       const result = await setupBridge(api, identity);
       if (result.success) {
-        setBridgeNumber(result.bridgeNumber);
-        setHamPhone(result.hamPhone);
+        const b = result.bridge || {};
+        setBridgeNumber(b.bridgeNumber);
+        setHamPhone(b.hamPhone || result.hamPhone);
         setBridgeStatus(BRIDGE_STATUS.ACTIVE);
+        setCallerIdVerified(!!result.callerIdVerified);
+        if (result.verificationCode) {
+          setVerificationCode(result.verificationCode);
+          setPollingVerification(true);
+        }
       } else {
         setError(result.error);
         setErrorCode(result.code);
@@ -183,24 +216,28 @@ export function useBridge(api, identity) {
       setLoading(true);
       await teardownBridge(api, identity);
       setBridgeNumber(null);
+      setCallerIdVerified(false);
+      setVerificationCode(null);
+      setPollingVerification(false);
       setBridgeStatus(BRIDGE_STATUS.NOT_SET);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }, [api, identity]);
 
+  // Manual re-verify if user needs it
   const verify = useCallback(async () => {
     try {
       setLoading(true);
       const result = await verifyCallerId(api, identity);
       if (result.success) {
         setVerificationCode(result.verificationCode);
-        setBridgeStatus(BRIDGE_STATUS.NEEDS_VERIFICATION);
+        setPollingVerification(true);
       } else {
         setError(result.error);
       }
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }, [api, identity]);
 
-  return { bridgeStatus, bridgeNumber, hamPhone, loading, error, errorCode, verificationCode, setup, teardown, verify };
+  return { bridgeStatus, bridgeNumber, hamPhone, loading, error, errorCode, verificationCode, callerIdVerified, pollingVerification, setup, teardown, verify };
 }
 
 export function useCallHistory(api, identity) {
