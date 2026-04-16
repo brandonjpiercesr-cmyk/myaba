@@ -59,20 +59,28 @@ export default function ReadingView({ userId }) {
     setListLoading(false);
   };
 
+  // ⬡B:BIRTH.PAGE:FIX:backend_proxy_search:20260416⬡
+  // Browser cannot hit Open Library / Gutendex / LibriVox directly — CORS + egress proxy block.
+  // Route all searches through /api/page/search on the backend, which fans out to all three.
+  // No AIR. No Sonnet. Zero AI cost. Direct backend-to-API proxy.
   const doSearch = async () => {
     if (!query.trim()) return;
     setSearching(true);
     setResults({ audiobooks: [], ebooks: [], openLibrary: [] });
-    const data = await callAIR(`use page_search to find books about ${query}`);
-    const searchTools = (data.toolsExecuted || []).filter(t => t.tool_name === 'page_search');
-    let allAudio = [], allEbooks = [], allOL = [];
-    for (const t of searchTools) {
-      if (t.result?.audiobooks) allAudio.push(...t.result.audiobooks);
-      if (t.result?.ebooks) allEbooks.push(...t.result.ebooks);
-      if (t.result?.openLibrary) allOL.push(...t.result.openLibrary);
+    setAbaResponse('');
+
+    try {
+      const res = await fetch(`${API_BASE}/api/page/search?q=${encodeURIComponent(query.trim())}`);
+      const data = res.ok ? await res.json() : { openLibrary: [], ebooks: [], audiobooks: [] };
+      setResults({
+        openLibrary: data.openLibrary || [],
+        ebooks: data.ebooks || [],
+        audiobooks: data.audiobooks || []
+      });
+    } catch (err) {
+      console.error('[PAGE] Search failed:', err.message);
+      setResults({ openLibrary: [], ebooks: [], audiobooks: [] });
     }
-    setResults({ audiobooks: allAudio, ebooks: allEbooks, openLibrary: allOL });
-    setAbaResponse(data.response || '');
     setSearching(false);
   };
 
