@@ -50,25 +50,72 @@ export default function LogfulView({ userId = 'brandon' }) {
 
       {loading && <div style={{ textAlign: 'center', padding: 30, color: '#38bdf8' }}>Loading...</div>}
 
-      {/* Entries */}
-      {tab === 'all' && entries.map((entry, i) => (
-        <div key={i} style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 14, marginBottom: 8, borderLeft: `3px solid ${getToneColor(entry.emotionalTone || 'neutral')}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <span style={{ fontSize: 12, color: '#7aa2c8' }}>{getSourceIcon(entry.source?.split('.')[0])} {entry.source?.split('.')[0]}</span>
-            <span style={{ fontSize: 11, color: '#5a7a98' }}>{formatEntryDate(entry.created_at)}</span>
-          </div>
-          <div style={{ fontSize: 14, lineHeight: 1.5, color: '#c8d8e8' }}>
-            {entry.summary || entry.raw?.substring(0, 200) || JSON.stringify(entry).substring(0, 200)}
-          </div>
-          {entry.keyTopics?.length > 0 && (
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
-              {entry.keyTopics.map((t, j) => (
-                <span key={j} style={{ padding: '2px 8px', borderRadius: 12, background: 'rgba(56,189,248,0.15)', color: '#38bdf8', fontSize: 11 }}>{t}</span>
-              ))}
+      {/* Entries — ⬡B:LOGFUL:VIEW:soul_prayer_render:20260416⬡ */}
+      {tab === 'all' && entries.map((entry, i) => {
+        // Infer type from source prefix
+        const src = entry.source || '';
+        const isPrayer = src.startsWith('soul.prayer.');
+        const isDeclaration = src.startsWith('soul.declaration.');
+        const isJournal = src.startsWith('logful.entry.') || src.startsWith('logful_journal') || src.startsWith('journal.');
+        const isSermon = src.startsWith('soul.sermon.');
+        const isAtter = src.startsWith('atter.');
+        const isOmi = src.startsWith('omi_');
+        const isMeeting = src.startsWith('mars.') || src.startsWith('meeting.');
+        
+        // Source label + icon + color per type
+        let label = entry.source?.split('.')[0] || entry.source?.split('_')[0] || 'entry';
+        let borderColor = getToneColor(entry.emotionalTone || entry.mood || 'neutral');
+        let icon = getSourceIcon(label);
+        
+        if (isPrayer) { label = 'prayer'; icon = '🙏'; borderColor = '#c4a265'; }
+        else if (isDeclaration) { label = 'declaration'; icon = '💬'; borderColor = '#f5d99a'; }
+        else if (isJournal) { label = 'journal'; icon = '📓'; borderColor = '#818cf8'; }
+        else if (isSermon) { label = 'sermon'; icon = '🕊️'; borderColor = '#a78bfa'; }
+        else if (isAtter) { label = 'atter'; icon = '🎤'; }
+        else if (isOmi) { label = 'omi'; icon = '📡'; }
+        else if (isMeeting) { label = 'meeting'; icon = '💬'; }
+        
+        // Body text: handle all shapes
+        const bodyText = entry.text                    // soul_prayer, logful_entry shape
+          || entry.content_text                        // newer shape
+          || entry.summary                             // atter/omi shape
+          || entry.correctedTranscript                 // atter transcript
+          || entry.rawTranscript                       // atter raw
+          || entry.raw                                 // generic
+          || (typeof entry.content === 'string' ? entry.content : null)
+          || '';
+        
+        return (
+          <div key={i} style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 14, marginBottom: 8, borderLeft: `3px solid ${borderColor}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontSize: 12, color: '#7aa2c8', display: 'flex', gap: 6, alignItems: 'center' }}>
+                <span>{icon} {label}</span>
+                {entry.privacy === 'private' && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: 'rgba(129,140,248,0.2)', color: '#a5b4fc' }}>private</span>}
+                {entry.category && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: 'rgba(196,162,101,0.15)', color: '#c4a265' }}>{entry.category}</span>}
+                {entry.mood && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: 'rgba(129,140,248,0.15)', color: '#818cf8' }}>{entry.mood}</span>}
+              </span>
+              <span style={{ fontSize: 11, color: '#5a7a98' }}>{formatEntryDate(entry.created_at || entry.loggedAt)}</span>
             </div>
-          )}
-        </div>
-      ))}
+            <div style={{ fontSize: 14, lineHeight: 1.5, color: '#c8d8e8' }}>
+              {bodyText.substring(0, 280) || <span style={{ color: '#5a7a98', fontStyle: 'italic' }}>(empty)</span>}
+            </div>
+            {entry.keyTopics?.length > 0 && (
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
+                {entry.keyTopics.map((t, j) => (
+                  <span key={j} style={{ padding: '2px 8px', borderRadius: 12, background: 'rgba(56,189,248,0.15)', color: '#38bdf8', fontSize: 11 }}>{t}</span>
+                ))}
+              </div>
+            )}
+            {entry.tags?.length > 0 && !entry.keyTopics?.length && (
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
+                {entry.tags.slice(0,5).map((t, j) => (
+                  <span key={j} style={{ padding: '2px 8px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', color: '#7aa2c8', fontSize: 10 }}>{t}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
 
       {/* Action Items */}
       {tab === 'actions' && actionItems.map((action, i) => (
