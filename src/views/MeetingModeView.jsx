@@ -12,7 +12,8 @@ import {
   SPEAKER_MODES,
   formatTime, isQuestion, fetchTimCue as coreTimCue, fetchCookAnswer as coreCookAnswer,
   saveMeetingToHAM, captureDualAudio, supportsSystemAudio,
-} from "../utils/mesa-core.js";
+  fireLiveCaptured, fireResubmit,
+} from "../utils/mesa-core.js"; // ⬡B:MACE.cip:FIX:import_live:20260416⬡
 
 const api = async (path, opts = {}) => {
   const res = await fetch(ABABASE + path, {
@@ -105,10 +106,11 @@ export default function MeetingModeView({ userId }) {
     const last60 = segs.slice(-20).map(s => s.text).join(' ');
     setCookStreaming(true);
     try {
-      const res = await api('/api/cook/answer', {
-        method: 'POST', body: JSON.stringify({
-          question: 'Give me something to say right now based on this conversation',
-          user_id: user?.email || 'unknown', mode: 'meeting',
+      // ⬡B:MACE.cip:FIX:need_answer_air_live:20260416⬡
+      const res = await fetch(ABABASE + '/api/air/live', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          message: 'Give me something to say right now based on this conversation',
+          user_id: user?.email || 'unknown', channel: 'mesa_live', mode: 'meeting',
           transcript_context: last60.substring(0, 2000),
           briefing_context: prepContext ? JSON.stringify(prepContext).substring(0, 3000) : '',
           last_said_by_ham: lastSaidByHamRef.current || '',
@@ -172,14 +174,15 @@ export default function MeetingModeView({ userId }) {
     setCookStreaming(true);
     let fullText = "";
     try {
-      const res = await fetch(`${ABABASE}/api/cook/answer`, {
+      // ⬡B:MACE.cip:FIX:cook_air_live:20260416⬡
+      const res = await fetch(`${ABABASE}/api/air/live`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          question: 'Someone said: "' + question + '" — Give a polished 1-paragraph answer. Always answer. Never hold.',
+          message: 'Someone said: "' + question + '" — Give a polished 1-paragraph answer. Always answer.',
+          user_id: userId, channel: 'mesa_live',
           transcript_context: transcriptRef.current.map(t=>t.text).join(" "),
           tim_cues: timCues.slice(-3).map(c=>c.text),
           mode: "meeting",
-          userId,
           last_said_by_ham: "",
           // v3 FIX: Send the prep briefing so COOK actually uses it
           briefing_context: prepCtxRef.current || '',
