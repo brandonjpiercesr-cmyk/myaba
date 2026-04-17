@@ -211,10 +211,8 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
           const nlRes = await fetch(ABABASE+"/api/gmg-university/next-lessons?email="+encodeURIComponent(userEmail));
           if (!nlRes.ok) throw new Error('next-lessons failed');
           const nl = await nlRes.json();
-          // ⬡B:GMGU.ux:FEAT:streamed_greeting_from_air:20260414⬡
-          // Single-lesson: stream from AIR so ABA greets with full personality.
-          // Paired-2: richer static since ABA needs to present both options.
-          // Mode selector appears AFTER streaming finishes.
+          // ⬡B:GMGU.ux:FIX:never_blank_init:20260416⬡
+          // Instant static greeting so user NEVER sees blank screen.
           if (nl.mode === 'paired' && nl.nextLessons.length > 1) {
             const first = nl.nextLessons[0];
             const second = nl.nextLessons[1];
@@ -225,7 +223,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
           if ((nl.mode === 'paired' && nl.nextLessons.length === 1) || (nl.mode === 'single' && nl.nextLessons.length > 0)) {
             const lesson = nl.nextLessons[0];
             setCurrentLesson({ block:lesson.block, day:lesson.day, title:lesson.title });
-            streamFromAIR("Just opened GMG University. Today we are doing " + lesson.title + ". Greet me warmly and set up what we are covering, then wait for me to begin.", true);
+            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. Today we are covering "${lesson.title}." Ready when you are.` }]);
             return;
           }
           setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. You have completed everything so far. That is a serious accomplishment, and I hope you know that.` }]);
@@ -234,7 +232,7 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
           const next = getNextBlockLesson(profile?.completedDays, curriculum);
           if (next) {
             setCurrentLesson(next);
-            streamFromAIR("Just opened GMG University. Today we are doing " + next.title + ". Greet me warmly and set up what we are covering, then wait for me to begin.", true);
+            setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. Today we are covering "${next.title}." Ready when you are.` }]);
           } else {
             setMsgs([{ role:'aba', text:`Good ${greeting}, ${firstName}. Welcome to GMG University.` }]);
           }
