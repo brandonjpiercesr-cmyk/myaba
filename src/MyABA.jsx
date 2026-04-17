@@ -1,4 +1,3 @@
-SHA: 801f337ca5c8
 // ⬡B:myaba.genesis:APP:v2.17.0:20260313⬡
 // MyABA v2.17.0 - AWA v2 Backend Integration + Ghost Mode
 // ════════════════════════════════════════════════════════════════════════════
