@@ -2,7 +2,7 @@
 // CCWAView — extracted from MyABA.jsx. Come Code With ABA (CCWA) dual-engine coding assistant.
 // Supports Production (Sonnet), Dev (Haiku/INCUABA), and Compare modes.
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Code, Loader2, Send } from "lucide-react";
 import { ABABASE } from "../utils/api.js";
 import {
@@ -20,6 +20,15 @@ const api = async (path, opts = {}) => {
 
 export default function CCWAView({ userId }) {
   const [query, setQuery] = useState("");
+  // ⬡B:ccwa:FIX:scroll_to_bottom:20260416⬡
+  // CCWAView messages were not scrollable — flex:1 child needs minHeight:0 to clip
+  // and a ref to auto-scroll to bottom on new messages.
+  const scrollRef = useRef(null);
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [history, response]);
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState([]);
@@ -51,7 +60,7 @@ export default function CCWAView({ userId }) {
     setLoading(false);
   };
   return (<div style={{flex:1,display:"flex",flexDirection:"column"}}>
-    <div style={{flex:1,overflowY:"auto",padding:16}}>
+    <div ref={scrollRef} style={{flex:1,overflowY:"auto",padding:16,minHeight:0}}>
       <div style={{display:"flex",gap:4,padding:"0 0 8px",borderBottom:"1px solid rgba(255,255,255,.04)",marginBottom:8}}>
         {ENGINE_MODES.map(m=>
           <button key={m.id} onClick={()=>setDevMode(m.id)} style={{flex:1,padding:"6px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:11,fontWeight:devMode===m.id?700:400,background:devMode===m.id?m.color+"20":"transparent",color:devMode===m.id?m.color:"rgba(255,255,255,.3)"}}>{m.label}</button>)}
