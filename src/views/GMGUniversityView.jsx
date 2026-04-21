@@ -274,7 +274,33 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
       const history=msgs.slice(-20).map(m=>({role:m.role==="aba"?"assistant":"user",content:m.text||""})).filter(m=>m.content);
       const r=await fetch(ABABASE+"/api/air/stream",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:userMsg,user_id:userEmail,userId:userEmail,channel:"gmg-university",conversationHistory:history})});
       const reader=r.body.getReader(); const decoder=new TextDecoder();
-      while(true){const{done,value}=await reader.read();if(done)break;for(const line of decoder.decode(value,{stream:true}).split("\n").filter(l=>l.startsWith("data: "))){try{const d=JSON.parse(line.slice(6));if(d.type==="chunk"){acc+=d.text;sentBufRef.current+=d.text;setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:acc};return c;});if(sentBufRef.current.match(/[.!?]\s*$/)){speak(sentBufRef.current.trim());sentBufRef.current="";}}else if(d.type==="done"){const final=d.fullResponse||acc;setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:final,streaming:false};return c;});if(sentBufRef.current.trim())speak(sentBufRef.current.trim());const deckMatch=final.match(/\[DECK\](.*?)\[\/DECK\]/s); if(deckMatch){try{setDeckContent(JSON.parse(deckMatch[1].trim()));}catch(e){console.error("[GMG-U] Deck:",e);} } const cleanFinal=final.replace(/\[DECK\].*?\[\/DECK\]/sg,""); const shouldComplete=cleanFinal.includes("[LESSON_COMPLETE]"); if(shouldComplete)markComplete();}}catch(e){console.error('[GMG-U] SSE:',e.message);}}}
+      while(true){const{done,value}=await reader.read();if(done)break;for(const line of decoder.decode(value,{stream:true}).split("\n").filter(l=>l.startsWith("data: "))){try{const d=JSON.parse(line.slice(6));if(d.type==="chunk"){acc+=d.text;sentBufRef.current+=d.text;setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:acc};return c;});if(sentBufRef.current.match(/[.!?]\s*$/)){speak(sentBufRef.current.trim());sentBufRef.current="";}}else if(d.type==="done"){const final=d.fullResponse||acc;setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:final,streaming:false};return c;});if(sentBufRef.current.trim())speak(sentBufRef.current.trim());const deckMatch=final.match(/\[DECK\](.*?)\[\/DECK\]/s); if(deckMatch){try{setDeckContent(JSON.parse(deckMatch[1].trim()));}catch(e){console.error("[GMG-U] Deck:",e);} } const cleanFinal=final.replace(/\[DECK\].*?\[\/DECK\]/sg,""); const shouldComplete=cleanFinal.includes("[LESSON_COMPLETE]"); if(shouldComplete)markComplete();
+              // ⬡B:eric_twins_parity.save_turn_myaba:ADD:save_turn_in_stream_done:20260421⬡
+              // MyABA GMG-U view was firing /api/air/stream but never calling /api/gmg-university/save-turn.
+              // That meant every turn ran through AIR but nothing persisted. Eric's Day 3 answers on
+              // MyABA were lost entirely regardless of my earlier backend Phase D fix.
+              // Now firing save-turn after each non-greeting turn on MyABA with the same payload shape
+              // the standalone gmg-university frontend uses. NO length filter (short answers count).
+              // Silent on success, logs on failure.
+              if (!isAutoInit && userMsg && final) {
+                fetch(ABABASE+"/api/gmg-university/save-turn", {
+                  method:"POST", headers:{"Content-Type":"application/json"},
+                  body: JSON.stringify({
+                    email: userEmail,
+                    user_message: userMsg,
+                    aba_response: cleanFinal,
+                    block: currentLesson?.block,
+                    day: currentLesson?.day,
+                    channel: "gmg-university"
+                  })
+                }).then(async resp => {
+                  if (!resp.ok) {
+                    const t = await resp.text().catch(()=>"?");
+                    console.error("[GMG-U save-turn] HTTP", resp.status, t.substring(0,200));
+                  }
+                }).catch(e => console.error("[GMG-U save-turn] network err:", e?.message || e));
+              }
+              }}catch(e){console.error('[GMG-U] SSE:',e.message);}}}
     } catch{setMsgs(prev=>{const c=[...prev];const l=c[c.length-1];if(l?.role==="aba")c[c.length-1]={...l,text:"Connection issue.",streaming:false};return c;});}
     finally{setStreaming(false);}
   };
