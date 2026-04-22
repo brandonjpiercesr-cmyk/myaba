@@ -1,6 +1,6 @@
 {
   "name": "myaba",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,7 @@
     "test": "vitest run --config vitest.config.js"
   },
   "dependencies": {
+    "@aba/ccwa-core": "^0.2.0",
     "@elevenlabs/react": "^0.14.3",
     "@vitejs/plugin-react": "^4.2.1",
     "express": "^4.22.1",
