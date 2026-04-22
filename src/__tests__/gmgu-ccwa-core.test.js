@@ -141,9 +141,9 @@ describe('gmgu-core.js — API functions', () => {
 // CCWA CORE TESTS
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe('ccwa-core.js — constants', () => {
+describe('ccwa-engine.js — constants', () => {
   it('ENGINE_MODES has 3 modes', async () => {
-    const { ENGINE_MODES } = await import('../utils/ccwa-core.js');
+    const { ENGINE_MODES } = await import('../utils/ccwa-engine.js');
     expect(ENGINE_MODES).toHaveLength(3);
     expect(ENGINE_MODES.find(m => m.id === 'prod').channel).toBe('ccwa');
     expect(ENGINE_MODES.find(m => m.id === 'dev').channel).toBe('incuaba');
@@ -151,23 +151,23 @@ describe('ccwa-core.js — constants', () => {
   });
 
   it('PANEL_IDS has expected panels', async () => {
-    const { PANEL_IDS } = await import('../utils/ccwa-core.js');
+    const { PANEL_IDS } = await import('../utils/ccwa-engine.js');
     expect(PANEL_IDS.length).toBeGreaterThanOrEqual(10);
     expect(PANEL_IDS).toContain('enforcement');
     expect(PANEL_IDS).toContain('gitPanel');
   });
 });
 
-describe('ccwa-core.js — engine routing', () => {
+describe('ccwa-engine.js — engine routing', () => {
   it('getChannel returns correct channel for each mode', async () => {
-    const { getChannel } = await import('../utils/ccwa-core.js');
+    const { getChannel } = await import('../utils/ccwa-engine.js');
     expect(getChannel('prod')).toBe('ccwa');
     expect(getChannel('dev')).toBe('incuaba');
     expect(getChannel('compare')).toBe('ccwa'); // defaults to ccwa
   });
 
   it('sendToEngine calls /api/air/process with correct channel', async () => {
-    const { sendToEngine } = await import('../utils/ccwa-core.js');
+    const { sendToEngine } = await import('../utils/ccwa-engine.js');
     const mockApi = vi.fn().mockResolvedValue({ response: 'test', toolsExecuted: [] });
     const result = await sendToEngine(mockApi, 'hello', 'brandon', 'prod');
     expect(mockApi).toHaveBeenCalledWith('/api/air/process', expect.objectContaining({
@@ -179,7 +179,7 @@ describe('ccwa-core.js — engine routing', () => {
   });
 
   it('sendToEngine uses incuaba channel for dev mode', async () => {
-    const { sendToEngine } = await import('../utils/ccwa-core.js');
+    const { sendToEngine } = await import('../utils/ccwa-engine.js');
     const mockApi = vi.fn().mockResolvedValue({ response: 'dev test' });
     await sendToEngine(mockApi, 'hello', 'brandon', 'dev');
     expect(mockApi).toHaveBeenCalledWith('/api/air/process', expect.objectContaining({
@@ -188,7 +188,7 @@ describe('ccwa-core.js — engine routing', () => {
   });
 
   it('compareEngines calls both prod and dev', async () => {
-    const { compareEngines } = await import('../utils/ccwa-core.js');
+    const { compareEngines } = await import('../utils/ccwa-engine.js');
     let callCount = 0;
     const mockApi = vi.fn().mockImplementation(() => {
       callCount++;
