@@ -46,6 +46,12 @@ import { doc, getDoc, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
 import { useConversation } from "@elevenlabs/react";
 import { onAuthStateChanged } from "firebase/auth";
 
+// ⬡B:voice.rebuild.cip_voice_core_integration:20260422⬡
+// Vendored copy of aba-shared/packages/voice-core/src/index.jsx. Same file 
+// lives in gmg-university/src/aba-voice-core.jsx and oneaba-source/apps/shell/src/aba-voice-core.jsx.
+// Change the canonical file in aba-shared, then re-vendor all three triplets.
+import { preloadSession, generateConversationId, MuteButton, VOICE_LABELS } from "./aba-voice-core.jsx";
+
 // ⬡B:AUDRA.C4:FIX:error_boundary:20260403⬡ Crash = fallback UI, not white screen
 import React from "react";
 import { ABAPresence } from './ABAPresence.jsx';
@@ -1206,6 +1212,9 @@ function TalkToABA({userId, conversationId, onTranscriptSaved}){
   const[statusText,setStatusText]=useState("Tap the orb to start talking");
   const[lastMsg,setLastMsg]=useState("");
   const[errorMsg,setErrorMsg]=useState("");
+  // ⬡B:voice.rebuild.cip_mute_plus_conv_id:20260422⬡ mute state + conv_id ref
+  const[isMuted,setIsMuted]=useState(false);
+  const voiceConvIdRef=useRef(null);
   const thinkTimerRef=useRef(null);
   // ⬡B:911.fix_voice_interruption:FIX:speaking_duration_guard:20260413⬡
   const speakingStartRef=useRef(0);
@@ -1286,15 +1295,47 @@ function TalkToABA({userId, conversationId, onTranscriptSaved}){
         noiseSuppression:true,
         autoGainControl:true
       }});
+      setStatusText("Preparing your session...");
+      // ⬡B:voice.rebuild.cip_hard_gate:FIX:silent_fail_killer:20260422⬡
+      // OLD (was here): try{await fetch(ABABASE+"/vara/preload",{...})}catch(pe){console.log("Preload failed (non-fatal)")}
+      // That silent-fail is the ROOT CAUSE of the 2026-04-22 10:39 gmgu bug: 
+      // preload errored, frontend caught-and-continued, /v1/chat/completions 
+      // hit an empty session store, user got receptionist script despite being 
+      // signed in. Same exact code pattern lived here in CIP.
+      // NEW: preloadSession throws if preload fails (HARD GATE). We DO NOT 
+      // call startSession if preload didn't land.
+      const convId=generateConversationId("myaba");
+      voiceConvIdRef.current=convId;
+      try{
+        await preloadSession({
+          userId,
+          conversationId:convId,
+          appContext:{ mode:"myaba", userId, email:userId||"" }
+        });
+      }catch(preloadErr){
+        setOrbState("error");
+        setErrorMsg(preloadErr.message||"Preload failed");
+        setStatusText(VOICE_LABELS.preloadFailed);
+        console.error("[TALK] Preload hard-gate failed:",preloadErr);
+        return;
+      }
       setStatusText("Connecting to ABA...");
-      // ⬡B:voice.audit:FIX:preload_identity:20260330⬡ Warm VARA cache with HAM identity before WebRTC starts
-      try{await fetch(ABABASE+"/vara/preload",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId,conversation_id:"webrtc_"+Date.now()})});}catch(pe){console.log("[TALK] Preload failed (non-fatal):",pe.message)}
       await conversation.startSession({
         agentId:"agent_0601khe2q0gben08ws34bzf7a0sa",
         connectionType:"webrtc",
-        overrides:{agent:{prompt:{prompt:""}},conversation_initiation_client_data:{dynamic_variables:{user_id:userId||"unknown"}}},
-        dynamicVariables:{user_id:userId||"unknown"}
+        // ⬡B:voice.rebuild.cip_customLlmExtraBody:20260422⬡
+        // Propagate conversation_id to backend /v1/chat/completions. Backend 
+        // reads req.body.conversation_id and looks up vara_active_sessions 
+        // row directly — no "most recent session" scan, no cross-HAM bleed.
+        customLlmExtraBody:{
+          conversation_id:convId,
+          user_id:userId,
+          app:"myaba"
+        },
+        overrides:{agent:{prompt:{prompt:""}},conversation_initiation_client_data:{dynamic_variables:{user_id:userId||"unknown",conversation_id:convId}}},
+        dynamicVariables:{user_id:userId||"unknown",conversation_id:convId,email:userId||""}
       });
+      setIsMuted(false);
     }catch(err){
       console.error("[TALK] Start failed:",err);
       setOrbState("error");
@@ -1302,6 +1343,21 @@ function TalkToABA({userId, conversationId, onTranscriptSaved}){
       setStatusText(err.name==="NotAllowedError"?"Microphone access denied. Check browser settings.":"Connection failed. Tap to retry.");
     }
   },[conversation,orbState]);
+
+  // ⬡B:voice.rebuild.cip_mute_handler:20260422⬡
+  // Mute toggle — airport noise, intercom, someone walks in. Local-first: 
+  // flips ElevenLabs SDK setMicMuted so ABA never hears the muted audio.
+  const toggleMute=useCallback(()=>{
+    setIsMuted(prev=>{
+      const next=!prev;
+      try{
+        if(typeof conversation.setMicMuted==="function") conversation.setMicMuted(next);
+        else if(typeof conversation.micMuted==="function") conversation.micMuted(next);
+        else if(typeof conversation.setMuted==="function") conversation.setMuted(next);
+      }catch{}
+      return next;
+    });
+  },[conversation]);
 
   // ⬡B:MACE.fix:UI:orb_redesign_aba_logo_always:20260411⬡
   // ABA logo ALWAYS visible inside orb. Color and animation change per state.
@@ -1342,7 +1398,10 @@ function TalkToABA({userId, conversationId, onTranscriptSaved}){
           <div style={{width:8,height:8,borderRadius:"50%",background:"rgba(139,92,246,.9)",animation:"mb 1s ease infinite"}}/>
           <span style={{color:"rgba(139,92,246,.8)",fontSize:11,fontWeight:600}}>LIVE</span>
         </div>}
-        {conversation.status==="connected"&&<button onClick={()=>conversation.endSession()} style={{padding:"6px 16px",borderRadius:8,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.08)",color:"rgba(239,68,68,.7)",cursor:"pointer",fontSize:11,fontWeight:500}}>End Conversation</button>}
+        {conversation.status==="connected"&&<div style={{display:"flex",alignItems:"center",gap:12}}>
+          <MuteButton isMuted={isMuted} onToggle={toggleMute} size={34} />
+          <button onClick={()=>conversation.endSession()} style={{padding:"6px 16px",borderRadius:8,border:"1px solid rgba(239,68,68,.2)",background:"rgba(239,68,68,.08)",color:"rgba(239,68,68,.7)",cursor:"pointer",fontSize:11,fontWeight:500}}>End Conversation</button>
+        </div>}
         {errorMsg&&<p style={{color:"rgba(239,68,68,.6)",fontSize:11,textAlign:"center",margin:0}}>{errorMsg}</p>}
       </div>
 
