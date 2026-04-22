@@ -7,7 +7,7 @@ import { Code, Loader2, Send } from "lucide-react";
 import { ABABASE } from "../utils/api.js";
 import {
   ENGINE_MODES, getChannel, sendToEngine, compareEngines,
-} from "../utils/ccwa-core.js";
+} from "../utils/ccwa-engine.js"; // ⬡B:MACE.rename:FIX:ccwa_engine_collision_kill:20260422⬡
 
 const api = async (path, opts = {}) => {
   const res = await fetch(ABABASE + path, {
