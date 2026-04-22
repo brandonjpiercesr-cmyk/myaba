@@ -12,7 +12,6 @@ import {
   SPEAKER_MODES,
   formatTime, isQuestion, fetchTimCue as coreTimCue, fetchCookAnswer as coreCookAnswer,
   saveMeetingToHAM, captureDualAudio, supportsSystemAudio,
-  fireLiveCaptured, fireResubmit,
 } from "../utils/mesa-core.js"; // ⬡B:MACE.cip:FIX:import_live:20260416⬡
 
 const api = async (path, opts = {}) => {

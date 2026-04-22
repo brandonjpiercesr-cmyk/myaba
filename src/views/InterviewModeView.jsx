@@ -11,8 +11,8 @@ import {
   fetchTimCue as coreTimCue, cleanInterviewTitle,
   TIM_COOLDOWN, COOK_COOLDOWN, TIM_CUE_DURATION, TIM_CUE_MAX_AGE, TIM_CUE_MAX_VISIBLE,
 } from "../utils/iris-core.js";
-import { captureDualAudio   fireLiveCaptured, fireResubmit,
-} from "../utils/mesa-core.js" // ⬡B:MACE.cip:FIX:import_live:20260416⬡;
+import { captureDualAudio,
+} from "../utils/mesa-core.js"; // ⬡B:MACE.cip:FIX:import_live:20260416⬡
 
 // v3: Speaker modes for control panel
 const SPEAKER_MODES = { THEY: 'they_talking', ME: 'i_talking', TEAM: 'my_team', PAUSED: 'paused' };
