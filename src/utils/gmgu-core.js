@@ -295,19 +295,40 @@ export function buildGMGUAppContext({ lesson, userId, userEmail, cohortType, rec
 
 // Fire the preload call to cache FCW + appContext before voice starts.
 export async function fireVoicePreload(api, { conversationId, userId, appContext }) {
-  try {
-    await fetch((api || 'https://abacia-services.onrender.com') + '/vara/preload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        conversation_id: conversationId,
-        userId: userId,
-        appContext: appContext
-      })
-    });
-    return true;
-  } catch (e) {
-    console.log('[GMG-U] Preload failed (non-fatal):', e.message);
-    return false;
+  // ⬡B:voice.rebuild.gmgu_core.hard_gate:20260423⬡
+  // HARD GATE: this function now THROWS on failure instead of silently
+  // returning false and letting the caller proceed to startSession with an
+  // empty backend session store. That silent-fail was the root cause of the
+  // 2026-04-22 10:39 receptionist-script bug in gmg-university standalone
+  // and the same pattern was live in every GMG-U voice orb (CIP, CIB).
+  // Callers must wrap in try/catch and bail on failure — see
+  // GMGUniversityView.jsx handleOrbTap for the reference pattern.
+  //
+  // If you'd rather call the shared voice-core preloadSession directly, it
+  // exports the same behavior from aba-shared/packages/voice-core (vendored
+  // in each triplet as src/aba-voice-core.jsx). This function stays for
+  // back-compat with any caller that doesn't want the vendored import.
+  const res = await fetch((api || 'https://abacia-services.onrender.com') + '/vara/preload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      conversation_id: conversationId,
+      userId: userId,
+      appContext: appContext
+    })
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    const err = new Error(`Preload failed: ${res.status} ${text}`.slice(0, 200));
+    err.preloadFailed = true;
+    err.status = res.status;
+    throw err;
   }
+  const body = await res.json().catch(() => ({}));
+  if (body && body.success === false) {
+    const err = new Error(`Preload rejected: ${body.error || 'unknown'}`);
+    err.preloadFailed = true;
+    throw err;
+  }
+  return true;
 }

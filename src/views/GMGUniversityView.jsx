@@ -14,6 +14,12 @@ import {
   parseSSELine, extractDeck, checkLessonComplete,
   VOICE_CONFIG, buildGMGUAppContext, fireVoicePreload,
 } from "../utils/gmgu-core.js";
+// ⬡B:voice.rebuild.gmgu_cip_view.20260423⬡
+// Vendored voice-core shared with gmg-university standalone (both branches)
+// and OneABA CIB (forthcoming). Provides preloadSession as a HARD GATE:
+// if preload fails, it throws — we DO NOT call startSession. Kills the
+// silent-fail pattern that was in fireVoicePreload (gmgu-core.js).
+import { preloadSession, generateConversationId, MuteButton, VOICE_LABELS } from "../aba-voice-core.jsx";
 import { ABAPresence } from '../ABAPresence.jsx';
 const ABAConsciousness = ABAPresence;
 
@@ -148,10 +154,16 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
     try {
       setOrbState('connecting'); setStatusText('Requesting microphone...');
       await navigator.mediaDevices.getUserMedia({ audio: true });
-      setStatusText('Connecting to ABA...');
+      setStatusText('Preparing your session...');
 
-      // Fire preload with full appContext + lesson plan
-      const convId = 'gmgu_cip_voice_' + Date.now();
+      // ⬡B:voice.rebuild.gmgu_cip_view.hard_gate:20260423⬡
+      // HARD GATE: preloadSession from aba-voice-core throws on failure. The
+      // old fireVoicePreload in gmgu-core.js silently returned false on error
+      // and the code continued to startSession anyway — that's the silent-fail
+      // that hit gmg-university standalone on 2026-04-22 and is the same bug
+      // pattern here in CIP. If preload can't land, we DO NOT start the
+      // WebRTC session. User gets a clear error instead of receptionist.
+      const convId = generateConversationId('gmgu_cip');
       const appContext = buildGMGUAppContext({
         lesson: currentLesson,
         userId: userEmail,
@@ -159,10 +171,40 @@ export default function GMGUniversityView({ userEmail: propEmail, userName: prop
         cohortType: profile?.cohort_type,
         recentMessages: msgs
       });
-      await fireVoicePreload(ABABASE, { conversationId: convId, userId: userEmail, appContext });
+      try {
+        await preloadSession({
+          userId: userEmail,
+          conversationId: convId,
+          appContext
+        });
+      } catch (preloadErr) {
+        setOrbState('error');
+        setErrorMsg(preloadErr.message || 'Preload failed');
+        setStatusText(VOICE_LABELS.preloadFailed);
+        console.error('[GMGU-CIP] Preload hard-gate failed:', preloadErr);
+        return;
+      }
 
-      // Connect to ElevenLabs
-      await conversation.startSession({ agentId: VOICE_CONFIG.agentId });
+      setStatusText('Connecting to ABA...');
+      // ⬡B:voice.rebuild.gmgu_cip_view.customLlmExtraBody:20260423⬡
+      // Propagate conversation_id end-to-end. Backend /v1/chat/completions
+      // reads req.body.conversation_id and looks up vara_active_sessions
+      // DIRECTLY — no "most recent session within 5 min" scan (which was the
+      // cross-HAM race). Plus dynamicVariables as belt-and-suspenders so
+      // ElevenLabs passes the id through every path it has.
+      await conversation.startSession({
+        agentId: VOICE_CONFIG.agentId,
+        customLlmExtraBody: {
+          conversation_id: convId,
+          user_id: userEmail,
+          app: 'gmgu_cip'
+        },
+        dynamicVariables: {
+          conversation_id: convId,
+          user_id: userEmail,
+          email: userEmail
+        }
+      });
     } catch (err) {
       setOrbState('error'); setErrorMsg(err.message || 'Failed to connect');
       setStatusText(err.name === 'NotAllowedError' ? 'Microphone access denied.' : 'Connection failed. Tap to retry.');
