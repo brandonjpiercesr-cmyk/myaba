@@ -60,7 +60,7 @@ export function lessonTitle(vol, day) {
 // Fetch block-structured curriculum from backend (single source of truth)
 export async function fetchCurriculum(api, cohortType, track) {
   try {
-    const baseUrl = (api && typeof api._baseUrl === 'string') ? api._baseUrl : 'https://abacia-services.onrender.com';
+    const baseUrl = (api && typeof api._baseUrl === 'string') ? api._baseUrl : (import.meta.env.VITE_ABABASE_URL || 'https://ababase.onrender.com');
     const r = await fetch(baseUrl + '/api/gmg-university/curriculum?cohort_type=' + encodeURIComponent(cohortType || 'FOUNDING_LINE') + '&track=' + encodeURIComponent(track || 'UNASSIGNED'));
     if (r.ok) return await r.json();
   } catch (err) { console.error('[GMG-U] Curriculum fetch:', err); }
@@ -133,7 +133,7 @@ export async function speak(api, text) {
   if (!text || !text.trim()) return null;
   try {
     // TTS needs raw fetch for blob response — api adapter provides base URL
-    const baseUrl = (api && typeof api._baseUrl === 'string') ? api._baseUrl : 'https://abacia-services.onrender.com';
+    const baseUrl = (api && typeof api._baseUrl === 'string') ? api._baseUrl : (import.meta.env.VITE_ABABASE_URL || 'https://ababase.onrender.com');
     const r = await fetch(baseUrl + '/api/tts/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -308,7 +308,7 @@ export async function fireVoicePreload(api, { conversationId, userId, appContext
   // exports the same behavior from aba-shared/packages/voice-core (vendored
   // in each triplet as src/aba-voice-core.jsx). This function stays for
   // back-compat with any caller that doesn't want the vendored import.
-  const res = await fetch((api || 'https://abacia-services.onrender.com') + '/vara/preload', {
+  const res = await fetch((api || (import.meta.env.VITE_ABABASE_URL || 'https://ababase.onrender.com')) + '/vara/preload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

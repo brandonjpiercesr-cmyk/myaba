@@ -6,7 +6,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 export { formatTime } from "./mesa-core.js";
 
-const WS_URL = 'wss://abacia-services.onrender.com/api/voice/stream';
+const WS_URL = (import.meta.env.VITE_ABABASE_URL || 'https://ababase.onrender.com').replace(/^https?:/, 'wss:') + '/api/voice/stream';
 
 // ═══════════════════════════════════════════════════════════════
 // API FUNCTIONS

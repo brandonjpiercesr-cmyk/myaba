@@ -164,7 +164,7 @@ export default function CommandCenterView({ open, onClose, userEmail }) {
         {/* Footer */}
         <div style={{ padding: "12px 20px", borderTop: "1px solid rgba(255,255,255,.04)", background: "rgba(0,0,0,.2)" }}>
           <p style={{ color: "rgba(255,255,255,.3)", fontSize: 10, margin: 0, textAlign: "center" }}>
-            Command Center v1.0 • Backend: abacia-services.onrender.com
+            Command Center v1.0 • Backend: ababase.onrender.com
           </p>
         </div>
       </div>

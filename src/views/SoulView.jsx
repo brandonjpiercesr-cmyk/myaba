@@ -9,7 +9,7 @@ import {
   formatDate, getTodayDate, generateChangelog
 } from '../utils/soul-core.js';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://abacia-services.onrender.com';
+const API_BASE = import.meta.env.VITE_API_URL || import.meta.env.VITE_ABABASE_URL || 'https://ababase.onrender.com';
 const api = async (path, opts = {}) => {
   const resp = await fetch(`${API_BASE}${path}`, {
     method: opts.method || 'GET',
@@ -352,7 +352,7 @@ function NamesReference() {
   const [filter, setFilter] = useState('all');
 
   useEffect(() => {
-    fetch(`${API_BASE || 'https://abacia-services.onrender.com'}/api/soul/names`)
+    fetch(`${API_BASE || (import.meta.env.VITE_ABABASE_URL || 'https://ababase.onrender.com')}/api/soul/names`)
       .then(r => r.json()).then(setNames).catch(() => {});
   }, []);
 
@@ -383,4 +383,4 @@ function NamesReference() {
   );
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://abacia-services.onrender.com';
+const API_BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_ABABASE_URL || 'https://ababase.onrender.com';

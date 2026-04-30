@@ -78,7 +78,7 @@ export async function sendToEngine(api, message, userId, mode, opts = {}) {
 // Send to a streaming endpoint
 export async function sendToEngineStream(api, message, userId, mode, onChunk) {
   const channel = getChannel(mode);
-  const baseUrl = typeof api._baseUrl === 'string' ? api._baseUrl : 'https://abacia-services.onrender.com';
+  const baseUrl = typeof api._baseUrl === 'string' ? api._baseUrl : (import.meta.env.VITE_ABABASE_URL || 'https://ababase.onrender.com');
   
   try {
     const res = await fetch(baseUrl + '/api/air/stream', {

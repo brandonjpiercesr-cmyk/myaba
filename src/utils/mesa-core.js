@@ -102,7 +102,7 @@ export async function fetchTimCue(api, segment, userId, context) {
 // COOK was never receiving the briefing content — only transcript and TIM cues.
 export async function fetchCookAnswer(api, question, userId, context, onChunk) {
   try {
-    const baseUrl = typeof api._baseUrl === 'string' ? api._baseUrl : 'https://abacia-services.onrender.com';
+    const baseUrl = typeof api._baseUrl === 'string' ? api._baseUrl : (import.meta.env.VITE_ABABASE_URL || 'https://ababase.onrender.com');
     const res = await fetch(baseUrl + '/api/cook/answer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

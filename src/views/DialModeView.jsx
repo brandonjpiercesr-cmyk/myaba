@@ -11,7 +11,7 @@ import {
   fetchTimCue, fetchCookAnswer, isQuestion,
 } from '../utils/dial-core';
 
-const ABABASE = import.meta.env.VITE_ABABASE_URL || 'https://abacia-services.onrender.com';
+const ABABASE = import.meta.env.VITE_ABABASE_URL || 'https://ababase.onrender.com';
 const api = (path, opts) => fetch(ABABASE + path, opts).then(r => r.json());
 
 export default function DialModeView({ user, userId }) {

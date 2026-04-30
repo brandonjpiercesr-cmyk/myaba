@@ -28,7 +28,8 @@ async function abaFetch(url, options = {}) {
   return fetch(url, { ...options, headers: mergedHeaders });
 }
 
-export const ABABASE = "https://abacia-services.onrender.com";
+// ⬡B:myaba.api.s25_phase_b:CODE:migrate_to_ababase:20260430⬡
+export const ABABASE = import.meta.env.VITE_ABABASE_URL || "https://ababase.onrender.com";
 
 // v1.2.0: Check online status
 export function isOnline() { return navigator.onLine; }

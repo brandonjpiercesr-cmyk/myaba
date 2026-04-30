@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 describe('api.js — shared backend utils', () => {
   it('TEST 1: ABABASE constant points to production backend', async () => {
     const { ABABASE } = await import('../utils/api.js');
-    expect(ABABASE).toBe('https://abacia-services.onrender.com');
+    expect(ABABASE).toBe(import.meta.env.VITE_ABABASE_URL || 'https://ababase.onrender.com');
   });
 
   it('TEST 2: safeParseGreeting handles null without crashing', async () => {

@@ -2,7 +2,7 @@
 // ReadingView v2 — visual redesign with covers, reading plans, progress bars
 import { useState, useEffect, useCallback } from 'react';
 
-const API_BASE = 'https://abacia-services.onrender.com';
+const API_BASE = import.meta.env.VITE_ABABASE_URL || 'https://ababase.onrender.com';
 const SUPABASE_URL = 'https://htlxjkbrstpwwtzsbyvb.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0bHhqa2Jyc3Rwd3d0enNieXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1MzI4MjEsImV4cCI6MjA4NjEwODgyMX0.MOgNYkezWpgxTO3ZHd0omZ0WLJOOR-tL7hONXWG9eBw';
 

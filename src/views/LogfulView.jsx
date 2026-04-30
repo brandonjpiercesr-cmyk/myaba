@@ -2,7 +2,7 @@
 import React, { useEffect } from 'react';
 import { useLogEntries, LOG_SOURCES, formatEntryDate, getSourceIcon, getToneColor } from '../utils/logful-core.js';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://abacia-services.onrender.com';
+const API_BASE = import.meta.env.VITE_API_URL || import.meta.env.VITE_ABABASE_URL || 'https://ababase.onrender.com';
 const api = async (path, opts = {}) => {
   const resp = await fetch(`${API_BASE}${path}`, { method: opts.method || 'GET', headers: { 'Content-Type': 'application/json' }, ...(opts.body ? { body: JSON.stringify(opts.body) } : {}) });
   return resp.json();

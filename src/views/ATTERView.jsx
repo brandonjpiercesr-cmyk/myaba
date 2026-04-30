@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useRecording, TAG_LEVELS, formatTime, getRecentSessions } from '../utils/atter-core.js';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://abacia-services.onrender.com';
+const API_BASE = import.meta.env.VITE_API_URL || import.meta.env.VITE_ABABASE_URL || 'https://ababase.onrender.com';
 const api = async (path, opts = {}) => {
   const resp = await fetch(`${API_BASE}${path}`, { method: opts.method || 'GET', headers: { 'Content-Type': 'application/json' }, ...(opts.body ? { body: JSON.stringify(opts.body) } : {}) });
   return resp.json();
