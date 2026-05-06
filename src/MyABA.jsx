@@ -1972,11 +1972,29 @@ function MyABAInner(){
   // ⬡B:snap.quick_question:STATE:20260317⬡
   const[snapOpen,setSnapOpen]=useState(false);
   const[proactiveTip,setProactiveTip]=useState(null);
-  // ⬡B:AUDRA.C2:FIX:alerts_via_backend:20260403⬡ Routed through backend per 90/10 rule
+  // ⬡B:cleanup_pass.hunch_ui_cip:FIX:per_ham_fetch_and_surface_all_in_queue:20260506⬡
+  // PLAN 5a8ede81 frontend half — fetch THIS user's hunches (per-HAM), surface ALL in Queue not just first.
+  // PER-HAM CONSTRAINT preserved: NEVER hardcodes user_id, derived from authenticated user object.
   useEffect(()=>{
-    fetch(`${ABABASE}/api/alerts/hunch`)
-      .then(r=>r.json()).then(d=>{const arr=d.alerts||d||[];if(arr&&arr[0]){try{const c=typeof arr[0].content==="string"?JSON.parse(arr[0].content):arr[0].content;setProactiveTip(c.hint||c.message||null)}catch{}}}).catch(()=>{});
-  },[]);
+    if(!user)return;
+    const uid=user.email||user.uid||"unknown";
+    fetch(`${ABABASE}/api/alerts/hunch?user_id=${encodeURIComponent(uid)}`)
+      .then(r=>r.json()).then(d=>{
+        const arr=d.alerts||d||[];
+        if(!arr||arr.length===0)return;
+        // Parse hunch hint from "HUNCH proactive hint: {json}" wrapper
+        const parseHint=(raw)=>{try{const stripped=(raw||"").replace(/^HUNCH proactive hint:\s*/,"");const p=typeof stripped==="string"?JSON.parse(stripped):stripped;return p.hint||p.message||stripped}catch{return raw||""}};
+        // Top tip for greeting card
+        if(arr[0]){
+          try{const c=typeof arr[0].content==="string"?parseHint(arr[0].content):(arr[0].content?.hint||arr[0].content?.message);setProactiveTip(c||null)}catch{setProactiveTip(arr[0].content||null)}
+        }
+        // Surface ALL hunches in the Queue
+        const queueItems=arr.map(a=>({id:a.id,source:"hunch",title:"HUNCH",text:parseHint(a.content),priority:"medium",time:a.created_at}));
+        if(queueItems.length>0){
+          setProactiveItems(prev=>{const existing=new Set((prev||[]).map(p=>p.id));const merged=[...(prev||[]),...queueItems.filter(q=>!existing.has(q.id))];return merged.slice(0,50)});
+        }
+      }).catch(()=>{});
+  },[user]);
   const[captionText,setCaptionText]=useState("");const[captionVisible,setCaptionVisible]=useState(false);
   const[editorDoc,setEditorDoc]=useState(null); // {content, type} for MobileDocEditor from Jobs
   const[snapMessages,setSnapMessages]=useState([]);
