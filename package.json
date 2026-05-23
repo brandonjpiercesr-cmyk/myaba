@@ -17,7 +17,9 @@
     "lucide-react": "^0.263.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "vite": "^5.4.0"
+    "vite": "^5.4.0",
+    "@aba/mesa-core": "workspace:*",
+    "@aba/iris-core": "workspace:*"
   },
   "engines": {
     "node": ">=18"
